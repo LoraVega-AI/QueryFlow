@@ -8,6 +8,7 @@ import { Layout } from '@/components/Layout';
 import { SchemaDesigner } from '@/components/SchemaDesigner';
 import { QueryRunner } from '@/components/QueryRunner';
 import { ResultsViewer } from '@/components/ResultsViewer';
+import { DataEditor } from '@/components/DataEditor';
 import { DatabaseSchema, QueryResult, QueryError } from '@/types/database';
 import { StorageManager } from '@/utils/storage';
 
@@ -92,15 +93,7 @@ export default function HomePage() {
         );
       case 'data':
         return (
-          <div className="flex items-center justify-center h-full bg-gray-900">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl text-gray-400">📊</span>
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">Data Editor</h3>
-              <p className="text-gray-300">Coming soon - Direct data editing interface</p>
-            </div>
-          </div>
+          <DataEditor schema={schema} />
         );
       case 'analytics':
         return (
