@@ -220,6 +220,9 @@ export function SchemaDesigner({ schema, onSchemaChange }: SchemaDesignerProps) 
               foreignKey: {
                 tableId: params.target!,
                 columnId: params.targetHandle!,
+                relationshipType: 'one-to-many' as const,
+                cascadeDelete: false,
+                cascadeUpdate: false,
               },
             }
           : col

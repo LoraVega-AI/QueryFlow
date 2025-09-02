@@ -6,7 +6,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { SearchResult, SearchFilters } from '@/types/database';
 import { AdvancedSearch as AdvancedSearchUtil } from '@/utils/advancedSearch';
-import { Search, Filter, Download, Star, Clock, FileText, Database, Table as TableIcon, User } from 'lucide-react';
+import { Search, Filter, Download, Star, Clock, FileText, Database, Table as TableIcon, User, Zap, Target, Layers, BarChart3, Monitor, Activity, TrendingUp, Globe, Shield, Users, Calendar, Timer, Bell, Mail, MessageSquare, Link, ExternalLink, ArrowRight, ArrowDown, ArrowUp, ChevronRight, ChevronDown, ChevronUp, MoreHorizontal, MoreVertical, Bookmark, Share2, Maximize2, Minimize2, RotateCcw, Save, Edit, Copy, Move, Trash, Archive, RefreshCw, Code, GitBranch, AlertTriangle, CheckCircle, XCircle, Info, HelpCircle, Plus, Minus, X, Check, Loader2 } from 'lucide-react';
 
 interface AdvancedSearchProps {
   schema: any;
@@ -23,6 +23,14 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
   });
   const [showFilters, setShowFilters] = useState(false);
   const [savedSearches, setSavedSearches] = useState<any[]>([]);
+  
+  // Advanced search features
+  const [searchSuggestions, setSearchSuggestions] = useState<any[]>([]);
+  const [searchHistory, setSearchHistory] = useState<any[]>([]);
+  const [searchAnalytics, setSearchAnalytics] = useState<any[]>([]);
+  const [searchAlerts, setSearchAlerts] = useState<any[]>([]);
+  const [searchIndexes, setSearchIndexes] = useState<any[]>([]);
+  const [searchAPIs, setSearchAPIs] = useState<any[]>([]);
 
   // Perform search
   const performSearch = useCallback(async () => {
@@ -71,6 +79,108 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
     setFilters(savedSearch.filters);
   }, []);
 
+  // Load advanced search data
+  useEffect(() => {
+    // Load search suggestions
+    const suggestions = [
+      { id: '1', text: 'user authentication', count: 45 },
+      { id: '2', text: 'database schema', count: 32 },
+      { id: '3', text: 'query optimization', count: 28 }
+    ];
+    setSearchSuggestions(suggestions);
+
+    // Load search history
+    const history = [
+      { id: '1', query: 'user management', timestamp: new Date(), results: 12 },
+      { id: '2', query: 'database performance', timestamp: new Date(), results: 8 },
+      { id: '3', query: 'security policies', timestamp: new Date(), results: 15 }
+    ];
+    setSearchHistory(history);
+
+    // Load search analytics
+    const analytics = [
+      {
+        id: 'search-volume',
+        name: 'Search Volume',
+        value: 1250,
+        trend: 'up',
+        change: 15.2
+      },
+      {
+        id: 'avg-response-time',
+        name: 'Avg Response Time',
+        value: 0.8,
+        trend: 'down',
+        change: -8.5
+      },
+      {
+        id: 'success-rate',
+        name: 'Success Rate',
+        value: 98.5,
+        trend: 'up',
+        change: 2.1
+      }
+    ];
+    setSearchAnalytics(analytics);
+
+    // Load search alerts
+    const alerts = [
+      {
+        id: 'high-volume',
+        name: 'High Search Volume Alert',
+        description: 'Search volume exceeded threshold',
+        severity: 'medium',
+        active: true
+      },
+      {
+        id: 'slow-query',
+        name: 'Slow Query Alert',
+        description: 'Query response time > 2s',
+        severity: 'high',
+        active: true
+      }
+    ];
+    setSearchAlerts(alerts);
+
+    // Load search indexes
+    const indexes = [
+      {
+        id: 'full-text',
+        name: 'Full-Text Index',
+        status: 'active',
+        size: '2.5MB',
+        lastUpdated: new Date()
+      },
+      {
+        id: 'metadata',
+        name: 'Metadata Index',
+        status: 'active',
+        size: '1.2MB',
+        lastUpdated: new Date()
+      }
+    ];
+    setSearchIndexes(indexes);
+
+    // Load search APIs
+    const APIs = [
+      {
+        id: 'rest-api',
+        name: 'REST API',
+        description: 'RESTful search endpoints',
+        status: 'active',
+        endpoints: 5
+      },
+      {
+        id: 'graphql',
+        name: 'GraphQL API',
+        description: 'GraphQL search queries',
+        status: 'active',
+        endpoints: 3
+      }
+    ];
+    setSearchAPIs(APIs);
+  }, []);
+
   return (
     <div className="flex flex-col h-full bg-gray-900">
       {/* Header */}
@@ -92,32 +202,50 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
 
       {/* Search Bar */}
       <div className="p-4 bg-gray-800 border-b border-gray-700">
-        <form onSubmit={handleSearch} className="flex items-center space-x-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search across tables, queries, schemas, and more..."
-              className="w-full pl-10 pr-4 py-3 bg-gray-700 text-white rounded-md border border-gray-600 focus:border-orange-500 focus:outline-none"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={!searchQuery.trim() || isSearching}
-            className="px-6 py-3 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
-          >
-            {isSearching ? 'Searching...' : 'Search'}
-          </button>
-          {searchQuery && (
+        <form onSubmit={handleSearch} className="space-y-4">
+          <div className="flex items-center space-x-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search across tables, queries, schemas, and more..."
+                className="w-full pl-10 pr-4 py-3 bg-gray-700 text-white rounded-md border border-gray-600 focus:border-orange-500 focus:outline-none"
+              />
+            </div>
             <button
-              type="button"
-              onClick={clearSearch}
-              className="px-4 py-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              type="submit"
+              disabled={!searchQuery.trim() || isSearching}
+              className="px-6 py-3 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
             >
-              Clear
+              {isSearching ? 'Searching...' : 'Search'}
             </button>
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="px-4 py-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          
+          {/* Search Suggestions */}
+          {searchSuggestions.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <span className="text-sm text-gray-400 mr-2">Suggestions:</span>
+              {searchSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion.id}
+                  onClick={() => setSearchQuery(suggestion.text)}
+                  className="px-3 py-1 bg-gray-700 text-gray-300 rounded-full text-sm hover:bg-gray-600 transition-colors"
+                >
+                  {suggestion.text} ({suggestion.count})
+                </button>
+              ))}
+            </div>
           )}
         </form>
       </div>
@@ -347,6 +475,142 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
                   <User className="w-8 h-8 text-orange-400 mx-auto mb-2" />
                   <div className="text-white font-medium">Audit Logs</div>
                   <div className="text-sm text-gray-400">Track activities</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Advanced Search Features */}
+          {!searchQuery && searchResults.length === 0 && (
+            <div className="space-y-6 mt-8">
+              {/* Search History */}
+              {searchHistory.length > 0 && (
+                <div className="bg-gray-800 rounded-lg p-6">
+                  <h3 className="text-lg font-semibold text-white mb-4">Recent Searches</h3>
+                  <div className="space-y-2">
+                    {searchHistory.map((history) => (
+                      <div key={history.id} className="flex items-center justify-between bg-gray-700 rounded p-3">
+                        <div className="flex items-center space-x-3">
+                          <Clock className="w-4 h-4 text-gray-400" />
+                          <span className="text-white">{history.query}</span>
+                          <span className="text-xs text-gray-400">({history.results} results)</span>
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {history.timestamp.toLocaleTimeString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Search Analytics */}
+              <div className="bg-gray-800 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-white mb-4">Search Analytics</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {searchAnalytics.map((analytic) => (
+                    <div key={analytic.id} className="bg-gray-700 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-white font-medium">{analytic.name}</h4>
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          analytic.trend === 'up' ? 'bg-green-600' :
+                          analytic.trend === 'down' ? 'bg-red-600' :
+                          'bg-gray-600'
+                        }`}>
+                          {analytic.trend}
+                        </span>
+                      </div>
+                      <div className="text-2xl font-bold text-orange-400 mb-1">
+                        {typeof analytic.value === 'number' ? analytic.value.toLocaleString() : analytic.value}
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        {analytic.change > 0 ? '+' : ''}{analytic.change}% from last period
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Search Alerts */}
+              <div className="bg-gray-800 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-white mb-4">Search Alerts</h3>
+                <div className="space-y-3">
+                  {searchAlerts.map((alert) => (
+                    <div key={alert.id} className="bg-gray-700 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-white font-medium">{alert.name}</h4>
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          alert.severity === 'high' ? 'bg-red-600' :
+                          alert.severity === 'medium' ? 'bg-yellow-600' :
+                          'bg-green-600'
+                        }`}>
+                          {alert.severity}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-300 mb-2">{alert.description}</p>
+                      <div className="flex items-center space-x-2">
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          alert.active ? 'bg-green-600' : 'bg-gray-600'
+                        }`}>
+                          {alert.active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Search Indexes */}
+              <div className="bg-gray-800 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-white mb-4">Search Indexes</h3>
+                <div className="space-y-4">
+                  {searchIndexes.map((index) => (
+                    <div key={index.id} className="bg-gray-700 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-white font-medium">{index.name}</h4>
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          index.status === 'active' ? 'bg-green-600' :
+                          index.status === 'rebuilding' ? 'bg-yellow-600' :
+                          'bg-gray-600'
+                        }`}>
+                          {index.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm text-gray-400">
+                        <span>Size: {index.size}</span>
+                        <span>Updated: {index.lastUpdated.toLocaleString()}</span>
+                        <button className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 transition-colors">
+                          Rebuild
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Search APIs */}
+              <div className="bg-gray-800 rounded-lg p-6">
+                <h3 className="text-lg font-semibold text-white mb-4">Search APIs</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {searchAPIs.map((api) => (
+                    <div key={api.id} className="bg-gray-700 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-white font-medium">{api.name}</h4>
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          api.status === 'active' ? 'bg-green-600' : 'bg-gray-600'
+                        }`}>
+                          {api.status}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-300 mb-3">{api.description}</p>
+                      <div className="flex items-center justify-between text-sm text-gray-400">
+                        <span>{api.endpoints} endpoints</span>
+                        <button className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 transition-colors">
+                          View Docs
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

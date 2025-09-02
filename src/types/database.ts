@@ -11,7 +11,18 @@ export interface Column {
   foreignKey?: {
     tableId: string;
     columnId: string;
+    relationshipType: 'one-to-one' | 'one-to-many' | 'many-to-many' | 'self-referencing';
+    cascadeDelete?: boolean;
+    cascadeUpdate?: boolean;
   };
+  constraints?: {
+    unique?: boolean;
+    check?: string;
+    index?: boolean;
+    autoIncrement?: boolean;
+  };
+  documentation?: string;
+  tags?: string[];
 }
 
 export interface Table {
@@ -19,6 +30,42 @@ export interface Table {
   name: string;
   columns: Column[];
   position: { x: number; y: number };
+  size?: { width: number; height: number };
+  documentation?: string;
+  tags?: string[];
+  indexes?: TableIndex[];
+  triggers?: TableTrigger[];
+  businessRules?: BusinessRule[];
+  version?: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface TableIndex {
+  id: string;
+  name: string;
+  columns: string[];
+  unique: boolean;
+  type: 'btree' | 'hash' | 'gin' | 'gist';
+  partial?: string;
+}
+
+export interface TableTrigger {
+  id: string;
+  name: string;
+  event: 'insert' | 'update' | 'delete';
+  timing: 'before' | 'after' | 'instead_of';
+  action: string;
+  condition?: string;
+}
+
+export interface BusinessRule {
+  id: string;
+  name: string;
+  description: string;
+  rule: string;
+  severity: 'error' | 'warning' | 'info';
+  enabled: boolean;
 }
 
 export interface DatabaseSchema {
@@ -30,6 +77,49 @@ export interface DatabaseSchema {
   version: number;
   description?: string;
   tags?: string[];
+  branches?: SchemaBranch[];
+  currentBranch?: string;
+  collaborators?: Collaborator[];
+  permissions?: SchemaPermissions;
+  metadata?: SchemaMetadata;
+}
+
+export interface SchemaBranch {
+  id: string;
+  name: string;
+  parentBranch?: string;
+  createdAt: Date;
+  createdBy: string;
+  description?: string;
+  isActive: boolean;
+}
+
+export interface Collaborator {
+  id: string;
+  name: string;
+  email: string;
+  role: 'owner' | 'admin' | 'editor' | 'viewer';
+  permissions: string[];
+  lastActive?: Date;
+  cursor?: { x: number; y: number; color: string };
+}
+
+export interface SchemaPermissions {
+  canEdit: boolean;
+  canDelete: boolean;
+  canShare: boolean;
+  canExport: boolean;
+  canVersion: boolean;
+  canCollaborate: boolean;
+}
+
+export interface SchemaMetadata {
+  totalTables: number;
+  totalColumns: number;
+  totalRelationships: number;
+  complexity: 'low' | 'medium' | 'high';
+  lastValidated?: Date;
+  validationStatus: 'valid' | 'warning' | 'error';
 }
 
 export interface DatabaseRecord {
@@ -43,6 +133,47 @@ export interface QueryResult {
   rows: any[][];
   rowCount: number;
   executionTime: number;
+  executionPlan?: ExecutionPlan;
+  performanceMetrics?: PerformanceMetrics;
+  metadata?: QueryMetadata;
+}
+
+export interface ExecutionPlan {
+  id: string;
+  steps: ExecutionStep[];
+  totalCost: number;
+  estimatedRows: number;
+  actualRows: number;
+  executionTime: number;
+}
+
+export interface ExecutionStep {
+  id: string;
+  operation: string;
+  table?: string;
+  index?: string;
+  cost: number;
+  rows: number;
+  width: number;
+  children?: ExecutionStep[];
+}
+
+export interface PerformanceMetrics {
+  cpuTime: number;
+  memoryUsage: number;
+  diskReads: number;
+  diskWrites: number;
+  networkTime?: number;
+  cacheHits: number;
+  cacheMisses: number;
+}
+
+export interface QueryMetadata {
+  queryHash: string;
+  parameters?: Record<string, any>;
+  executionContext: string;
+  timestamp: Date;
+  userId?: string;
 }
 
 export interface QueryError {
@@ -257,4 +388,147 @@ export interface WorkflowStepExecution {
   endTime?: Date;
   error?: string;
   result?: any;
+}
+
+// Advanced Analytics Types
+export interface ChartConfig {
+  id: string;
+  type: 'line' | 'bar' | 'pie' | 'scatter' | 'heatmap' | 'treemap' | 'boxplot' | 'histogram' | 'area' | 'radar';
+  title: string;
+  dataSource: string;
+  xAxis?: AxisConfig;
+  yAxis?: AxisConfig;
+  series?: SeriesConfig[];
+  options?: ChartOptions;
+  filters?: FilterConfig[];
+}
+
+export interface AxisConfig {
+  field: string;
+  label: string;
+  type: 'category' | 'value' | 'time';
+  format?: string;
+  min?: number;
+  max?: number;
+}
+
+export interface SeriesConfig {
+  name: string;
+  field: string;
+  color?: string;
+  type?: 'line' | 'bar' | 'area';
+  aggregation?: 'sum' | 'avg' | 'count' | 'min' | 'max';
+}
+
+export interface ChartOptions {
+  responsive: boolean;
+  maintainAspectRatio: boolean;
+  animation?: boolean;
+  legend?: boolean;
+  tooltips?: boolean;
+  grid?: boolean;
+  theme?: 'light' | 'dark';
+}
+
+export interface FilterConfig {
+  field: string;
+  operator: 'equals' | 'not_equals' | 'contains' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'between' | 'in' | 'not_in';
+  value: any;
+  label: string;
+}
+
+export interface Dashboard {
+  id: string;
+  name: string;
+  description: string;
+  charts: ChartConfig[];
+  layout: DashboardLayout;
+  filters: FilterConfig[];
+  refreshInterval?: number;
+  isPublic: boolean;
+  permissions: DashboardPermissions;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DashboardLayout {
+  columns: number;
+  rows: number;
+  widgets: DashboardWidget[];
+}
+
+export interface DashboardWidget {
+  id: string;
+  chartId: string;
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  title?: string;
+  showTitle: boolean;
+}
+
+export interface DashboardPermissions {
+  canView: string[];
+  canEdit: string[];
+  canDelete: string[];
+  canShare: string[];
+}
+
+// Advanced Search Types
+export interface SearchIndex {
+  id: string;
+  name: string;
+  fields: SearchField[];
+  analyzer: 'standard' | 'keyword' | 'text' | 'custom';
+  settings: SearchSettings;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SearchField {
+  name: string;
+  type: 'text' | 'keyword' | 'number' | 'date' | 'boolean';
+  indexed: boolean;
+  stored: boolean;
+  analyzed: boolean;
+  boost?: number;
+}
+
+export interface SearchSettings {
+  numberOfShards: number;
+  numberOfReplicas: number;
+  refreshInterval: string;
+  maxResultWindow: number;
+}
+
+export interface SearchQuery {
+  id: string;
+  query: string;
+  filters: SearchFilters;
+  sort: SearchSort[];
+  pagination: SearchPagination;
+  highlights: SearchHighlight[];
+  aggregations: SearchAggregation[];
+}
+
+export interface SearchSort {
+  field: string;
+  order: 'asc' | 'desc';
+}
+
+export interface SearchPagination {
+  from: number;
+  size: number;
+}
+
+export interface SearchHighlight {
+  field: string;
+  fragmentSize: number;
+  numberOfFragments: number;
+}
+
+export interface SearchAggregation {
+  name: string;
+  type: 'terms' | 'range' | 'date_histogram' | 'stats' | 'cardinality';
+  field: string;
+  options?: Record<string, any>;
 }

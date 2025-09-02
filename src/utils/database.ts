@@ -12,18 +12,28 @@ export class DatabaseManager {
     if (this.isInitialized) return;
 
     try {
+      console.log('Starting SQLite initialization...');
+      
       // Dynamic import for client-side only
       const initSqlJs = (await import('sql.js')).default;
+      console.log('SQL.js module loaded successfully');
+      
       const SQL = await initSqlJs({
         // Use CDN for WASM file to ensure it loads properly
         locateFile: file => `https://sql.js.org/dist/${file}`
       });
+      console.log('SQL.js WASM initialized successfully');
       
       this.db = new SQL.Database();
       this.isInitialized = true;
       console.log('SQLite database initialized successfully');
     } catch (error) {
       console.error('Failed to initialize SQLite:', error);
+      console.error('Error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       throw new Error(`Failed to initialize database: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -98,11 +108,18 @@ export class DatabaseManager {
       await this.initialize();
     }
 
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+
     const startTime = performance.now();
     
     try {
+      console.log('Executing query:', sql);
       const result = this.db.exec(sql);
       const endTime = performance.now();
+      
+      console.log('Query result:', result);
       
       if (result.length === 0) {
         return {
@@ -122,10 +139,21 @@ export class DatabaseManager {
       };
     } catch (error: any) {
       const endTime = performance.now();
-      throw {
-        message: error.message,
+      console.error('Query execution failed:', error);
+      console.error('Error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
+      const queryError: QueryError = {
+        message: error instanceof Error ? error.message : String(error),
+        line: error.line,
+        column: error.column,
         executionTime: endTime - startTime,
-      } as QueryError;
+      };
+      
+      throw queryError;
     }
   }
 

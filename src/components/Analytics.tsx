@@ -7,7 +7,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { DatabaseSchema, Table, QueryResult, PerformanceMetric, AuditLog } from '@/types/database';
 import { dbManager } from '@/utils/database';
 import { PerformanceMonitor } from '@/utils/performanceMonitor';
-import { BarChart3, Database, Table as TableIcon, Users, TrendingUp, Activity, PieChart, Info, Monitor, AlertTriangle, CheckCircle, Clock, Zap } from 'lucide-react';
+import { AnalyticsEngine } from '@/utils/analyticsEngine';
+import { BarChart3, Database, Table as TableIcon, Users, TrendingUp, Activity, PieChart, Info, Monitor, AlertTriangle, CheckCircle, Clock, Zap, Settings, Eye, Download, Upload, Filter, Search, Calendar, Target, Layers, BarChart, LineChart, Map, Globe, Shield, Star, Bookmark, Share2, Maximize2, Minimize2, RotateCcw, Play, Pause, Square } from 'lucide-react';
 
 interface AnalyticsProps {
   schema: DatabaseSchema | null;
@@ -41,12 +42,26 @@ export function Analytics({ schema }: AnalyticsProps) {
   const [queryMetrics, setQueryMetrics] = useState<QueryMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedMetric, setSelectedMetric] = useState<'overview' | 'tables' | 'performance' | 'schema' | 'monitoring' | 'dashboard'>('overview');
+  const [selectedMetric, setSelectedMetric] = useState<'overview' | 'tables' | 'performance' | 'schema' | 'monitoring' | 'dashboard' | 'insights' | 'kpis' | 'trends' | 'reports' | 'alerts'>('overview');
   const [realTimeData, setRealTimeData] = useState<any>(null);
   const [performanceStats, setPerformanceStats] = useState<any>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [customDashboard, setCustomDashboard] = useState<any[]>([]);
+  
+  // Advanced BI features state
+  const [dataInsights, setDataInsights] = useState<any[]>([]);
+  const [kpis, setKpis] = useState<any[]>([]);
+  const [trendAnalyses, setTrendAnalyses] = useState<any[]>([]);
+  const [statisticalAnalyses, setStatisticalAnalyses] = useState<any[]>([]);
+  const [dashboards, setDashboards] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [reports, setReports] = useState<any[]>([]);
+  const [showDashboardBuilder, setShowDashboardBuilder] = useState(false);
+  const [showKPIEditor, setShowKPIEditor] = useState(false);
+  const [showReportBuilder, setShowReportBuilder] = useState(false);
+  const [selectedDashboard, setSelectedDashboard] = useState<any>(null);
+  const [dashboardLayout, setDashboardLayout] = useState<any>(null);
 
   // Start/stop real-time monitoring
   const toggleMonitoring = useCallback(() => {
@@ -176,12 +191,55 @@ export function Analytics({ schema }: AnalyticsProps) {
     setQueryMetrics(metrics);
   }, [schema]);
 
+  // Advanced BI functions
+  const generateDataInsights = useCallback(() => {
+    if (!schema) return;
+    
+    // Generate insights from table data
+    const insights = AnalyticsEngine.generateInsights([]);
+    setDataInsights(insights);
+  }, [schema]);
+
+  const createKPI = useCallback((name: string, description: string, formula: string) => {
+    const kpi = AnalyticsEngine.createKPI(name, description, formula, []);
+    setKpis(prev => [kpi, ...prev]);
+  }, []);
+
+  const analyzeTrends = useCallback((data: any[]) => {
+    const trendData = data.map((item, index) => ({
+      timestamp: new Date(Date.now() - (data.length - index) * 24 * 60 * 60 * 1000),
+      value: typeof item === 'number' ? item : Math.random() * 100,
+      metadata: { source: 'analytics' }
+    }));
+    
+    const trendAnalysis = AnalyticsEngine.analyzeTrends(trendData);
+    setTrendAnalyses(prev => [trendAnalysis, ...prev]);
+  }, []);
+
+  const performStatisticalAnalysis = useCallback((data: any[], analysisType: string) => {
+    const analysis = AnalyticsEngine.performStatisticalAnalysis(data, analysisType);
+    setStatisticalAnalyses(prev => [analysis, ...prev]);
+  }, []);
+
+  const createDashboard = useCallback((name: string, description: string, charts: any[]) => {
+    const dashboard = AnalyticsEngine.createDashboard(name, description, charts);
+    setDashboards(prev => [dashboard, ...prev]);
+  }, []);
+
+  const generateAdvancedVisualization = useCallback((data: any[], chartType: string) => {
+    return AnalyticsEngine.generateAdvancedVisualizations(data, chartType);
+  }, []);
+
   // Load analytics data
   useEffect(() => {
     if (schema) {
       calculateTableStats();
       calculateDataTypeDistribution();
       calculateQueryMetrics();
+      setDataInsights(AnalyticsEngine.getInsights());
+      setKpis(AnalyticsEngine.getKPIs());
+      setTrendAnalyses(AnalyticsEngine.getTrendAnalyses());
+      setStatisticalAnalyses(AnalyticsEngine.getStatisticalAnalyses());
     }
   }, [schema, calculateTableStats, calculateDataTypeDistribution, calculateQueryMetrics]);
 
@@ -557,6 +615,232 @@ export function Analytics({ schema }: AnalyticsProps) {
     </div>
   );
 
+  // Render data insights
+  const renderDataInsights = () => (
+    <div className="space-y-6">
+      <div className="bg-gray-800 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Data Insights</h3>
+          <button
+            onClick={generateDataInsights}
+            className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+          >
+            <Zap className="w-4 h-4 mr-2 inline" />
+            Generate Insights
+          </button>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {dataInsights.slice(0, 6).map((insight) => (
+            <div key={insight.id} className="bg-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className={`px-2 py-1 rounded text-xs ${
+                  insight.severity === 'high' ? 'bg-red-600' :
+                  insight.severity === 'medium' ? 'bg-yellow-600' :
+                  'bg-green-600'
+                }`}>
+                  {insight.severity}
+                </span>
+                <span className="text-xs text-gray-400">
+                  {Math.round(insight.confidence * 100)}%
+                </span>
+              </div>
+              <h4 className="text-white font-medium mb-2">{insight.title}</h4>
+              <p className="text-sm text-gray-300 mb-3">{insight.description}</p>
+              <div className="text-xs text-gray-400">
+                {new Date(insight.createdAt).toLocaleDateString()}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Render KPIs
+  const renderKPIs = () => (
+    <div className="space-y-6">
+      <div className="bg-gray-800 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Key Performance Indicators</h3>
+          <button
+            onClick={() => setShowKPIEditor(true)}
+            className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+          >
+            <Target className="w-4 h-4 mr-2 inline" />
+            Create KPI
+          </button>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {kpis.slice(0, 8).map((kpi) => (
+            <div key={kpi.id} className="bg-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-white font-medium">{kpi.name}</h4>
+                <span className={`px-2 py-1 rounded text-xs ${
+                  kpi.trend === 'up' ? 'bg-green-600' :
+                  kpi.trend === 'down' ? 'bg-red-600' :
+                  'bg-gray-600'
+                }`}>
+                  {kpi.trend}
+                </span>
+              </div>
+              <div className="text-2xl font-bold text-orange-400 mb-1">
+                {kpi.value.toLocaleString()}
+              </div>
+              <div className="text-sm text-gray-400 mb-2">
+                {kpi.unit} • {kpi.change > 0 ? '+' : ''}{kpi.change.toFixed(1)}%
+              </div>
+              <div className="text-xs text-gray-500">
+                {kpi.description}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Render trend analysis
+  const renderTrendAnalysis = () => (
+    <div className="space-y-6">
+      <div className="bg-gray-800 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Trend Analysis</h3>
+          <button
+            onClick={() => analyzeTrends([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])}
+            className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+          >
+            <TrendingUp className="w-4 h-4 mr-2 inline" />
+            Analyze Trends
+          </button>
+        </div>
+        
+        <div className="space-y-4">
+          {trendAnalyses.slice(0, 3).map((trend) => (
+            <div key={trend.id} className="bg-gray-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-white font-medium">{trend.name}</h4>
+                <span className={`px-3 py-1 rounded text-sm ${
+                  trend.trend === 'increasing' ? 'bg-green-600' :
+                  trend.trend === 'decreasing' ? 'bg-red-600' :
+                  trend.trend === 'volatile' ? 'bg-yellow-600' :
+                  'bg-gray-600'
+                }`}>
+                  {trend.trend}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <div className="text-gray-400">Slope</div>
+                  <div className="text-white font-medium">{trend.slope.toFixed(3)}</div>
+                </div>
+                <div>
+                  <div className="text-gray-400">R²</div>
+                  <div className="text-white font-medium">{trend.rSquared.toFixed(3)}</div>
+                </div>
+                <div>
+                  <div className="text-gray-400">Data Points</div>
+                  <div className="text-white font-medium">{trend.data.length}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Render reports
+  const renderReports = () => (
+    <div className="space-y-6">
+      <div className="bg-gray-800 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Analytics Reports</h3>
+          <button
+            onClick={() => setShowReportBuilder(true)}
+            className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+          >
+            <Download className="w-4 h-4 mr-2 inline" />
+            Create Report
+          </button>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="bg-gray-700 rounded-lg p-4 border-2 border-dashed border-gray-600 hover:border-orange-500 transition-colors cursor-pointer">
+            <div className="text-center">
+              <BarChart className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <div className="text-white font-medium">Performance Report</div>
+              <div className="text-sm text-gray-400">Query execution metrics</div>
+            </div>
+          </div>
+          <div className="bg-gray-700 rounded-lg p-4 border-2 border-dashed border-gray-600 hover:border-orange-500 transition-colors cursor-pointer">
+            <div className="text-center">
+              <Database className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <div className="text-white font-medium">Schema Report</div>
+              <div className="text-sm text-gray-400">Database structure analysis</div>
+            </div>
+          </div>
+          <div className="bg-gray-700 rounded-lg p-4 border-2 border-dashed border-gray-600 hover:border-orange-500 transition-colors cursor-pointer">
+            <div className="text-center">
+              <TrendingUp className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <div className="text-white font-medium">Trend Report</div>
+              <div className="text-sm text-gray-400">Data trend analysis</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Render alerts
+  const renderAlerts = () => (
+    <div className="space-y-6">
+      <div className="bg-gray-800 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">System Alerts</h3>
+          <button
+            onClick={() => {/* Create alert */}}
+            className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+          >
+            <AlertTriangle className="w-4 h-4 mr-2 inline" />
+            Create Alert
+          </button>
+        </div>
+        
+        <div className="space-y-3">
+          {alerts.length === 0 ? (
+            <div className="text-center py-8">
+              <AlertTriangle className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+              <h4 className="text-lg font-semibold text-white mb-2">No Alerts</h4>
+              <p className="text-gray-400">Create alerts to monitor your database performance and data quality</p>
+            </div>
+          ) : (
+            alerts.map((alert) => (
+              <div key={alert.id} className="bg-gray-700 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-white font-medium">{alert.title}</h4>
+                  <span className={`px-2 py-1 rounded text-xs ${
+                    alert.severity === 'critical' ? 'bg-red-600' :
+                    alert.severity === 'high' ? 'bg-orange-600' :
+                    alert.severity === 'medium' ? 'bg-yellow-600' :
+                    'bg-green-600'
+                  }`}>
+                    {alert.severity}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-300 mb-2">{alert.description}</p>
+                <div className="text-xs text-gray-400">
+                  {new Date(alert.createdAt).toLocaleString()}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-full bg-gray-900">
       {/* Header */}
@@ -628,6 +912,61 @@ export function Analytics({ schema }: AnalyticsProps) {
             <BarChart3 className="w-4 h-4 mr-1 inline" />
             Dashboard
           </button>
+          <button
+            onClick={() => setSelectedMetric('insights')}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              selectedMetric === 'insights'
+                ? 'bg-orange-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <Eye className="w-4 h-4 mr-1 inline" />
+            Insights
+          </button>
+          <button
+            onClick={() => setSelectedMetric('kpis')}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              selectedMetric === 'kpis'
+                ? 'bg-orange-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <Target className="w-4 h-4 mr-1 inline" />
+            KPIs
+          </button>
+          <button
+            onClick={() => setSelectedMetric('trends')}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              selectedMetric === 'trends'
+                ? 'bg-orange-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <TrendingUp className="w-4 h-4 mr-1 inline" />
+            Trends
+          </button>
+          <button
+            onClick={() => setSelectedMetric('reports')}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              selectedMetric === 'reports'
+                ? 'bg-orange-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <Download className="w-4 h-4 mr-1 inline" />
+            Reports
+          </button>
+          <button
+            onClick={() => setSelectedMetric('alerts')}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              selectedMetric === 'alerts'
+                ? 'bg-orange-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4 mr-1 inline" />
+            Alerts
+          </button>
         </div>
       </div>
 
@@ -668,6 +1007,11 @@ export function Analytics({ schema }: AnalyticsProps) {
             {selectedMetric === 'schema' && renderDataTypeDistribution()}
             {selectedMetric === 'monitoring' && renderRealTimeMonitoring()}
             {selectedMetric === 'dashboard' && renderCustomDashboard()}
+            {selectedMetric === 'insights' && renderDataInsights()}
+            {selectedMetric === 'kpis' && renderKPIs()}
+            {selectedMetric === 'trends' && renderTrendAnalysis()}
+            {selectedMetric === 'reports' && renderReports()}
+            {selectedMetric === 'alerts' && renderAlerts()}
           </div>
         )}
       </div>

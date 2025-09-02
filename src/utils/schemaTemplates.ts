@@ -139,7 +139,10 @@ export class SchemaTemplateManager {
                 primaryKey: false,
                 foreignKey: {
                   tableId: 'customers',
-                  columnId: 'customer_id'
+                  columnId: 'customer_id',
+                  relationshipType: 'one-to-many' as const,
+                  cascadeDelete: false,
+                  cascadeUpdate: false,
                 }
               },
               {
@@ -188,7 +191,10 @@ export class SchemaTemplateManager {
                 primaryKey: false,
                 foreignKey: {
                   tableId: 'orders',
-                  columnId: 'order_id'
+                  columnId: 'order_id',
+                  relationshipType: 'one-to-many' as const,
+                  cascadeDelete: false,
+                  cascadeUpdate: false,
                 }
               },
               {
@@ -199,7 +205,10 @@ export class SchemaTemplateManager {
                 primaryKey: false,
                 foreignKey: {
                   tableId: 'products',
-                  columnId: 'product_id'
+                  columnId: 'product_id',
+                  relationshipType: 'one-to-many' as const,
+                  cascadeDelete: false,
+                  cascadeUpdate: false,
                 }
               },
               {
@@ -373,7 +382,10 @@ export class SchemaTemplateManager {
                 primaryKey: false,
                 foreignKey: {
                   tableId: 'users',
-                  columnId: 'user_id'
+                  columnId: 'user_id',
+                  relationshipType: 'one-to-many' as const,
+                  cascadeDelete: false,
+                  cascadeUpdate: false,
                 }
               },
               {
@@ -384,7 +396,10 @@ export class SchemaTemplateManager {
                 primaryKey: false,
                 foreignKey: {
                   tableId: 'categories',
-                  columnId: 'category_id'
+                  columnId: 'category_id',
+                  relationshipType: 'one-to-many' as const,
+                  cascadeDelete: false,
+                  cascadeUpdate: false,
                 }
               },
               {
@@ -433,7 +448,10 @@ export class SchemaTemplateManager {
                 primaryKey: false,
                 foreignKey: {
                   tableId: 'posts',
-                  columnId: 'post_id'
+                  columnId: 'post_id',
+                  relationshipType: 'one-to-many' as const,
+                  cascadeDelete: false,
+                  cascadeUpdate: false,
                 }
               },
               {
@@ -660,7 +678,10 @@ export class SchemaTemplateManager {
                 primaryKey: false,
                 foreignKey: {
                   tableId: 'users',
-                  columnId: 'user_id'
+                  columnId: 'user_id',
+                  relationshipType: 'one-to-many' as const,
+                  cascadeDelete: false,
+                  cascadeUpdate: false,
                 }
               },
               {
@@ -671,7 +692,10 @@ export class SchemaTemplateManager {
                 primaryKey: false,
                 foreignKey: {
                   tableId: 'roles',
-                  columnId: 'role_id'
+                  columnId: 'role_id',
+                  relationshipType: 'one-to-many' as const,
+                  cascadeDelete: false,
+                  cascadeUpdate: false,
                 }
               },
               {
@@ -705,7 +729,10 @@ export class SchemaTemplateManager {
                 primaryKey: false,
                 foreignKey: {
                   tableId: 'roles',
-                  columnId: 'role_id'
+                  columnId: 'role_id',
+                  relationshipType: 'one-to-many' as const,
+                  cascadeDelete: false,
+                  cascadeUpdate: false,
                 }
               },
               {
@@ -716,7 +743,10 @@ export class SchemaTemplateManager {
                 primaryKey: false,
                 foreignKey: {
                   tableId: 'permissions',
-                  columnId: 'permission_id'
+                  columnId: 'permission_id',
+                  relationshipType: 'one-to-many' as const,
+                  cascadeDelete: false,
+                  cascadeUpdate: false,
                 }
               }
             ]
@@ -836,7 +866,10 @@ export class SchemaTemplateManager {
             if (referencedColumn) {
               column.foreignKey = {
                 tableId: referencedTable.id,
-                columnId: referencedColumn.id
+                columnId: referencedColumn.id,
+                relationshipType: 'one-to-many' as const,
+                cascadeDelete: false,
+                cascadeUpdate: false,
               };
             }
           }

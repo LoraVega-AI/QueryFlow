@@ -7,7 +7,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { DatabaseSchema, Table, DatabaseRecord, QueryResult, QueryError, BulkOperation, DataValidationRule } from '@/types/database';
 import { dbManager } from '@/utils/database';
 import { BulkOperationsManager } from '@/utils/bulkOperations';
-import { Plus, Edit, Trash2, Save, X, RefreshCw, Upload, Download, FileText, AlertTriangle, CheckCircle, Filter } from 'lucide-react';
+import { DataManagementManager } from '@/utils/dataManagement';
+import { Plus, Edit, Trash2, Save, X, RefreshCw, Upload, Download, FileText, AlertTriangle, CheckCircle, Filter, BarChart3, Settings, Eye, Database, TrendingUp, Shield, History, Zap } from 'lucide-react';
 
 interface DataEditorProps {
   schema: DatabaseSchema | null;
@@ -32,6 +33,18 @@ export function DataEditor({ schema }: DataEditorProps) {
   const [validationRules, setValidationRules] = useState<DataValidationRule[]>([]);
   const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
   const [csvData, setCsvData] = useState<string>('');
+  
+  // Advanced features state
+  const [activeTab, setActiveTab] = useState<'editor' | 'quality' | 'import' | 'export' | 'audit' | 'transform'>('editor');
+  const [showDataQuality, setShowDataQuality] = useState(false);
+  const [showDataImport, setShowDataImport] = useState(false);
+  const [showDataExport, setShowDataExport] = useState(false);
+  const [showAuditLog, setShowAuditLog] = useState(false);
+  const [showDataTransform, setShowDataTransform] = useState(false);
+  const [qualityReports, setQualityReports] = useState<any[]>([]);
+  const [importResults, setImportResults] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [dataTransformations, setDataTransformations] = useState<any[]>([]);
 
   // Load records when table is selected
   const loadRecords = useCallback(async () => {
@@ -186,16 +199,89 @@ export function DataEditor({ schema }: DataEditorProps) {
     setSelectedRecords(new Set());
   }, []);
 
+  // Advanced data management functions
+  const analyzeDataQuality = useCallback(() => {
+    if (!selectedTable || records.length === 0) return;
+    
+    const report = DataManagementManager.analyzeDataQuality(selectedTable, records);
+    setQualityReports(prev => [report, ...prev]);
+    setShowDataQuality(true);
+  }, [selectedTable, records]);
+
+  const handleDataImport = useCallback((csvContent: string, mapping: any[]) => {
+    if (!selectedTable) return;
+    
+    const result = DataManagementManager.importFromCSV(csvContent, selectedTable, mapping);
+    setImportResults(prev => [result, ...prev]);
+    setShowDataImport(true);
+    
+    // Reload records if import was successful
+    if (result.importedRows > 0) {
+      loadRecords();
+    }
+  }, [selectedTable, loadRecords]);
+
+  const handleDataExport = useCallback((format: string) => {
+    if (!selectedTable || records.length === 0) return;
+    
+    const config = {
+      id: `export-${Date.now()}`,
+      name: `${selectedTable.name}_export`,
+      format: format as any,
+      filters: [],
+      columns: selectedTable.columns.map(c => c.name),
+      includeHeaders: true,
+      encoding: 'utf-8'
+    };
+    
+    const exportData = DataManagementManager.exportData(records, config);
+    
+    // Download the file
+    const blob = new Blob([exportData], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedTable.name}_export.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [selectedTable, records]);
+
+  const logAuditEvent = useCallback((action: string, recordId: string, oldValues?: any, newValues?: any) => {
+    if (!selectedTable) return;
+    
+    DataManagementManager.logAuditEvent(
+      selectedTable.id,
+      recordId,
+      action,
+      'current_user',
+      oldValues,
+      newValues
+    );
+    
+    // Refresh audit logs
+    setAuditLogs(DataManagementManager.getAuditLogs(selectedTable.id));
+  }, [selectedTable]);
+
   // Load records when table changes
   useEffect(() => {
     if (selectedTable) {
       loadRecords();
       loadBulkOperations();
       loadValidationRules();
+      setQualityReports(DataManagementManager.getQualityReports());
+      setImportResults(DataManagementManager.getImportResults());
+      setAuditLogs(DataManagementManager.getAuditLogs(selectedTable.id));
+      setDataTransformations(DataManagementManager.getTransformations());
     } else {
       setRecords([]);
       setBulkOperations([]);
       setValidationRules([]);
+      setQualityReports([]);
+      setImportResults([]);
+      setAuditLogs([]);
+      setDataTransformations([]);
     }
   }, [selectedTable, loadRecords, loadBulkOperations, loadValidationRules]);
 
@@ -318,6 +404,353 @@ export function DataEditor({ schema }: DataEditorProps) {
     setEditingRecord(null);
   }, []);
 
+  // Render tab content
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'editor':
+        return (
+          <div className="flex-1 p-4">
+            {!selectedTable ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <Database className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-white mb-2">No Table Selected</h3>
+                  <p className="text-gray-400">Select a table from the dropdown above to start editing data</p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {isLoading && (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="w-6 h-6 animate-spin text-orange-500" />
+                    <span className="ml-2 text-white">Loading records...</span>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded">
+                    <div className="flex items-center">
+                      <AlertTriangle className="w-5 h-5 mr-2" />
+                      <span>{error}</span>
+                    </div>
+                  </div>
+                )}
+
+                {!isLoading && !error && records.length === 0 && (
+                  <div className="text-center py-8">
+                    <Database className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-white mb-2">No Records Found</h3>
+                    <p className="text-gray-400 mb-4">This table doesn't have any data yet</p>
+                    <button
+                      onClick={handleAddRecord}
+                      className="flex items-center space-x-2 px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors mx-auto"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Add First Record</span>
+                    </button>
+                  </div>
+                )}
+
+                {!isLoading && !error && records.length > 0 && (
+                  <div className="bg-gray-800 rounded-lg overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-700">
+                          <tr>
+                            <th className="px-4 py-3 text-left">
+                              <input
+                                type="checkbox"
+                                checked={selectedRecords.size === records.length && records.length > 0}
+                                onChange={selectedRecords.size === records.length ? clearSelection : selectAllRecords}
+                                className="rounded border-gray-600 bg-gray-700 text-orange-600 focus:ring-orange-500"
+                              />
+                            </th>
+                            {selectedTable.columns.map((column) => (
+                              <th key={column.id} className="px-4 py-3 text-left text-white font-medium">
+                                {column.name}
+                                {column.primaryKey && <span className="ml-1 text-orange-400">*</span>}
+                                {!column.nullable && <span className="ml-1 text-red-400">!</span>}
+                              </th>
+                            ))}
+                            <th className="px-4 py-3 text-left text-white font-medium">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-700">
+                          {records.map((record) => (
+                            <tr key={record.id} className="hover:bg-gray-700">
+                              <td className="px-4 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedRecords.has(record.id)}
+                                  onChange={() => toggleRecordSelection(record.id)}
+                                  className="rounded border-gray-600 bg-gray-700 text-orange-600 focus:ring-orange-500"
+                                />
+                              </td>
+                              {selectedTable.columns.map((column) => (
+                                <td key={column.id} className="px-4 py-3 text-gray-300">
+                                  {editingRecord?.id === record.id ? (
+                                    <input
+                                      type={column.type === 'INTEGER' ? 'number' : 'text'}
+                                      value={editingRecord.data[column.name] || ''}
+                                      onChange={(e) => setEditingRecord({
+                                        ...editingRecord,
+                                        data: { ...editingRecord.data, [column.name]: e.target.value }
+                                      })}
+                                      className="w-full px-2 py-1 bg-gray-600 text-white rounded border border-gray-500 focus:border-orange-500 focus:outline-none"
+                                    />
+                                  ) : (
+                                    <span>{record.data[column.name] || '-'}</span>
+                                  )}
+                                </td>
+                              ))}
+                              <td className="px-4 py-3">
+                                <div className="flex items-center space-x-2">
+                                  {editingRecord?.id === record.id ? (
+                                    <>
+                                      <button
+                                        onClick={handleSaveRecord}
+                                        className="p-1 text-green-400 hover:text-green-300"
+                                        title="Save"
+                                      >
+                                        <Save className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        onClick={handleCancelEdit}
+                                        className="p-1 text-red-400 hover:text-red-300"
+                                        title="Cancel"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        onClick={() => handleEditRecord(record)}
+                                        className="p-1 text-blue-400 hover:text-blue-300"
+                                        title="Edit"
+                                      >
+                                        <Edit className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteRecord(record)}
+                                        className="p-1 text-red-400 hover:text-red-300"
+                                        title="Delete"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      
+      case 'quality':
+        return (
+          <div className="flex-1 p-4">
+            <div className="h-full bg-gray-800 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Data Quality Analysis</h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <h4 className="text-white font-medium mb-2">Total Records</h4>
+                    <p className="text-2xl font-bold text-orange-400">{records.length}</p>
+                  </div>
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <h4 className="text-white font-medium mb-2">Quality Reports</h4>
+                    <p className="text-2xl font-bold text-yellow-400">{qualityReports.length}</p>
+                  </div>
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <h4 className="text-white font-medium mb-2">Avg Quality Score</h4>
+                    <p className="text-2xl font-bold text-green-400">
+                      {qualityReports.length > 0 
+                        ? Math.round(qualityReports.reduce((sum, r) => sum + r.qualityScore, 0) / qualityReports.length)
+                        : 0}%
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="bg-gray-700 rounded-lg p-4">
+                  <h4 className="text-white font-medium mb-4">Recent Quality Reports</h4>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {qualityReports.slice(0, 5).map((report) => (
+                      <div key={report.id} className="flex items-center justify-between p-3 bg-gray-600 rounded">
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-white font-medium">
+                              {new Date(report.timestamp).toLocaleDateString()}
+                            </span>
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              report.qualityScore >= 90 ? 'bg-green-600' :
+                              report.qualityScore >= 70 ? 'bg-yellow-600' :
+                              'bg-red-600'
+                            }`}>
+                              {report.qualityScore}%
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-400">
+                            {report.totalRecords} records • {report.issues.length} issues
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      
+      case 'import':
+        return (
+          <div className="flex-1 p-4">
+            <div className="h-full bg-gray-800 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Data Import</h3>
+              <div className="space-y-4">
+                <div className="bg-gray-700 rounded-lg p-4">
+                  <h4 className="text-white font-medium mb-4">Import History</h4>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {importResults.slice(0, 5).map((result) => (
+                      <div key={result.id} className="flex items-center justify-between p-3 bg-gray-600 rounded">
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-white font-medium">{result.filename}</span>
+                            <span className="text-green-400 text-sm">
+                              {result.importedRows}/{result.totalRows} imported
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-400">
+                            {new Date(result.timestamp).toLocaleString()} • {result.errors.length} errors
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      
+      case 'export':
+        return (
+          <div className="flex-1 p-4">
+            <div className="h-full bg-gray-800 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Data Export</h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <button
+                    onClick={() => handleDataExport('csv')}
+                    className="p-4 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors text-center"
+                  >
+                    <FileText className="w-8 h-8 text-orange-400 mx-auto mb-2" />
+                    <span className="text-white text-sm">CSV</span>
+                  </button>
+                  <button
+                    onClick={() => handleDataExport('json')}
+                    className="p-4 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors text-center"
+                  >
+                    <FileText className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+                    <span className="text-white text-sm">JSON</span>
+                  </button>
+                  <button
+                    onClick={() => handleDataExport('xml')}
+                    className="p-4 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors text-center"
+                  >
+                    <FileText className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+                    <span className="text-white text-sm">XML</span>
+                  </button>
+                  <button
+                    onClick={() => handleDataExport('excel')}
+                    className="p-4 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors text-center"
+                  >
+                    <FileText className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                    <span className="text-white text-sm">Excel</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      
+      case 'audit':
+        return (
+          <div className="flex-1 p-4">
+            <div className="h-full bg-gray-800 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Audit Trail</h3>
+              <div className="space-y-4">
+                <div className="bg-gray-700 rounded-lg p-4">
+                  <h4 className="text-white font-medium mb-4">Recent Activity</h4>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {auditLogs.slice(0, 10).map((log) => (
+                      <div key={log.id} className="flex items-center justify-between p-3 bg-gray-600 rounded">
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-white font-medium">{log.action.toUpperCase()}</span>
+                            <span className="text-gray-400 text-sm">
+                              {new Date(log.timestamp).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-400">
+                            Record: {log.recordId} • User: {log.userId}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      
+      case 'transform':
+        return (
+          <div className="flex-1 p-4">
+            <div className="h-full bg-gray-800 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Data Transformations</h3>
+              <div className="space-y-4">
+                <div className="bg-gray-700 rounded-lg p-4">
+                  <h4 className="text-white font-medium mb-4">Available Transformations</h4>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {dataTransformations.slice(0, 5).map((transform) => (
+                      <div key={transform.id} className="flex items-center justify-between p-3 bg-gray-600 rounded">
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-white font-medium">{transform.name}</span>
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              transform.enabled ? 'bg-green-600' : 'bg-gray-600'
+                            }`}>
+                              {transform.enabled ? 'Enabled' : 'Disabled'}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-400">
+                            {transform.description} • {transform.rules.length} rules
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-gray-900">
       {/* Header */}
@@ -329,6 +762,64 @@ export function DataEditor({ schema }: DataEditorProps) {
               Editing: {selectedTable.name}
             </span>
           )}
+          
+          {/* Tab Navigation */}
+          <div className="flex items-center space-x-1 bg-gray-700 rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab('editor')}
+              className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                activeTab === 'editor' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              <Database className="w-4 h-4 inline mr-1" />
+              Editor
+            </button>
+            <button
+              onClick={() => setActiveTab('quality')}
+              className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                activeTab === 'quality' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4 inline mr-1" />
+              Quality
+            </button>
+            <button
+              onClick={() => setActiveTab('import')}
+              className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                activeTab === 'import' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              <Upload className="w-4 h-4 inline mr-1" />
+              Import
+            </button>
+            <button
+              onClick={() => setActiveTab('export')}
+              className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                activeTab === 'export' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              <Download className="w-4 h-4 inline mr-1" />
+              Export
+            </button>
+            <button
+              onClick={() => setActiveTab('audit')}
+              className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                activeTab === 'audit' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              <History className="w-4 h-4 inline mr-1" />
+              Audit
+            </button>
+            <button
+              onClick={() => setActiveTab('transform')}
+              className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                activeTab === 'transform' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              <Zap className="w-4 h-4 inline mr-1" />
+              Transform
+            </button>
+          </div>
         </div>
         <div className="flex items-center space-x-2">
           {selectedTable && (
@@ -360,6 +851,20 @@ export function DataEditor({ schema }: DataEditorProps) {
               >
                 <CheckCircle className="w-4 h-4" />
                 <span>Validation</span>
+              </button>
+              <button
+                onClick={analyzeDataQuality}
+                className="flex items-center space-x-2 px-3 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>Quality</span>
+              </button>
+              <button
+                onClick={() => setShowAuditLog(true)}
+                className="flex items-center space-x-2 px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+              >
+                <History className="w-4 h-4" />
+                <span>Audit</span>
               </button>
               <button
                 onClick={loadRecords}
@@ -395,6 +900,9 @@ export function DataEditor({ schema }: DataEditorProps) {
           </select>
         </div>
       </div>
+
+      {/* Tab Content */}
+      {renderTabContent()}
 
       {/* Error Display */}
       {error && (
