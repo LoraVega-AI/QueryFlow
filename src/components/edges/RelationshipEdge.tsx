@@ -33,7 +33,7 @@ export function RelationshipEdge({
         path={edgePath}
         markerEnd={markerEnd}
         style={{
-          stroke: '#3b82f6',
+          stroke: '#f97316',
           strokeWidth: 2,
           ...style,
         }}
@@ -48,7 +48,7 @@ export function RelationshipEdge({
           }}
           className="nodrag nopan"
         >
-          <div className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium border border-blue-200">
+          <div className="bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-medium border border-orange-200">
             FK
           </div>
         </div>

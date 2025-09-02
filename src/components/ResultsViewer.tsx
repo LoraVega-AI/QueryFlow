@@ -118,23 +118,23 @@ export function ResultsViewer({ result, error, isLoading }: ResultsViewerProps) 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200">
+      <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center space-x-4">
-          <h2 className="text-xl font-semibold text-gray-800">Query Results</h2>
+          <h2 className="text-xl font-semibold text-white">Query Results</h2>
           {isLoading && (
-            <div className="flex items-center space-x-2 text-blue-600">
+            <div className="flex items-center space-x-2 text-orange-400">
               <RefreshCw className="w-4 h-4 animate-spin" />
               <span className="text-sm">Executing query...</span>
             </div>
           )}
           {error && (
-            <div className="flex items-center space-x-2 text-red-600">
+            <div className="flex items-center space-x-2 text-red-400">
               <AlertCircle className="w-4 h-4" />
               <span className="text-sm">Query failed</span>
             </div>
           )}
           {result && !error && (
-            <div className="flex items-center space-x-2 text-green-600">
+            <div className="flex items-center space-x-2 text-yellow-400">
               <CheckCircle className="w-4 h-4" />
               <span className="text-sm">Query executed successfully</span>
             </div>
@@ -144,14 +144,14 @@ export function ResultsViewer({ result, error, isLoading }: ResultsViewerProps) 
           <div className="flex items-center space-x-2">
             <button
               onClick={copyToClipboard}
-              className="flex items-center space-x-2 px-3 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              className="flex items-center space-x-2 px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors"
             >
               <Copy className="w-4 h-4" />
               <span>Copy</span>
             </button>
             <button
               onClick={exportAsCSV}
-              className="flex items-center space-x-2 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+              className="flex items-center space-x-2 px-3 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors"
             >
               <Download className="w-4 h-4" />
               <span>Export CSV</span>
@@ -165,8 +165,8 @@ export function ResultsViewer({ result, error, isLoading }: ResultsViewerProps) 
         {isLoading && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <RefreshCw className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
-              <p className="text-gray-600">Executing query...</p>
+              <RefreshCw className="w-8 h-8 animate-spin text-orange-400 mx-auto mb-4" />
+              <p className="text-gray-300">Executing query...</p>
             </div>
           </div>
         )}
@@ -174,11 +174,11 @@ export function ResultsViewer({ result, error, isLoading }: ResultsViewerProps) 
         {error && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center max-w-md">
-              <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Query Error</h3>
-              <p className="text-red-600 mb-2">{error.message}</p>
+              <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-white mb-2">Query Error</h3>
+              <p className="text-red-300 mb-2">{error.message}</p>
               {error.line && (
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-400">
                   Line {error.line}{error.column && `, Column ${error.column}`}
                 </p>
               )}
@@ -189,8 +189,8 @@ export function ResultsViewer({ result, error, isLoading }: ResultsViewerProps) 
         {result && !error && (
           <div className="h-full flex flex-col">
             {/* Results Summary */}
-            <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-              <div className="flex items-center justify-between text-sm text-gray-600">
+            <div className="bg-gray-700 px-4 py-2 border-b border-gray-600">
+              <div className="flex items-center justify-between text-sm text-gray-300">
                 <span>
                   {result.rowCount} row{result.rowCount !== 1 ? 's' : ''} returned
                 </span>
@@ -205,25 +205,25 @@ export function ResultsViewer({ result, error, isLoading }: ResultsViewerProps) 
               {result.rowCount === 0 ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
-                    <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />
-                    <p className="text-gray-600">Query executed successfully</p>
-                    <p className="text-sm text-gray-500">No rows returned</p>
+                    <CheckCircle className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+                    <p className="text-gray-300">Query executed successfully</p>
+                    <p className="text-sm text-gray-400">No rows returned</p>
                   </div>
                 </div>
               ) : (
                 <table className="w-full border-collapse">
-                  <thead className="bg-gray-50 sticky top-0">
+                  <thead className="bg-gray-700 sticky top-0">
                     <tr>
                       {result.columns.map((column, index) => (
                         <th
                           key={index}
                           onClick={() => handleColumnClick(column)}
-                          className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200 cursor-pointer hover:bg-gray-100 select-none"
+                          className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider border-b border-gray-600 cursor-pointer hover:bg-gray-600 select-none"
                         >
                           <div className="flex items-center space-x-1">
                             <span>{column}</span>
                             {sortColumn === column && (
-                              <span className="text-blue-600">
+                              <span className="text-orange-400">
                                 {sortDirection === 'asc' ? '↑' : '↓'}
                               </span>
                             )}
@@ -232,13 +232,13 @@ export function ResultsViewer({ result, error, isLoading }: ResultsViewerProps) 
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-gray-800 divide-y divide-gray-600">
                     {sortedData.map((row, rowIndex) => (
-                      <tr key={rowIndex} className="hover:bg-gray-50">
+                      <tr key={rowIndex} className="hover:bg-gray-700">
                         {row.map((cell, cellIndex) => (
                           <td
                             key={cellIndex}
-                            className="px-4 py-3 text-sm text-gray-900 border-b border-gray-100"
+                            className="px-4 py-3 text-sm text-gray-200 border-b border-gray-700"
                           >
                             <div className="max-w-xs truncate" title={formatCellValue(cell)}>
                               {formatCellValue(cell)}
@@ -257,11 +257,11 @@ export function ResultsViewer({ result, error, isLoading }: ResultsViewerProps) 
         {!result && !error && !isLoading && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl text-gray-400">📊</span>
               </div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">No Results</h3>
-              <p className="text-gray-600">Execute a query to see results here</p>
+              <h3 className="text-lg font-semibold text-white mb-2">No Results</h3>
+              <p className="text-gray-300">Execute a query to see results here</p>
             </div>
           </div>
         )}

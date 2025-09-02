@@ -240,20 +240,20 @@ export function SchemaDesigner({ schema, onSchemaChange }: SchemaDesignerProps) 
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200">
+      <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center space-x-4">
-          <h2 className="text-xl font-semibold text-gray-800">Schema Designer</h2>
+          <h2 className="text-xl font-semibold text-white">Schema Designer</h2>
           <div className="flex items-center space-x-2">
             <button
               onClick={handleAddTable}
-              className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              className="flex items-center space-x-2 px-3 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
             >
               <Plus className="w-4 h-4" />
               <span>Add Table</span>
             </button>
             <button
               onClick={handleSaveSchema}
-              className="flex items-center space-x-2 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+              className="flex items-center space-x-2 px-3 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors"
             >
               <Save className="w-4 h-4" />
               <span>Save</span>
@@ -267,13 +267,13 @@ export function SchemaDesigner({ schema, onSchemaChange }: SchemaDesignerProps) 
             </button>
           </div>
         </div>
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-gray-300">
           {schema?.tables.length || 0} tables
         </div>
       </div>
 
       {/* React Flow Canvas */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative bg-gray-900">
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -287,7 +287,7 @@ export function SchemaDesigner({ schema, onSchemaChange }: SchemaDesignerProps) 
           attributionPosition="bottom-left"
         >
           <Controls />
-          <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
+          <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#374151" />
         </ReactFlow>
       </div>
 

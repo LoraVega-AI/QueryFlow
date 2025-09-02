@@ -14,7 +14,8 @@ interface TableNodeData {
   onDeleteTable: (tableId: string) => void;
 }
 
-export function TableNode({ data, selected }: NodeProps<TableNodeData>) {
+export function TableNode(props: any) {
+  const { data, selected } = props;
   const { table, onUpdateTable, onDeleteTable } = data;
   const [isEditing, setIsEditing] = useState(false);
   const [tableName, setTableName] = useState(table.name);
@@ -60,14 +61,14 @@ export function TableNode({ data, selected }: NodeProps<TableNodeData>) {
   const handleDeleteColumn = (columnId: string) => {
     onUpdateTable({
       ...table,
-      columns: table.columns.filter((col) => col.id !== columnId),
+      columns: table.columns.filter((col: Column) => col.id !== columnId),
     });
   };
 
   const handleColumnUpdate = (columnId: string, updates: Partial<Column>) => {
     onUpdateTable({
       ...table,
-      columns: table.columns.map((col) =>
+      columns: table.columns.map((col: Column) =>
         col.id === columnId ? { ...col, ...updates } : col
       ),
     });
@@ -75,9 +76,9 @@ export function TableNode({ data, selected }: NodeProps<TableNodeData>) {
 
   const getDataTypeColor = (type: DataType): string => {
     const colors: Record<DataType, string> = {
-      'TEXT': 'bg-blue-100 text-blue-800',
-      'INTEGER': 'bg-green-100 text-green-800',
-      'REAL': 'bg-yellow-100 text-yellow-800',
+      'TEXT': 'bg-orange-100 text-orange-800',
+      'INTEGER': 'bg-yellow-100 text-yellow-800',
+      'REAL': 'bg-yellow-200 text-yellow-900',
       'BLOB': 'bg-purple-100 text-purple-800',
       'BOOLEAN': 'bg-pink-100 text-pink-800',
       'DATE': 'bg-indigo-100 text-indigo-800',
@@ -88,12 +89,12 @@ export function TableNode({ data, selected }: NodeProps<TableNodeData>) {
 
   return (
     <div
-      className={`bg-white border-2 rounded-lg shadow-lg min-w-[200px] ${
-        selected ? 'border-blue-500' : 'border-gray-300'
+      className={`bg-gray-800 border-2 rounded-lg shadow-lg min-w-[200px] ${
+        selected ? 'border-orange-500' : 'border-gray-600'
       }`}
     >
       {/* Table Header */}
-      <div className="bg-gray-50 px-3 py-2 border-b border-gray-200 rounded-t-lg">
+      <div className="bg-gray-700 px-3 py-2 border-b border-gray-600 rounded-t-lg">
         <div className="flex items-center justify-between">
           {isEditing ? (
             <input
@@ -102,12 +103,12 @@ export function TableNode({ data, selected }: NodeProps<TableNodeData>) {
               onChange={handleNameChange}
               onBlur={handleNameSubmit}
               onKeyDown={handleKeyPress}
-              className="flex-1 text-sm font-semibold bg-white border border-gray-300 rounded px-2 py-1"
+              className="flex-1 text-sm font-semibold bg-gray-600 border border-gray-500 rounded px-2 py-1 text-white"
               autoFocus
             />
           ) : (
             <h3
-              className="text-sm font-semibold text-gray-800 cursor-pointer hover:text-blue-600"
+              className="text-sm font-semibold text-white cursor-pointer hover:text-orange-400"
               onDoubleClick={() => setIsEditing(true)}
             >
               {table.name}
@@ -116,14 +117,14 @@ export function TableNode({ data, selected }: NodeProps<TableNodeData>) {
           <div className="flex items-center space-x-1">
             <button
               onClick={() => setIsEditing(true)}
-              className="p-1 text-gray-500 hover:text-blue-600 transition-colors"
+              className="p-1 text-gray-400 hover:text-orange-400 transition-colors"
               title="Edit table name"
             >
               <Edit className="w-3 h-3" />
             </button>
             <button
               onClick={() => onDeleteTable(table.id)}
-              className="p-1 text-gray-500 hover:text-red-600 transition-colors"
+              className="p-1 text-gray-400 hover:text-red-400 transition-colors"
               title="Delete table"
             >
               <Trash2 className="w-3 h-3" />
@@ -134,27 +135,27 @@ export function TableNode({ data, selected }: NodeProps<TableNodeData>) {
 
       {/* Columns */}
       <div className="p-2 space-y-1">
-        {table.columns.map((column, index) => (
+        {table.columns.map((column: Column, index: number) => (
           <div key={column.id} className="flex items-center space-x-2">
             {/* Column Handle for Foreign Keys */}
             <Handle
               type="source"
               position={Position.Right}
               id={column.id}
-              className="w-2 h-2 bg-blue-500 border-0"
+              className="w-2 h-2 bg-orange-500 border-0"
               style={{ top: 20 + index * 25 }}
             />
             <Handle
               type="target"
               position={Position.Left}
               id={column.id}
-              className="w-2 h-2 bg-green-500 border-0"
+              className="w-2 h-2 bg-yellow-500 border-0"
               style={{ top: 20 + index * 25 }}
             />
 
             {/* Column Info */}
             <div className="flex-1 flex items-center space-x-2">
-              <span className="text-xs font-medium text-gray-700 min-w-0 flex-1 truncate">
+              <span className="text-xs font-medium text-gray-200 min-w-0 flex-1 truncate">
                 {column.name}
               </span>
               <span
@@ -177,7 +178,7 @@ export function TableNode({ data, selected }: NodeProps<TableNodeData>) {
             {/* Column Actions */}
             <button
               onClick={() => handleDeleteColumn(column.id)}
-              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+              className="p-1 text-gray-400 hover:text-red-400 transition-colors"
               title="Delete column"
             >
               <Trash2 className="w-3 h-3" />
@@ -188,7 +189,7 @@ export function TableNode({ data, selected }: NodeProps<TableNodeData>) {
         {/* Add Column Button */}
         <button
           onClick={handleAddColumn}
-          className="w-full flex items-center justify-center space-x-1 py-1 text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+          className="w-full flex items-center justify-center space-x-1 py-1 text-xs text-gray-400 hover:text-orange-400 hover:bg-gray-700 rounded transition-colors"
         >
           <Plus className="w-3 h-3" />
           <span>Add Column</span>

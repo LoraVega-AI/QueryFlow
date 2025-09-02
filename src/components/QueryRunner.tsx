@@ -121,21 +121,21 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200">
+      <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center space-x-4">
-          <h2 className="text-xl font-semibold text-gray-800">Query Runner</h2>
+          <h2 className="text-xl font-semibold text-white">Query Runner</h2>
           <div className="flex items-center space-x-2">
             <button
               onClick={executeQuery}
               disabled={!query.trim() || isExecuting || !schema}
-              className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center space-x-2 px-3 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
             >
               <Play className="w-4 h-4" />
               <span>{isExecuting ? 'Executing...' : 'Execute'}</span>
             </button>
             <button
               onClick={() => setShowHistory(!showHistory)}
-              className="flex items-center space-x-2 px-3 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              className="flex items-center space-x-2 px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors"
             >
               <History className="w-4 h-4" />
               <span>History</span>
@@ -153,7 +153,7 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
           <button
             onClick={copyQuery}
             disabled={!query.trim()}
-            className="p-2 text-gray-500 hover:text-gray-700 disabled:text-gray-300 transition-colors"
+            className="p-2 text-gray-400 hover:text-white disabled:text-gray-600 transition-colors"
             title="Copy query"
           >
             <Copy className="w-4 h-4" />
@@ -161,7 +161,7 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
           <button
             onClick={exportQuery}
             disabled={!query.trim()}
-            className="p-2 text-gray-500 hover:text-gray-700 disabled:text-gray-300 transition-colors"
+            className="p-2 text-gray-400 hover:text-white disabled:text-gray-600 transition-colors"
             title="Export query"
           >
             <Download className="w-4 h-4" />
@@ -171,23 +171,23 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
 
       {/* Query History Panel */}
       {showHistory && (
-        <div className="bg-gray-50 border-b border-gray-200 p-4">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">Query History</h3>
+        <div className="bg-gray-700 border-b border-gray-600 p-4">
+          <h3 className="text-sm font-medium text-white mb-3">Query History</h3>
           <div className="space-y-2 max-h-32 overflow-y-auto">
             {queryHistory.length === 0 ? (
-              <p className="text-sm text-gray-500">No query history available</p>
+              <p className="text-sm text-gray-400">No query history available</p>
             ) : (
               queryHistory.map((historyQuery, index) => (
                 <div
                   key={index}
-                  className="flex items-center justify-between p-2 bg-white border border-gray-200 rounded text-sm"
+                  className="flex items-center justify-between p-2 bg-gray-800 border border-gray-600 rounded text-sm"
                 >
-                  <code className="flex-1 text-gray-700 truncate mr-2">
+                  <code className="flex-1 text-gray-300 truncate mr-2">
                     {historyQuery}
                   </code>
                   <button
                     onClick={() => loadQueryFromHistory(historyQuery)}
-                    className="px-2 py-1 text-blue-600 hover:text-blue-800 transition-colors"
+                    className="px-2 py-1 text-orange-400 hover:text-orange-300 transition-colors"
                   >
                     Load
                   </button>
@@ -199,14 +199,14 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
       )}
 
       {/* Sample Queries */}
-      <div className="bg-blue-50 border-b border-blue-200 p-4">
-        <h3 className="text-sm font-medium text-blue-800 mb-3">Sample Queries</h3>
+      <div className="bg-orange-900 border-b border-orange-700 p-4">
+        <h3 className="text-sm font-medium text-orange-200 mb-3">Sample Queries</h3>
         <div className="flex flex-wrap gap-2">
           {SAMPLE_QUERIES.map((sampleQuery, index) => (
             <button
               key={index}
               onClick={() => insertSampleQuery(sampleQuery)}
-              className="px-3 py-1 bg-blue-100 text-blue-800 rounded text-sm hover:bg-blue-200 transition-colors"
+              className="px-3 py-1 bg-orange-800 text-orange-200 rounded text-sm hover:bg-orange-700 transition-colors"
             >
               {sampleQuery.split(' ')[0]}...
             </button>
@@ -217,7 +217,7 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
       {/* SQL Editor */}
       <div className="flex-1 p-4">
         <div className="h-full">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-white mb-2">
             SQL Query
           </label>
           <textarea
@@ -225,14 +225,14 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Enter your SQL query here... (Ctrl+Enter to execute)"
-            className="w-full h-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm resize-none"
+            className="w-full h-full p-3 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm resize-none bg-gray-800 text-white"
             disabled={!schema}
           />
         </div>
       </div>
 
       {/* Status Bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-t border-gray-200 text-sm text-gray-600">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-t border-gray-700 text-sm text-gray-400">
         <div>
           {schema ? (
             <span>Ready to execute queries on {schema.tables.length} tables</span>

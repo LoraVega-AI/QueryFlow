@@ -81,7 +81,7 @@ export default function HomePage() {
                 onQueryResult={handleQueryResult}
               />
             </div>
-            <div className="w-1/2 border-l border-gray-200">
+            <div className="w-1/2 border-l border-gray-700">
               <ResultsViewer
                 result={queryResult}
                 error={queryError}
@@ -92,25 +92,25 @@ export default function HomePage() {
         );
       case 'data':
         return (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center h-full bg-gray-900">
             <div className="text-center">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl text-gray-400">📊</span>
               </div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Data Editor</h3>
-              <p className="text-gray-600">Coming soon - Direct data editing interface</p>
+              <h3 className="text-lg font-semibold text-white mb-2">Data Editor</h3>
+              <p className="text-gray-300">Coming soon - Direct data editing interface</p>
             </div>
           </div>
         );
       case 'analytics':
         return (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center h-full bg-gray-900">
             <div className="text-center">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-2xl text-gray-400">📈</span>
               </div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">Analytics</h3>
-              <p className="text-gray-600">Coming soon - Database analytics and insights</p>
+              <h3 className="text-lg font-semibold text-white mb-2">Analytics</h3>
+              <p className="text-gray-300">Coming soon - Database analytics and insights</p>
             </div>
           </div>
         );
