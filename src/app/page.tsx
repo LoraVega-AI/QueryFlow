@@ -9,6 +9,7 @@ import { SchemaDesigner } from '@/components/SchemaDesigner';
 import { QueryRunner } from '@/components/QueryRunner';
 import { ResultsViewer } from '@/components/ResultsViewer';
 import { DataEditor } from '@/components/DataEditor';
+import { Analytics } from '@/components/Analytics';
 import { DatabaseSchema, QueryResult, QueryError } from '@/types/database';
 import { StorageManager } from '@/utils/storage';
 
@@ -32,6 +33,7 @@ export default function HomePage() {
         tables: [],
         createdAt: new Date(),
         updatedAt: new Date(),
+        version: 1,
       };
       setSchema(defaultSchema);
     }
@@ -97,15 +99,7 @@ export default function HomePage() {
         );
       case 'analytics':
         return (
-          <div className="flex items-center justify-center h-full bg-gray-900">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl text-gray-400">📈</span>
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">Analytics</h3>
-              <p className="text-gray-300">Coming soon - Database analytics and insights</p>
-            </div>
-          </div>
+          <Analytics schema={schema} />
         );
       default:
         return null;

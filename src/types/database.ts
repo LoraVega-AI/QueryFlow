@@ -27,6 +27,9 @@ export interface DatabaseSchema {
   tables: Table[];
   createdAt: Date;
   updatedAt: Date;
+  version: number;
+  description?: string;
+  tags?: string[];
 }
 
 export interface DatabaseRecord {
@@ -97,3 +100,101 @@ export interface RelationshipEdge {
 
 export type FlowNode = TableNode;
 export type FlowEdge = RelationshipEdge;
+
+// Enhanced types for advanced functionality
+export interface SchemaTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  schema: DatabaseSchema;
+  tags: string[];
+}
+
+export interface SchemaValidation {
+  isValid: boolean;
+  errors: ValidationError[];
+  warnings: ValidationWarning[];
+}
+
+export interface ValidationError {
+  type: 'relationship' | 'naming' | 'constraint' | 'data_type';
+  message: string;
+  tableId?: string;
+  columnId?: string;
+  severity: 'error' | 'warning';
+}
+
+export interface ValidationWarning {
+  type: 'performance' | 'naming' | 'best_practice';
+  message: string;
+  tableId?: string;
+  columnId?: string;
+  suggestion?: string;
+}
+
+export interface QueryHistoryItem {
+  id: string;
+  query: string;
+  executedAt: Date;
+  executionTime: number;
+  resultCount: number;
+  isBookmarked: boolean;
+  tags: string[];
+}
+
+export interface QueryTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  query: string;
+  parameters: QueryParameter[];
+  tags: string[];
+}
+
+export interface QueryParameter {
+  name: string;
+  type: DataType;
+  defaultValue?: any;
+  required: boolean;
+}
+
+export interface DataValidationRule {
+  id: string;
+  tableId: string;
+  columnId?: string;
+  type: 'required' | 'unique' | 'format' | 'range' | 'custom';
+  rule: string;
+  message: string;
+}
+
+export interface BulkOperation {
+  id: string;
+  type: 'insert' | 'update' | 'delete';
+  tableId: string;
+  data: any[];
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  errors: string[];
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  tableId?: string;
+  recordId?: string;
+  userId?: string;
+  timestamp: Date;
+  details: Record<string, any>;
+}
+
+export interface PerformanceMetric {
+  id: string;
+  type: 'query' | 'table' | 'index';
+  name: string;
+  value: number;
+  unit: string;
+  timestamp: Date;
+  metadata: Record<string, any>;
+}
