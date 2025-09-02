@@ -46,6 +46,7 @@ export interface QueryError {
   message: string;
   line?: number;
   column?: number;
+  executionTime?: number;
 }
 
 export type DataType = 

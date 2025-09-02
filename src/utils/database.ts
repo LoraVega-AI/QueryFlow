@@ -15,15 +15,16 @@ export class DatabaseManager {
       // Dynamic import for client-side only
       const initSqlJs = (await import('sql.js')).default;
       const SQL = await initSqlJs({
-        // You can specify the path to wasm file here
-        // locateFile: file => `https://sql.js.org/dist/${file}`
+        // Use CDN for WASM file to ensure it loads properly
+        locateFile: file => `https://sql.js.org/dist/${file}`
       });
       
       this.db = new SQL.Database();
       this.isInitialized = true;
+      console.log('SQLite database initialized successfully');
     } catch (error) {
       console.error('Failed to initialize SQLite:', error);
-      throw new Error('Failed to initialize database');
+      throw new Error(`Failed to initialize database: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -37,10 +38,16 @@ export class DatabaseManager {
       // Clear existing tables
       this.db.exec('DROP TABLE IF EXISTS sqlite_sequence');
       
-      // Create tables
-      for (const table of schema.tables) {
-        const createTableSQL = this.generateCreateTableSQL(table);
-        this.db.exec(createTableSQL);
+      // Create tables if any exist
+      if (schema.tables && schema.tables.length > 0) {
+        for (const table of schema.tables) {
+          const createTableSQL = this.generateCreateTableSQL(table);
+          console.log('Creating table:', createTableSQL);
+          this.db.exec(createTableSQL);
+        }
+        console.log(`Created ${schema.tables.length} tables successfully`);
+      } else {
+        console.log('No tables to create in schema');
       }
     } catch (error) {
       console.error('Failed to create tables:', error);

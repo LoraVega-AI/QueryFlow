@@ -14,11 +14,11 @@ interface QueryRunnerProps {
 }
 
 const SAMPLE_QUERIES = [
-  'SELECT * FROM users LIMIT 10;',
-  'SELECT COUNT(*) FROM orders;',
-  'INSERT INTO users (name, email) VALUES (\'John Doe\', \'john@example.com\');',
-  'UPDATE users SET name = \'Jane Doe\' WHERE id = 1;',
-  'DELETE FROM users WHERE id = 1;',
+  'SELECT 1 as test;',
+  'SELECT datetime(\'now\') as current_time;',
+  'SELECT \'Hello QueryFlow!\' as message;',
+  'SELECT * FROM sqlite_master WHERE type=\'table\';',
+  'PRAGMA table_list;',
 ];
 
 export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
@@ -61,10 +61,12 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
       onQueryResult(result, null);
       saveQueryHistory(query);
     } catch (error: any) {
+      console.error('Query execution error:', error);
       const queryError: QueryError = {
         message: error.message || 'Unknown error occurred',
         line: error.line,
         column: error.column,
+        executionTime: error.executionTime,
       };
       onQueryResult(null, queryError);
     } finally {
@@ -235,7 +237,11 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
       <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-t border-gray-700 text-sm text-gray-400">
         <div>
           {schema ? (
-            <span>Ready to execute queries on {schema.tables.length} tables</span>
+            schema.tables.length > 0 ? (
+              <span>Ready to execute queries on {schema.tables.length} tables</span>
+            ) : (
+              <span className="text-yellow-400">No tables in schema - create tables in Schema Designer first</span>
+            )
           ) : (
             <span>No schema loaded</span>
           )}
