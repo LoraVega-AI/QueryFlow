@@ -4,7 +4,7 @@
 // This component provides the overall structure and navigation for QueryFlow
 
 import React, { useState } from 'react';
-import { Database, Code, Table, BarChart3, Settings, Menu, X } from 'lucide-react';
+import { Database, Code, Table, BarChart3, Settings, Menu, X, Workflow, Search } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -17,6 +17,8 @@ const TABS = [
   { id: 'query', label: 'Query Runner', icon: Code },
   { id: 'data', label: 'Data Editor', icon: Table },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { id: 'workflow', label: 'Workflow Manager', icon: Workflow },
+  { id: 'search', label: 'Advanced Search', icon: Search },
 ] as const;
 
 export function Layout({ children, activeTab, onTabChange }: LayoutProps) {

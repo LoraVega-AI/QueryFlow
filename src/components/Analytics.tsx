@@ -4,9 +4,10 @@
 // This component provides comprehensive analytics about the database schema and data
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { DatabaseSchema, Table, QueryResult } from '@/types/database';
+import { DatabaseSchema, Table, QueryResult, PerformanceMetric, AuditLog } from '@/types/database';
 import { dbManager } from '@/utils/database';
-import { BarChart3, Database, Table as TableIcon, Users, TrendingUp, Activity, PieChart, Info } from 'lucide-react';
+import { PerformanceMonitor } from '@/utils/performanceMonitor';
+import { BarChart3, Database, Table as TableIcon, Users, TrendingUp, Activity, PieChart, Info, Monitor, AlertTriangle, CheckCircle, Clock, Zap } from 'lucide-react';
 
 interface AnalyticsProps {
   schema: DatabaseSchema | null;
@@ -40,7 +41,43 @@ export function Analytics({ schema }: AnalyticsProps) {
   const [queryMetrics, setQueryMetrics] = useState<QueryMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedMetric, setSelectedMetric] = useState<'overview' | 'tables' | 'performance' | 'schema'>('overview');
+  const [selectedMetric, setSelectedMetric] = useState<'overview' | 'tables' | 'performance' | 'schema' | 'monitoring' | 'dashboard'>('overview');
+  const [realTimeData, setRealTimeData] = useState<any>(null);
+  const [performanceStats, setPerformanceStats] = useState<any>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [isMonitoring, setIsMonitoring] = useState(false);
+  const [customDashboard, setCustomDashboard] = useState<any[]>([]);
+
+  // Start/stop real-time monitoring
+  const toggleMonitoring = useCallback(() => {
+    if (isMonitoring) {
+      PerformanceMonitor.stopMonitoring();
+      setIsMonitoring(false);
+    } else {
+      PerformanceMonitor.startMonitoring();
+      setIsMonitoring(true);
+    }
+  }, [isMonitoring]);
+
+  // Load real-time data
+  const loadRealTimeData = useCallback(() => {
+    const realTime = PerformanceMonitor.getRealTimeData();
+    const stats = PerformanceMonitor.getPerformanceStats();
+    const logs = PerformanceMonitor.getAuditLogs();
+    
+    setRealTimeData(realTime);
+    setPerformanceStats(stats);
+    setAuditLogs(logs.slice(0, 10)); // Show last 10 logs
+  }, []);
+
+  // Update real-time data periodically
+  useEffect(() => {
+    if (isMonitoring) {
+      loadRealTimeData();
+      const interval = setInterval(loadRealTimeData, 5000); // Update every 5 seconds
+      return () => clearInterval(interval);
+    }
+  }, [isMonitoring, loadRealTimeData]);
 
   // Calculate table statistics
   const calculateTableStats = useCallback(async () => {
@@ -345,6 +382,181 @@ export function Analytics({ schema }: AnalyticsProps) {
     </div>
   );
 
+  // Render real-time monitoring
+  const renderRealTimeMonitoring = () => (
+    <div className="space-y-6">
+      {/* Monitoring Controls */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Real-Time Monitoring</h3>
+          <button
+            onClick={toggleMonitoring}
+            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+              isMonitoring
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
+          >
+            {isMonitoring ? (
+              <>
+                <Activity className="w-4 h-4 mr-2 inline" />
+                Stop Monitoring
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4 mr-2 inline" />
+                Start Monitoring
+              </>
+            )}
+          </button>
+        </div>
+        
+        {isMonitoring && realTimeData && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-gray-700 rounded-lg p-4">
+              <div className="flex items-center">
+                <Clock className="w-5 h-5 text-blue-400 mr-2" />
+                <div>
+                  <div className="text-2xl font-bold text-white">{realTimeData.currentQueriesPerMinute}</div>
+                  <div className="text-sm text-gray-400">Queries/min</div>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-700 rounded-lg p-4">
+              <div className="flex items-center">
+                <TrendingUp className="w-5 h-5 text-green-400 mr-2" />
+                <div>
+                  <div className="text-2xl font-bold text-white">{realTimeData.averageResponseTime}ms</div>
+                  <div className="text-sm text-gray-400">Avg Response</div>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-700 rounded-lg p-4">
+              <div className="flex items-center">
+                <Activity className="w-5 h-5 text-orange-400 mr-2" />
+                <div>
+                  <div className="text-2xl font-bold text-white">{realTimeData.activeOperations}</div>
+                  <div className="text-sm text-gray-400">Active Ops</div>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-700 rounded-lg p-4">
+              <div className="flex items-center">
+                {realTimeData.systemHealth === 'good' ? (
+                  <CheckCircle className="w-5 h-5 text-green-400 mr-2" />
+                ) : realTimeData.systemHealth === 'warning' ? (
+                  <AlertTriangle className="w-5 h-5 text-yellow-400 mr-2" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 text-red-400 mr-2" />
+                )}
+                <div>
+                  <div className={`text-2xl font-bold ${
+                    realTimeData.systemHealth === 'good' ? 'text-green-400' :
+                    realTimeData.systemHealth === 'warning' ? 'text-yellow-400' : 'text-red-400'
+                  }`}>
+                    {realTimeData.systemHealth.toUpperCase()}
+                  </div>
+                  <div className="text-sm text-gray-400">System Health</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Performance Statistics */}
+      {performanceStats && (
+        <div className="bg-gray-800 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Performance Statistics</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gray-700 rounded-lg p-4">
+              <div className="text-2xl font-bold text-white">{performanceStats.totalQueries}</div>
+              <div className="text-sm text-gray-400">Total Queries</div>
+            </div>
+            <div className="bg-gray-700 rounded-lg p-4">
+              <div className="text-2xl font-bold text-white">{performanceStats.averageQueryTime}ms</div>
+              <div className="text-sm text-gray-400">Avg Query Time</div>
+            </div>
+            <div className="bg-gray-700 rounded-lg p-4">
+              <div className="text-2xl font-bold text-white">{performanceStats.errorRate}%</div>
+              <div className="text-sm text-gray-400">Error Rate</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Activity */}
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Recent Activity</h3>
+        <div className="space-y-2">
+          {auditLogs.map((log) => (
+            <div key={log.id} className="bg-gray-700 rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-white font-medium">{log.action}</span>
+                  {log.tableId && (
+                    <span className="text-gray-400 ml-2">on {log.tableId}</span>
+                  )}
+                </div>
+                <div className="text-sm text-gray-400">
+                  {log.timestamp.toLocaleTimeString()}
+                </div>
+              </div>
+            </div>
+          ))}
+          {auditLogs.length === 0 && (
+            <p className="text-gray-400 text-center py-4">No recent activity</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Render custom dashboard
+  const renderCustomDashboard = () => (
+    <div className="space-y-6">
+      <div className="bg-gray-800 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-white mb-4">Custom Dashboard</h3>
+        <p className="text-gray-300 mb-4">
+          Create personalized dashboards with drag-and-drop widgets to monitor your database performance and metrics.
+        </p>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="bg-gray-700 rounded-lg p-4 border-2 border-dashed border-gray-600 hover:border-orange-500 transition-colors cursor-pointer">
+            <div className="text-center">
+              <BarChart3 className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <div className="text-white font-medium">Query Performance</div>
+              <div className="text-sm text-gray-400">Add widget</div>
+            </div>
+          </div>
+          <div className="bg-gray-700 rounded-lg p-4 border-2 border-dashed border-gray-600 hover:border-orange-500 transition-colors cursor-pointer">
+            <div className="text-center">
+              <Database className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <div className="text-white font-medium">Table Statistics</div>
+              <div className="text-sm text-gray-400">Add widget</div>
+            </div>
+          </div>
+          <div className="bg-gray-700 rounded-lg p-4 border-2 border-dashed border-gray-600 hover:border-orange-500 transition-colors cursor-pointer">
+            <div className="text-center">
+              <Activity className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+              <div className="text-white font-medium">System Health</div>
+              <div className="text-sm text-gray-400">Add widget</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {customDashboard.length > 0 && (
+        <div className="bg-gray-800 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Dashboard Widgets</h3>
+          <div className="text-gray-400 text-center py-8">
+            No widgets added yet. Click on the widgets above to add them to your dashboard.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-full bg-gray-900">
       {/* Header */}
@@ -394,6 +606,28 @@ export function Analytics({ schema }: AnalyticsProps) {
           >
             Schema
           </button>
+          <button
+            onClick={() => setSelectedMetric('monitoring')}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              selectedMetric === 'monitoring'
+                ? 'bg-orange-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <Monitor className="w-4 h-4 mr-1 inline" />
+            Monitoring
+          </button>
+          <button
+            onClick={() => setSelectedMetric('dashboard')}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              selectedMetric === 'dashboard'
+                ? 'bg-orange-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 mr-1 inline" />
+            Dashboard
+          </button>
         </div>
       </div>
 
@@ -432,6 +666,8 @@ export function Analytics({ schema }: AnalyticsProps) {
             {selectedMetric === 'tables' && renderTableStats()}
             {selectedMetric === 'performance' && renderPerformanceMetrics()}
             {selectedMetric === 'schema' && renderDataTypeDistribution()}
+            {selectedMetric === 'monitoring' && renderRealTimeMonitoring()}
+            {selectedMetric === 'dashboard' && renderCustomDashboard()}
           </div>
         )}
       </div>

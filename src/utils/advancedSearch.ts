@@ -479,3 +479,5 @@ export class AdvancedSearch {
     }
   }
 }
+
+export const AdvancedSearchManager = new AdvancedSearch();

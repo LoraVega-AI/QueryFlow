@@ -10,6 +10,8 @@ import { QueryRunner } from '@/components/QueryRunner';
 import { ResultsViewer } from '@/components/ResultsViewer';
 import { DataEditor } from '@/components/DataEditor';
 import { Analytics } from '@/components/Analytics';
+import { WorkflowManager } from '@/components/WorkflowManager';
+import { AdvancedSearch } from '@/components/AdvancedSearch';
 import { DatabaseSchema, QueryResult, QueryError } from '@/types/database';
 import { StorageManager } from '@/utils/storage';
 
@@ -100,6 +102,14 @@ export default function HomePage() {
       case 'analytics':
         return (
           <Analytics schema={schema} />
+        );
+      case 'workflow':
+        return (
+          <WorkflowManager schema={schema} />
+        );
+      case 'search':
+        return (
+          <AdvancedSearch schema={schema} />
         );
       default:
         return null;

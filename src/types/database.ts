@@ -198,3 +198,63 @@ export interface PerformanceMetric {
   timestamp: Date;
   metadata: Record<string, any>;
 }
+
+export interface SearchResult {
+  id: string;
+  type: 'schema' | 'table' | 'column' | 'query' | 'audit' | 'data';
+  title: string;
+  description: string;
+  content: string;
+  relevance: number;
+  metadata: Record<string, any>;
+  timestamp?: Date;
+}
+
+export interface SearchFilters {
+  types?: string[];
+  dateRange?: {
+    start: Date;
+    end: Date;
+  };
+  tags?: string[];
+}
+
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string;
+  trigger: 'schema_change' | 'data_change' | 'query_execution' | 'manual' | 'scheduled';
+  steps: WorkflowStep[];
+  enabled: boolean;
+  lastRun?: Date;
+  nextRun?: Date;
+}
+
+export interface WorkflowStep {
+  id: string;
+  type: 'schema_validation' | 'data_migration' | 'performance_check' | 'backup' | 'notification';
+  name: string;
+  description: string;
+  config: Record<string, any>;
+  enabled: boolean;
+  order: number;
+}
+
+export interface WorkflowExecution {
+  id: string;
+  workflowId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  startTime: Date;
+  endTime?: Date;
+  steps: WorkflowStepExecution[];
+  error?: string;
+}
+
+export interface WorkflowStepExecution {
+  stepId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+  startTime: Date;
+  endTime?: Date;
+  error?: string;
+  result?: any;
+}
