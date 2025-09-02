@@ -1,0 +1,124 @@
+'use client';
+
+// Main application layout component
+// This component provides the overall structure and navigation for QueryFlow
+
+import React, { useState } from 'react';
+import { Database, Code, Table, BarChart3, Settings, Menu, X } from 'lucide-react';
+
+interface LayoutProps {
+  children: React.ReactNode;
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+}
+
+const TABS = [
+  { id: 'designer', label: 'Schema Designer', icon: Database },
+  { id: 'query', label: 'Query Runner', icon: Code },
+  { id: 'data', label: 'Data Editor', icon: Table },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+] as const;
+
+export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        >
+          <div className="absolute inset-0 bg-gray-600 opacity-75"></div>
+        </div>
+      )}
+
+      {/* Sidebar */}
+      <div
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Sidebar Header */}
+        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <Database className="w-5 h-5 text-white" />
+            </div>
+            <h1 className="text-xl font-bold text-gray-800">QueryFlow</h1>
+          </div>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden p-2 text-gray-500 hover:text-gray-700"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Navigation */}
+        <nav className="mt-6 px-3">
+          <div className="space-y-1">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    onTabChange(tab.id);
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                    isActive
+                      ? 'bg-blue-100 text-blue-700 border-r-2 border-blue-700'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  <Icon className="w-5 h-5" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+
+        {/* Sidebar Footer */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
+          <div className="flex items-center space-x-3 text-sm text-gray-500">
+            <Settings className="w-4 h-4" />
+            <span>Settings</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden lg:ml-0">
+        {/* Top Bar */}
+        <header className="bg-white shadow-sm border-b border-gray-200 lg:hidden">
+          <div className="flex items-center justify-between h-16 px-4">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 text-gray-500 hover:text-gray-700"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <Database className="w-5 h-5 text-white" />
+              </div>
+              <h1 className="text-xl font-bold text-gray-800">QueryFlow</h1>
+            </div>
+            <div className="w-10"></div> {/* Spacer for centering */}
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <main className="flex-1 overflow-hidden">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}
