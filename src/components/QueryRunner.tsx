@@ -8,6 +8,7 @@ import { DatabaseSchema, QueryResult, QueryError, QueryHistoryItem, QueryTemplat
 import { dbManager } from '@/utils/database';
 import { QueryManager } from '@/utils/queryManager';
 import { QueryOptimizationManager } from '@/utils/queryOptimization';
+import { SQLOptimizer } from '@/utils/sqlOptimizer';
 import { Play, History, Trash2, Copy, Download, FileText, Search, Bookmark, Star, Clock, AlertCircle, Zap, BarChart3, Settings, Eye, Code2, Database, TrendingUp, Layers, MousePointer, Move, Link, Plus, Minus, X, Check, ArrowRight, ArrowDown, Filter, SortAsc, SortDesc, Target, Grid, Table, Columns, Rows, Brain, Lightbulb, Timer, Activity, Users, Share2, MessageSquare, ThumbsUp, ThumbsDown } from 'lucide-react';
 
 interface QueryRunnerProps {
@@ -357,54 +358,38 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
     URL.revokeObjectURL(url);
   }, [query]);
 
-  // AI-powered query optimization
-  const analyzeQueryWithAI = useCallback(async () => {
+  // Real SQL query optimization using parser
+  const analyzeQueryWithOptimizer = useCallback(async () => {
     if (!query.trim()) return;
     
     setIsAnalyzingQuery(true);
     try {
-      // Simulate AI analysis
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Real optimization analysis using SQL parser with schema
+      const analysis = SQLOptimizer.analyzeQuery(query, schema);
       
-      const analysis = {
-        originalQuery: query,
-        optimizedQuery: query.replace(/SELECT \*/g, 'SELECT specific_columns'),
-        suggestions: [
-          {
+      // Validate query syntax
+      const validation = SQLOptimizer.validateQuery(query);
+      if (!validation.isValid) {
+        validation.errors.forEach(error => {
+          analysis.suggestions.push({
             type: 'performance',
-            title: 'Avoid SELECT *',
-            description: 'Using SELECT * can impact performance. Specify only needed columns.',
-            impact: 'medium',
-            confidence: 0.95
-          },
-          {
-            type: 'index',
-            title: 'Add Index Suggestion',
-            description: 'Consider adding an index on frequently queried columns.',
+            title: 'Query Syntax Issue',
+            description: error,
             impact: 'high',
-            confidence: 0.87
-          },
-          {
-            type: 'join',
-            title: 'Optimize JOIN Order',
-            description: 'Reorder JOINs to start with the most selective table.',
-            impact: 'medium',
-            confidence: 0.78
-          }
-        ],
-        estimatedImprovement: '40-60% faster execution',
-        complexity: 'medium',
-        riskLevel: 'low'
-      };
+            confidence: 1.0,
+            reason: 'Syntax errors prevent query execution'
+          });
+        });
+      }
       
       setAiOptimizationResults(analysis);
       setShowAIOptimization(true);
     } catch (error) {
-      console.error('AI analysis failed:', error);
+      console.error('Query optimization failed:', error);
     } finally {
       setIsAnalyzingQuery(false);
     }
-  }, [query]);
+  }, [query, schema]);
 
   // Predict query performance
   const predictQueryPerformance = useCallback(async () => {
@@ -873,12 +858,12 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
               <span>Plan</span>
             </button>
             <button
-              onClick={analyzeQueryWithAI}
+              onClick={analyzeQueryWithOptimizer}
               disabled={!query.trim() || isAnalyzingQuery}
               className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
             >
-              <Brain className="w-4 h-4" />
-              <span>{isAnalyzingQuery ? 'Analyzing...' : 'AI Optimize'}</span>
+              <Zap className="w-4 h-4" />
+              <span>{isAnalyzingQuery ? 'Analyzing...' : 'Optimize'}</span>
             </button>
             <button
               onClick={predictQueryPerformance}
@@ -1271,14 +1256,14 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
         </div>
       )}
 
-      {/* AI Optimization Modal */}
+      {/* SQL Optimization Modal */}
       {showAIOptimization && aiOptimizationResults && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-gray-800 rounded-lg p-6 w-full max-w-6xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
-                <Brain className="w-6 h-6 text-purple-400" />
-                <h3 className="text-xl font-semibold text-white">AI Query Optimization</h3>
+                <Zap className="w-6 h-6 text-purple-400" />
+                <h3 className="text-xl font-semibold text-white">SQL Query Optimization</h3>
               </div>
               <button
                 onClick={() => setShowAIOptimization(false)}
@@ -1333,9 +1318,40 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
                 </div>
               </div>
 
-              {/* AI Suggestions */}
+              {/* Query Statistics */}
+              <div className="bg-gray-700 rounded-lg p-4">
+                <h4 className="text-lg font-semibold text-white mb-3">Query Analysis</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="bg-gray-600 rounded p-3">
+                    <div className="text-sm text-gray-300">SELECT Statements</div>
+                    <div className="text-xl font-bold text-blue-400">{aiOptimizationResults.queryStats.selectCount}</div>
+                  </div>
+                  <div className="bg-gray-600 rounded p-3">
+                    <div className="text-sm text-gray-300">JOIN Operations</div>
+                    <div className="text-xl font-bold text-green-400">{aiOptimizationResults.queryStats.joinCount}</div>
+                  </div>
+                  <div className="bg-gray-600 rounded p-3">
+                    <div className="text-sm text-gray-300">WHERE Clauses</div>
+                    <div className="text-xl font-bold text-yellow-400">{aiOptimizationResults.queryStats.whereCount}</div>
+                  </div>
+                  <div className="bg-gray-600 rounded p-3">
+                    <div className="text-sm text-gray-300">ORDER BY</div>
+                    <div className="text-xl font-bold text-purple-400">{aiOptimizationResults.queryStats.orderByCount}</div>
+                  </div>
+                  <div className="bg-gray-600 rounded p-3">
+                    <div className="text-sm text-gray-300">GROUP BY</div>
+                    <div className="text-xl font-bold text-orange-400">{aiOptimizationResults.queryStats.groupByCount}</div>
+                  </div>
+                  <div className="bg-gray-600 rounded p-3">
+                    <div className="text-sm text-gray-300">Subqueries</div>
+                    <div className="text-xl font-bold text-red-400">{aiOptimizationResults.queryStats.subqueryCount}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Optimization Suggestions */}
               <div className="space-y-4">
-                <h4 className="text-lg font-semibold text-white">AI Recommendations</h4>
+                <h4 className="text-lg font-semibold text-white">Optimization Recommendations</h4>
                 {aiOptimizationResults.suggestions.map((suggestion: any, index: number) => (
                   <div key={index} className="bg-gray-700 rounded-lg p-4">
                     <div className="flex items-start justify-between mb-3">
@@ -1355,6 +1371,12 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
                           </span>
                         </div>
                         <p className="text-gray-300">{suggestion.description}</p>
+                        {suggestion.reason && (
+                          <div className="mt-2 p-2 bg-gray-600 rounded text-sm">
+                            <span className="text-gray-400">Reason: </span>
+                            <span className="text-gray-300">{suggestion.reason}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
