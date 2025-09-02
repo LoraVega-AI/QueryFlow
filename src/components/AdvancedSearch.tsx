@@ -31,6 +31,9 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
   const [searchAlerts, setSearchAlerts] = useState<any[]>([]);
   const [searchIndexes, setSearchIndexes] = useState<any[]>([]);
   const [searchAPIs, setSearchAPIs] = useState<any[]>([]);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [rebuildingIndexes, setRebuildingIndexes] = useState<Set<string>>(new Set());
+  const [showDocsModal, setShowDocsModal] = useState<{ api: any; visible: boolean }>({ api: null, visible: false });
 
   // Perform search
   const performSearch = useCallback(async () => {
@@ -77,6 +80,110 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
   const loadSavedSearch = useCallback((savedSearch: any) => {
     setSearchQuery(savedSearch.query);
     setFilters(savedSearch.filters);
+  }, []);
+
+  // Rebuild search index
+  const rebuildIndex = useCallback(async (indexId: string) => {
+    console.log('Rebuild function called with indexId:', indexId);
+    
+    if (!indexId) {
+      console.error('No indexId provided');
+      setNotification({ 
+        type: 'error', 
+        message: 'No index ID provided for rebuild' 
+      });
+      setTimeout(() => setNotification(null), 3000);
+      return;
+    }
+    
+    // Add to rebuilding set
+    setRebuildingIndexes(prev => {
+      const newSet = new Set(prev);
+      newSet.add(indexId);
+      console.log('Added to rebuilding set:', Array.from(newSet));
+      return newSet;
+    });
+    
+    // Update status to rebuilding immediately
+    setSearchIndexes(prev => {
+      console.log('Updating index status to rebuilding for:', indexId);
+      return prev.map(index => {
+        if (index.id === indexId) {
+          return {
+            ...index,
+            status: 'rebuilding'
+          };
+        }
+        return index;
+      });
+    });
+    
+    try {
+      // Simulate index rebuilding process
+      console.log('Starting rebuild process for:', indexId);
+      await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 3000));
+      
+      // Update the index with new data
+      setSearchIndexes(prev => {
+        console.log('Completing rebuild for:', indexId);
+        return prev.map(index => {
+          if (index.id === indexId) {
+            const newSize = index.id === 'full-text' ? '2.8MB' : '1.4MB';
+            console.log(`Rebuild completed for ${index.name}, new size: ${newSize}`);
+            return {
+              ...index,
+              status: 'active',
+              lastUpdated: new Date(),
+              size: newSize
+            };
+          }
+          return index;
+        });
+      });
+      
+      // Get the updated index name for notification
+      setSearchIndexes(prev => {
+        const updatedIndex = prev.find(i => i.id === indexId);
+        setNotification({ 
+          type: 'success', 
+          message: `${updatedIndex?.name || 'Index'} rebuilt successfully` 
+        });
+        setTimeout(() => setNotification(null), 3000);
+        return prev;
+      });
+      
+    } catch (error: any) {
+      console.error('Rebuild error:', error);
+      setNotification({ 
+        type: 'error', 
+        message: `Failed to rebuild index: ${error.message}` 
+      });
+      setTimeout(() => setNotification(null), 5000);
+      
+      // Reset status on error
+      setSearchIndexes(prev => prev.map(index => {
+        if (index.id === indexId) {
+          return {
+            ...index,
+            status: 'active'
+          };
+        }
+        return index;
+      }));
+    } finally {
+      // Remove from rebuilding set
+      setRebuildingIndexes(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(indexId);
+        console.log('Removed from rebuilding set:', Array.from(newSet));
+        return newSet;
+      });
+    }
+  }, []);
+
+  // View API documentation
+  const viewDocs = useCallback((api: any) => {
+    setShowDocsModal({ api, visible: true });
   }, []);
 
   // Load advanced search data
@@ -562,7 +669,23 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
 
               {/* Search Indexes */}
               <div className="bg-gray-800 rounded-lg p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Search Indexes</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-white">Search Indexes</h3>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-400">
+                      Rebuilding: {Array.from(rebuildingIndexes).join(', ') || 'none'}
+                    </span>
+                    <button 
+                      onClick={() => {
+                        console.log('Test button clicked');
+                        rebuildIndex('full-text');
+                      }}
+                      className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors"
+                    >
+                      Test Rebuild
+                    </button>
+                  </div>
+                </div>
                 <div className="space-y-4">
                   {searchIndexes.map((index) => (
                     <div key={index.id} className="bg-gray-700 rounded-lg p-4">
@@ -579,8 +702,17 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
                       <div className="flex items-center justify-between text-sm text-gray-400">
                         <span>Size: {index.size}</span>
                         <span>Updated: {index.lastUpdated.toLocaleString()}</span>
-                        <button className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 transition-colors">
-                          Rebuild
+                        <button 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('Button clicked, calling rebuildIndex with:', index.id);
+                            rebuildIndex(index.id);
+                          }}
+                          disabled={rebuildingIndexes.has(index.id)}
+                          className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {rebuildingIndexes.has(index.id) ? 'Rebuilding...' : 'Rebuild'}
                         </button>
                       </div>
                     </div>
@@ -605,7 +737,10 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
                       <p className="text-sm text-gray-300 mb-3">{api.description}</p>
                       <div className="flex items-center justify-between text-sm text-gray-400">
                         <span>{api.endpoints} endpoints</span>
-                        <button className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 transition-colors">
+                        <button 
+                          onClick={() => viewDocs(api)}
+                          className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 transition-colors"
+                        >
                           View Docs
                         </button>
                       </div>
@@ -617,6 +752,255 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
           )}
         </div>
       </div>
+
+      {/* API Documentation Modal */}
+      {showDocsModal.visible && showDocsModal.api && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold text-white">{showDocsModal.api.name} Documentation</h3>
+              <button
+                onClick={() => setShowDocsModal({ api: null, visible: false })}
+                className="text-gray-400 hover:text-white text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-6">
+              {/* API Overview */}
+              <div className="bg-gray-700 rounded-lg p-4">
+                <h4 className="text-lg font-semibold text-white mb-3">API Overview</h4>
+                <p className="text-gray-300 mb-4">{showDocsModal.api.description}</p>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-400">Status:</span>
+                    <span className={`ml-2 px-2 py-1 rounded text-xs ${
+                      showDocsModal.api.status === 'active' ? 'bg-green-600' : 'bg-gray-600'
+                    }`}>
+                      {showDocsModal.api.status}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400">Endpoints:</span>
+                    <span className="ml-2 text-white">{showDocsModal.api.endpoints}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* API Endpoints */}
+              <div className="bg-gray-700 rounded-lg p-4">
+                <h4 className="text-lg font-semibold text-white mb-3">Available Endpoints</h4>
+                {showDocsModal.api.id === 'rest-api' ? (
+                  <div className="space-y-3">
+                    <div className="bg-gray-600 rounded p-3">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <span className="px-2 py-1 bg-green-600 text-white text-xs rounded">GET</span>
+                        <code className="text-orange-400">/api/search</code>
+                      </div>
+                      <p className="text-gray-300 text-sm">Search across all indexed content</p>
+                      <div className="mt-2 text-xs text-gray-400">
+                        <strong>Parameters:</strong> q (query), type, limit, offset
+                      </div>
+                    </div>
+                    <div className="bg-gray-600 rounded p-3">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <span className="px-2 py-1 bg-blue-600 text-white text-xs rounded">POST</span>
+                        <code className="text-orange-400">/api/search/advanced</code>
+                      </div>
+                      <p className="text-gray-300 text-sm">Advanced search with filters and aggregations</p>
+                      <div className="mt-2 text-xs text-gray-400">
+                        <strong>Body:</strong> JSON with query, filters, and options
+                      </div>
+                    </div>
+                    <div className="bg-gray-600 rounded p-3">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <span className="px-2 py-1 bg-green-600 text-white text-xs rounded">GET</span>
+                        <code className="text-orange-400">/api/search/suggestions</code>
+                      </div>
+                      <p className="text-gray-300 text-sm">Get search suggestions and autocomplete</p>
+                      <div className="mt-2 text-xs text-gray-400">
+                        <strong>Parameters:</strong> q (partial query), limit
+                      </div>
+                    </div>
+                    <div className="bg-gray-600 rounded p-3">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <span className="px-2 py-1 bg-green-600 text-white text-xs rounded">GET</span>
+                        <code className="text-orange-400">/api/search/analytics</code>
+                      </div>
+                      <p className="text-gray-300 text-sm">Get search analytics and metrics</p>
+                      <div className="mt-2 text-xs text-gray-400">
+                        <strong>Parameters:</strong> period, metric
+                      </div>
+                    </div>
+                    <div className="bg-gray-600 rounded p-3">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <span className="px-2 py-1 bg-green-600 text-white text-xs rounded">GET</span>
+                        <code className="text-orange-400">/api/search/health</code>
+                      </div>
+                      <p className="text-gray-300 text-sm">Check search service health and status</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="bg-gray-600 rounded p-3">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <span className="px-2 py-1 bg-purple-600 text-white text-xs rounded">QUERY</span>
+                        <code className="text-orange-400">searchContent</code>
+                      </div>
+                      <p className="text-gray-300 text-sm">Search across all indexed content</p>
+                      <div className="mt-2 text-xs text-gray-400">
+                        <strong>Arguments:</strong> query: String!, filters: SearchFilters, limit: Int
+                      </div>
+                    </div>
+                    <div className="bg-gray-600 rounded p-3">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <span className="px-2 py-1 bg-purple-600 text-white text-xs rounded">QUERY</span>
+                        <code className="text-orange-400">searchSuggestions</code>
+                      </div>
+                      <p className="text-gray-300 text-sm">Get search suggestions and autocomplete</p>
+                      <div className="mt-2 text-xs text-gray-400">
+                        <strong>Arguments:</strong> query: String!, limit: Int
+                      </div>
+                    </div>
+                    <div className="bg-gray-600 rounded p-3">
+                      <div className="flex items-center space-x-3 mb-2">
+                        <span className="px-2 py-1 bg-purple-600 text-white text-xs rounded">QUERY</span>
+                        <code className="text-orange-400">searchAnalytics</code>
+                      </div>
+                      <p className="text-gray-300 text-sm">Get search analytics and metrics</p>
+                      <div className="mt-2 text-xs text-gray-400">
+                        <strong>Arguments:</strong> period: String!, metric: String
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Example Usage */}
+              <div className="bg-gray-700 rounded-lg p-4">
+                <h4 className="text-lg font-semibold text-white mb-3">Example Usage</h4>
+                {showDocsModal.api.id === 'rest-api' ? (
+                  <div className="space-y-3">
+                    <div>
+                      <h5 className="text-white font-medium mb-2">Basic Search</h5>
+                      <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
+{`curl -X GET "http://localhost:3000/api/search?q=user+authentication&limit=10" \\
+  -H "Content-Type: application/json"`}
+                      </pre>
+                    </div>
+                    <div>
+                      <h5 className="text-white font-medium mb-2">Advanced Search</h5>
+                      <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
+{`curl -X POST "http://localhost:3000/api/search/advanced" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "query": "database schema",
+    "filters": {
+      "types": ["table", "schema"],
+      "dateRange": {
+        "start": "2024-01-01",
+        "end": "2024-12-31"
+      }
+    },
+    "limit": 20
+  }'`}
+                      </pre>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div>
+                      <h5 className="text-white font-medium mb-2">Basic Search Query</h5>
+                      <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
+{`query SearchContent {
+  searchContent(
+    query: "user authentication"
+    limit: 10
+  ) {
+    id
+    title
+    description
+    type
+    relevance
+    metadata
+  }
+}`}
+                      </pre>
+                    </div>
+                    <div>
+                      <h5 className="text-white font-medium mb-2">Advanced Search with Filters</h5>
+                      <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
+{`query AdvancedSearch {
+  searchContent(
+    query: "database schema"
+    filters: {
+      types: ["table", "schema"]
+      dateRange: {
+        start: "2024-01-01"
+        end: "2024-12-31"
+      }
+    }
+    limit: 20
+  ) {
+    id
+    title
+    description
+    type
+    relevance
+    metadata
+  }
+}`}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Response Format */}
+              <div className="bg-gray-700 rounded-lg p-4">
+                <h4 className="text-lg font-semibold text-white mb-3">Response Format</h4>
+                <pre className="bg-gray-800 rounded p-3 text-sm text-gray-300 overflow-x-auto">
+{`{
+  "success": true,
+  "data": {
+    "results": [
+      {
+        "id": "result-1",
+        "title": "User Authentication Table",
+        "description": "Table containing user authentication data",
+        "type": "table",
+        "relevance": 0.95,
+        "metadata": {
+          "tableName": "users",
+          "columnCount": 8,
+          "recordCount": 1250
+        }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 10,
+    "query": "user authentication",
+    "executionTime": 0.045
+  },
+  "timestamp": "2024-01-15T10:30:00Z"
+}`}
+                </pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notification */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-md shadow-lg ${
+          notification.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+        }`}>
+          {notification.message}
+        </div>
+      )}
     </div>
   );
 }

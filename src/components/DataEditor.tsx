@@ -45,6 +45,7 @@ export function DataEditor({ schema }: DataEditorProps) {
   const [importResults, setImportResults] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [dataTransformations, setDataTransformations] = useState<any[]>([]);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Load records when table is selected
   const loadRecords = useCallback(async () => {
@@ -206,6 +207,7 @@ export function DataEditor({ schema }: DataEditorProps) {
     const report = DataManagementManager.analyzeDataQuality(selectedTable, records);
     setQualityReports(prev => [report, ...prev]);
     setShowDataQuality(true);
+    setActiveTab('quality');
   }, [selectedTable, records]);
 
   const handleDataImport = useCallback((csvContent: string, mapping: any[]) => {
@@ -214,12 +216,36 @@ export function DataEditor({ schema }: DataEditorProps) {
     const result = DataManagementManager.importFromCSV(csvContent, selectedTable, mapping);
     setImportResults(prev => [result, ...prev]);
     setShowDataImport(true);
+    setActiveTab('import');
     
     // Reload records if import was successful
     if (result.importedRows > 0) {
       loadRecords();
     }
   }, [selectedTable, loadRecords]);
+
+  // File upload handler for import
+  const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedTable) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const csvContent = e.target?.result as string;
+      if (csvContent) {
+        // Create default mapping based on table columns
+        const mapping = selectedTable.columns.map(col => ({
+          sourceField: col.name,
+          targetField: col.name,
+          required: !col.nullable,
+          transformation: undefined
+        }));
+        
+        handleDataImport(csvContent, mapping);
+      }
+    };
+    reader.readAsText(file);
+  }, [selectedTable, handleDataImport]);
 
   const handleDataExport = useCallback((format: string) => {
     if (!selectedTable || records.length === 0) return;
@@ -263,6 +289,98 @@ export function DataEditor({ schema }: DataEditorProps) {
     // Refresh audit logs
     setAuditLogs(DataManagementManager.getAuditLogs(selectedTable.id));
   }, [selectedTable]);
+
+  // Show audit logs
+  const showAuditLogs = useCallback(() => {
+    if (!selectedTable) return;
+    setAuditLogs(DataManagementManager.getAuditLogs(selectedTable.id));
+    setActiveTab('audit');
+  }, [selectedTable]);
+
+  // Apply data transformation
+  const applyDataTransformation = useCallback(async (transformationId: string) => {
+    if (!selectedTable || records.length === 0) return;
+    
+    const transformations = DataManagementManager.getTransformations();
+    const transformation = transformations.find(t => t.id === transformationId);
+    
+    if (transformation) {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        const transformedRecords = DataManagementManager.applyTransformation(records, transformation);
+        
+        // Save transformed data to database
+        if (selectedTable && schema) {
+          await dbManager.initialize();
+          await dbManager.createTablesFromSchema(schema);
+          
+          // Clear existing data and insert transformed data
+          const primaryKeyColumn = selectedTable.columns.find(col => col.primaryKey);
+          if (primaryKeyColumn) {
+            // Delete existing records
+            for (const record of records) {
+              if (record.data[primaryKeyColumn.name] !== undefined) {
+                const whereClause = `"${primaryKeyColumn.name}" = '${record.data[primaryKeyColumn.name]}'`;
+                await dbManager.deleteRecord(selectedTable.name, whereClause);
+              }
+            }
+            
+            // Insert transformed records
+            for (const record of transformedRecords) {
+              await dbManager.insertRecord(selectedTable.name, record.data);
+            }
+          }
+        }
+        
+        // Update local state
+        setRecords(transformedRecords);
+        
+        // Log audit event
+        logAuditEvent('transform', transformationId, records, transformedRecords);
+        
+        // Show success notification
+        setNotification({ type: 'success', message: `Successfully applied transformation: ${transformation.name}` });
+        setTimeout(() => setNotification(null), 3000);
+        
+      } catch (err: any) {
+        const errorMessage = `Failed to apply transformation: ${err.message}`;
+        setError(errorMessage);
+        setNotification({ type: 'error', message: errorMessage });
+        setTimeout(() => setNotification(null), 5000);
+        console.error('Error applying transformation:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  }, [selectedTable, records, schema, logAuditEvent]);
+
+  // Create new transformation
+  const createDataTransformation = useCallback((name: string, description: string, type: string, rules: any[]) => {
+    const transformation = DataManagementManager.createTransformation(name, description, type, rules);
+    setDataTransformations(prev => [transformation, ...prev]);
+    setActiveTab('transform');
+  }, []);
+
+  // Enhanced refresh function
+  const handleRefresh = useCallback(async () => {
+    if (!selectedTable) return;
+    
+    setIsLoading(true);
+    try {
+      await loadRecords();
+      // Refresh all related data
+      setQualityReports(DataManagementManager.getQualityReports());
+      setImportResults(DataManagementManager.getImportResults());
+      setAuditLogs(DataManagementManager.getAuditLogs(selectedTable.id));
+      setDataTransformations(DataManagementManager.getTransformations());
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedTable, loadRecords]);
 
   // Load records when table changes
   useEffect(() => {
@@ -340,6 +458,14 @@ export function DataEditor({ schema }: DataEditorProps) {
         }
       }
 
+      // Log audit event
+      logAuditEvent(
+        editingRecord.isNew ? 'create' : 'update',
+        editingRecord.id || 'new_record',
+        editingRecord.isNew ? undefined : editingRecord.data,
+        editingRecord.data
+      );
+
       // Reload records
       await loadRecords();
       setShowAddForm(false);
@@ -374,6 +500,9 @@ export function DataEditor({ schema }: DataEditorProps) {
       } else {
         throw new Error('Cannot delete record: no primary key found');
       }
+
+      // Log audit event
+      logAuditEvent('delete', record.id, record.data, undefined);
 
       // Reload records
       await loadRecords();
@@ -616,6 +745,62 @@ export function DataEditor({ schema }: DataEditorProps) {
             <div className="h-full bg-gray-800 rounded-lg p-6">
               <h3 className="text-lg font-semibold text-white mb-4">Data Import</h3>
               <div className="space-y-4">
+                {/* File Upload Section */}
+                <div className="bg-gray-700 rounded-lg p-4">
+                  <h4 className="text-white font-medium mb-4">Import New Data</h4>
+                  <div className="space-y-4">
+                    <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center">
+                      <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-300 mb-4">Upload a CSV file to import data</p>
+                      <input
+                        type="file"
+                        accept=".csv"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                        id="csv-upload"
+                      />
+                      <label
+                        htmlFor="csv-upload"
+                        className="inline-flex items-center px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 cursor-pointer transition-colors"
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        Choose CSV File
+                      </label>
+                    </div>
+                    
+                    {/* Manual CSV Input */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Or paste CSV data directly:
+                      </label>
+                      <textarea
+                        value={csvData}
+                        onChange={(e) => setCsvData(e.target.value)}
+                        placeholder="Paste CSV data here (first row should be column headers)..."
+                        className="w-full h-32 p-3 bg-gray-600 text-white rounded-md border border-gray-500 focus:border-orange-500 focus:outline-none font-mono text-sm"
+                      />
+                      <button
+                        onClick={() => {
+                          if (csvData.trim() && selectedTable) {
+                            const mapping = selectedTable.columns.map(col => ({
+                              sourceField: col.name,
+                              targetField: col.name,
+                              required: !col.nullable,
+                              transformation: undefined
+                            }));
+                            handleDataImport(csvData, mapping);
+                          }
+                        }}
+                        disabled={!csvData.trim()}
+                        className="mt-2 px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Import Data
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Import History */}
                 <div className="bg-gray-700 rounded-lg p-4">
                   <h4 className="text-white font-medium mb-4">Import History</h4>
                   <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -631,9 +816,20 @@ export function DataEditor({ schema }: DataEditorProps) {
                           <div className="text-sm text-gray-400">
                             {new Date(result.timestamp).toLocaleString()} • {result.errors.length} errors
                           </div>
+                          {result.errors.length > 0 && (
+                            <div className="mt-2 text-red-300 text-xs">
+                              {result.errors.slice(0, 2).map((error: any, idx: number) => (
+                                <div key={idx}>Row {error.row}: {error.error}</div>
+                              ))}
+                              {result.errors.length > 2 && <div>...and {result.errors.length - 2} more errors</div>}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
+                    {importResults.length === 0 && (
+                      <p className="text-gray-400 text-center py-4">No import history yet</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -719,6 +915,62 @@ export function DataEditor({ schema }: DataEditorProps) {
             <div className="h-full bg-gray-800 rounded-lg p-6">
               <h3 className="text-lg font-semibold text-white mb-4">Data Transformations</h3>
               <div className="space-y-4">
+                {/* Create New Transformation */}
+                <div className="bg-gray-700 rounded-lg p-4">
+                  <h4 className="text-white font-medium mb-4">Create New Transformation</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button
+                      onClick={() => createDataTransformation(
+                        'Clean Text Data',
+                        'Trim whitespace and standardize text fields',
+                        'clean',
+                        [{ id: '1', field: 'name', operation: 'trim', parameters: {} }]
+                      )}
+                      className="p-4 bg-gray-600 rounded-lg hover:bg-gray-500 transition-colors text-center"
+                    >
+                      <Zap className="w-8 h-8 text-orange-400 mx-auto mb-2" />
+                      <span className="text-white text-sm">Clean Text</span>
+                    </button>
+                    <button
+                      onClick={() => createDataTransformation(
+                        'Normalize Names',
+                        'Convert names to proper case',
+                        'normalize',
+                        [{ id: '2', field: 'name', operation: 'uppercase', parameters: {} }]
+                      )}
+                      className="p-4 bg-gray-600 rounded-lg hover:bg-gray-500 transition-colors text-center"
+                    >
+                      <Zap className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+                      <span className="text-white text-sm">Normalize Names</span>
+                    </button>
+                    <button
+                      onClick={() => createDataTransformation(
+                        'Format Dates',
+                        'Standardize date formats',
+                        'format',
+                        [{ id: '3', field: 'date', operation: 'format', parameters: { format: 'date' } }]
+                      )}
+                      className="p-4 bg-gray-600 rounded-lg hover:bg-gray-500 transition-colors text-center"
+                    >
+                      <Zap className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                      <span className="text-white text-sm">Format Dates</span>
+                    </button>
+                    <button
+                      onClick={() => createDataTransformation(
+                        'Validate Data',
+                        'Check data against validation rules',
+                        'validate',
+                        [{ id: '4', field: 'email', operation: 'validate', parameters: { rules: { required: true } } }]
+                      )}
+                      className="p-4 bg-gray-600 rounded-lg hover:bg-gray-500 transition-colors text-center"
+                    >
+                      <Zap className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+                      <span className="text-white text-sm">Validate Data</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Available Transformations */}
                 <div className="bg-gray-700 rounded-lg p-4">
                   <h4 className="text-white font-medium mb-4">Available Transformations</h4>
                   <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -727,18 +979,33 @@ export function DataEditor({ schema }: DataEditorProps) {
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-white font-medium">{transform.name}</span>
-                            <span className={`px-2 py-1 rounded text-xs ${
-                              transform.enabled ? 'bg-green-600' : 'bg-gray-600'
-                            }`}>
-                              {transform.enabled ? 'Enabled' : 'Disabled'}
-                            </span>
+                            <div className="flex items-center space-x-2">
+                              <span className={`px-2 py-1 rounded text-xs ${
+                                transform.enabled ? 'bg-green-600' : 'bg-gray-600'
+                              }`}>
+                                {transform.enabled ? 'Enabled' : 'Disabled'}
+                              </span>
+                              <button
+                                onClick={() => applyDataTransformation(transform.id)}
+                                disabled={isLoading}
+                                className="px-2 py-1 bg-orange-600 text-white rounded text-xs hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {isLoading ? 'Applying...' : 'Apply'}
+                              </button>
+                            </div>
                           </div>
                           <div className="text-sm text-gray-400">
                             {transform.description} • {transform.rules.length} rules
                           </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Created: {new Date(transform.createdAt).toLocaleDateString()}
+                          </div>
                         </div>
                       </div>
                     ))}
+                    {dataTransformations.length === 0 && (
+                      <p className="text-gray-400 text-center py-4">No transformations created yet</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -784,7 +1051,12 @@ export function DataEditor({ schema }: DataEditorProps) {
               Quality
             </button>
             <button
-              onClick={() => setActiveTab('import')}
+              onClick={() => {
+                setActiveTab('import');
+                if (selectedTable) {
+                  setImportResults(DataManagementManager.getImportResults());
+                }
+              }}
               className={`px-3 py-1 rounded-md text-sm transition-colors ${
                 activeTab === 'import' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white'
               }`}
@@ -802,7 +1074,12 @@ export function DataEditor({ schema }: DataEditorProps) {
               Export
             </button>
             <button
-              onClick={() => setActiveTab('audit')}
+              onClick={() => {
+                setActiveTab('audit');
+                if (selectedTable) {
+                  setAuditLogs(DataManagementManager.getAuditLogs(selectedTable.id));
+                }
+              }}
               className={`px-3 py-1 rounded-md text-sm transition-colors ${
                 activeTab === 'audit' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white'
               }`}
@@ -811,7 +1088,10 @@ export function DataEditor({ schema }: DataEditorProps) {
               Audit
             </button>
             <button
-              onClick={() => setActiveTab('transform')}
+              onClick={() => {
+                setActiveTab('transform');
+                setDataTransformations(DataManagementManager.getTransformations());
+              }}
               className={`px-3 py-1 rounded-md text-sm transition-colors ${
                 activeTab === 'transform' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white'
               }`}
@@ -860,14 +1140,14 @@ export function DataEditor({ schema }: DataEditorProps) {
                 <span>Quality</span>
               </button>
               <button
-                onClick={() => setShowAuditLog(true)}
+                onClick={showAuditLogs}
                 className="flex items-center space-x-2 px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
               >
                 <History className="w-4 h-4" />
                 <span>Audit</span>
               </button>
               <button
-                onClick={loadRecords}
+                onClick={handleRefresh}
                 disabled={isLoading}
                 className="flex items-center space-x-2 px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
               >
@@ -1249,6 +1529,26 @@ export function DataEditor({ schema }: DataEditorProps) {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notification */}
+      {notification && (
+        <div className="fixed top-4 right-4 z-50">
+          <div className={`px-4 py-3 rounded-lg shadow-lg ${
+            notification.type === 'success' 
+              ? 'bg-green-600 text-white' 
+              : 'bg-red-600 text-white'
+          }`}>
+            <div className="flex items-center space-x-2">
+              {notification.type === 'success' ? (
+                <CheckCircle className="w-5 h-5" />
+              ) : (
+                <AlertTriangle className="w-5 h-5" />
+              )}
+              <span>{notification.message}</span>
             </div>
           </div>
         </div>
