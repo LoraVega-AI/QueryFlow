@@ -6,7 +6,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { SearchResult, SearchFilters } from '@/types/database';
 import { AdvancedSearch as AdvancedSearchUtil } from '@/utils/advancedSearch';
-import { Search, Filter, Download, Star, Clock, FileText, Database, Table as TableIcon, User, Zap, Target, Layers, BarChart3, Monitor, Activity, TrendingUp, Globe, Shield, Users, Calendar, Timer, Bell, Mail, MessageSquare, Link, ExternalLink, ArrowRight, ArrowDown, ArrowUp, ChevronRight, ChevronDown, ChevronUp, MoreHorizontal, MoreVertical, Bookmark, Share2, Maximize2, Minimize2, RotateCcw, Save, Edit, Copy, Move, Trash, Archive, RefreshCw, Code, GitBranch, AlertTriangle, CheckCircle, XCircle, Info, HelpCircle, Plus, Minus, X, Check, Loader2 } from 'lucide-react';
+import { Search, Filter, Download, Star, Clock, FileText, Database, Table as TableIcon, User, Zap, Target, Layers, BarChart3, Monitor, Activity, TrendingUp, Globe, Shield, Users, Calendar, Timer, Bell, Mail, MessageSquare, Link, ExternalLink, ArrowRight, ArrowDown, ArrowUp, ChevronRight, ChevronDown, ChevronUp, MoreHorizontal, MoreVertical, Bookmark, Share2, Maximize2, Minimize2, RotateCcw, Save, Edit, Copy, Move, Trash, Archive, RefreshCw, Code, GitBranch, AlertTriangle, CheckCircle, XCircle, Info, HelpCircle, Plus, Minus, X, Check, Loader2, MessageCircle, Brain, Lightbulb } from 'lucide-react';
+import { naturalLanguageProcessor, NLQueryResult } from '@/utils/naturalLanguageProcessor';
 
 interface AdvancedSearchProps {
   schema: any;
@@ -34,17 +35,39 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [rebuildingIndexes, setRebuildingIndexes] = useState<Set<string>>(new Set());
   const [showDocsModal, setShowDocsModal] = useState<{ api: any; visible: boolean }>({ api: null, visible: false });
+  
+  // Natural language processing state
+  const [showNLProcessor, setShowNLProcessor] = useState(false);
+  const [nlQuery, setNlQuery] = useState('');
+  const [nlResult, setNlResult] = useState<NLQueryResult | null>(null);
+  const [isProcessingNL, setIsProcessingNL] = useState(false);
+  const [nlExamples, setNlExamples] = useState<string[]>([]);
+  const [showNLExamples, setShowNLExamples] = useState(false);
+  
+  // API testing state
+  const [apiTestResults, setApiTestResults] = useState<Record<string, any>>({});
+  const [isTestingAPI, setIsTestingAPI] = useState(false);
 
-  // Perform search
+  // Perform search using semantic search API
   const performSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
 
     setIsSearching(true);
     try {
-      const results = AdvancedSearchUtil.search(searchQuery, filters);
-      setSearchResults(results);
+      // Use semantic search API
+      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&limit=20`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setSearchResults(data.data.results);
+      } else {
+        throw new Error(data.error || 'Search failed');
+      }
     } catch (error: any) {
       console.error('Search failed:', error);
+      // Fallback to original search
+      const results = AdvancedSearchUtil.search(searchQuery, filters);
+      setSearchResults(results);
     } finally {
       setIsSearching(false);
     }
@@ -286,6 +309,164 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
       }
     ];
     setSearchAPIs(APIs);
+    
+    // Load NL examples
+    setNlExamples(naturalLanguageProcessor.getExamples());
+  }, []);
+
+  // Natural language processing functions
+  const processNaturalLanguageQuery = useCallback(async () => {
+    if (!nlQuery.trim()) return;
+    
+    setIsProcessingNL(true);
+    try {
+      // Set up table info for better processing
+      if (schema?.tables) {
+        const tableInfo = schema.tables.map((table: any) => ({
+          name: table.name,
+          columns: table.columns.map((col: any) => col.name),
+          primaryKey: table.columns.find((col: any) => col.primaryKey)?.name,
+          foreignKeys: table.columns
+            .filter((col: any) => col.foreignKey)
+            .reduce((acc: any, col: any) => {
+              acc[col.name] = col.foreignKey;
+              return acc;
+            }, {})
+        }));
+        naturalLanguageProcessor.setTableInfo(tableInfo);
+      }
+      
+      const result = naturalLanguageProcessor.processQuery(nlQuery);
+      setNlResult(result);
+      
+      setNotification({
+        type: 'success',
+        message: `Natural language query processed with ${(result.confidence * 100).toFixed(0)}% confidence`
+      });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({
+        type: 'error',
+        message: `Failed to process natural language query: ${error.message}`
+      });
+      setTimeout(() => setNotification(null), 5000);
+    } finally {
+      setIsProcessingNL(false);
+    }
+  }, [nlQuery, schema]);
+
+  const executeNLQuery = useCallback(async () => {
+    if (!nlResult?.sql) return;
+    
+    setIsSearching(true);
+    try {
+      // Convert SQL to search query (simplified)
+      const searchQuery = nlResult.sql.replace(/SELECT \* FROM (\w+)/i, '$1');
+      setSearchQuery(searchQuery);
+      
+      // Perform the search
+      const results = AdvancedSearchUtil.search(searchQuery, filters);
+      setSearchResults(results);
+      
+      setNotification({
+        type: 'success',
+        message: 'Natural language query executed successfully'
+      });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({
+        type: 'error',
+        message: `Failed to execute query: ${error.message}`
+      });
+      setTimeout(() => setNotification(null), 5000);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [nlResult, filters]);
+
+  const clearNLQuery = useCallback(() => {
+    setNlQuery('');
+    setNlResult(null);
+  }, []);
+
+  // API testing functions
+  const testSearchAPI = useCallback(async () => {
+    setIsTestingAPI(true);
+    try {
+      const response = await fetch('/api/search?q=user authentication&limit=5');
+      const data = await response.json();
+      setApiTestResults(prev => ({ ...prev, search: data }));
+    } catch (error: any) {
+      setApiTestResults(prev => ({ ...prev, search: { error: error.message } }));
+    } finally {
+      setIsTestingAPI(false);
+    }
+  }, []);
+
+  const testAdvancedSearchAPI = useCallback(async () => {
+    setIsTestingAPI(true);
+    try {
+      const response = await fetch('/api/search/advanced', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: 'database schema',
+          filters: { types: ['table', 'schema'] },
+          limit: 5
+        })
+      });
+      const data = await response.json();
+      setApiTestResults(prev => ({ ...prev, advanced: data }));
+    } catch (error: any) {
+      setApiTestResults(prev => ({ ...prev, advanced: { error: error.message } }));
+    } finally {
+      setIsTestingAPI(false);
+    }
+  }, []);
+
+  const testSuggestionsAPI = useCallback(async () => {
+    setIsTestingAPI(true);
+    try {
+      const response = await fetch('/api/search/suggestions?q=user&limit=5');
+      const data = await response.json();
+      setApiTestResults(prev => ({ ...prev, suggestions: data }));
+    } catch (error: any) {
+      setApiTestResults(prev => ({ ...prev, suggestions: { error: error.message } }));
+    } finally {
+      setIsTestingAPI(false);
+    }
+  }, []);
+
+  const testAnalyticsAPI = useCallback(async () => {
+    setIsTestingAPI(true);
+    try {
+      const response = await fetch('/api/search/analytics');
+      const data = await response.json();
+      setApiTestResults(prev => ({ ...prev, analytics: data }));
+    } catch (error: any) {
+      setApiTestResults(prev => ({ ...prev, analytics: { error: error.message } }));
+    } finally {
+      setIsTestingAPI(false);
+    }
+  }, []);
+
+  const testGraphQLAPI = useCallback(async () => {
+    setIsTestingAPI(true);
+    try {
+      const response = await fetch('/api/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: 'query { searchContent(query: "user authentication", limit: 5) { results { id title relevance } total } }'
+        })
+      });
+      const data = await response.json();
+      setApiTestResults(prev => ({ ...prev, graphql: data }));
+    } catch (error: any) {
+      setApiTestResults(prev => ({ ...prev, graphql: { error: error.message } }));
+    } finally {
+      setIsTestingAPI(false);
+    }
   }, []);
 
   return (
@@ -297,6 +478,13 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
           <span className="text-sm text-gray-300">Search across all data and schemas</span>
         </div>
         <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setShowNLProcessor(!showNLProcessor)}
+            className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span>Natural Language</span>
+          </button>
           <button
             onClick={() => setShowFilters(!showFilters)}
             className="flex items-center space-x-2 px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors"
@@ -735,15 +923,40 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
                         </span>
                       </div>
                       <p className="text-sm text-gray-300 mb-3">{api.description}</p>
-                      <div className="flex items-center justify-between text-sm text-gray-400">
+                      <div className="flex items-center justify-between text-sm text-gray-400 mb-3">
                         <span>{api.endpoints} endpoints</span>
-                        <button 
-                          onClick={() => viewDocs(api)}
-                          className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 transition-colors"
-                        >
-                          View Docs
-                        </button>
+                        <div className="flex space-x-2">
+                          <button 
+                            onClick={() => {
+                              if (api.id === 'rest-api') {
+                                testSearchAPI();
+                              } else if (api.id === 'graphql') {
+                                testGraphQLAPI();
+                              }
+                            }}
+                            disabled={isTestingAPI}
+                            className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 disabled:bg-gray-600 transition-colors"
+                          >
+                            {isTestingAPI ? 'Testing...' : 'Test API'}
+                          </button>
+                          <button 
+                            onClick={() => viewDocs(api)}
+                            className="px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 transition-colors"
+                          >
+                            View Docs
+                          </button>
+                        </div>
                       </div>
+                      
+                      {/* API Test Results */}
+                      {apiTestResults[api.id === 'rest-api' ? 'search' : 'graphql'] && (
+                        <div className="mt-3 p-3 bg-gray-800 rounded border">
+                          <h5 className="text-white text-sm font-medium mb-2">Test Result:</h5>
+                          <pre className="text-xs text-green-400 overflow-x-auto max-h-32">
+                            {JSON.stringify(apiTestResults[api.id === 'rest-api' ? 'search' : 'graphql'], null, 2)}
+                          </pre>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -988,6 +1201,187 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
 }`}
                 </pre>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Natural Language Processor Modal */}
+      {showNLProcessor && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-lg shadow-xl w-4/5 h-4/5 flex flex-col">
+            <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+              <div className="flex items-center space-x-4">
+                <h3 className="text-lg font-semibold text-white">Natural Language Query Processor</h3>
+                <span className="text-sm text-gray-300">Convert plain English to SQL queries</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setShowNLExamples(!showNLExamples)}
+                  className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors"
+                >
+                  {showNLExamples ? 'Hide' : 'Show'} Examples
+                </button>
+                <button
+                  onClick={() => setShowNLProcessor(false)}
+                  className="p-2 text-gray-400 hover:text-white transition-colors"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 flex overflow-hidden">
+              {/* Main Content */}
+              <div className="flex-1 flex flex-col">
+                {/* Query Input */}
+                <div className="p-6 border-b border-gray-700">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Enter your question in plain English
+                      </label>
+                      <div className="flex space-x-4">
+                        <div className="flex-1">
+                          <textarea
+                            value={nlQuery}
+                            onChange={(e) => setNlQuery(e.target.value)}
+                            placeholder="e.g., 'show me all users where status is active' or 'how many orders are there'"
+                            className="w-full px-4 py-3 bg-gray-700 text-white rounded-md border border-gray-600 focus:border-purple-500 focus:outline-none resize-none"
+                            rows={3}
+                          />
+                        </div>
+                        <div className="flex flex-col space-y-2">
+                          <button
+                            onClick={processNaturalLanguageQuery}
+                            disabled={!nlQuery.trim() || isProcessingNL}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                          >
+                            {isProcessingNL ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Brain className="w-4 h-4" />
+                            )}
+                            <span>{isProcessingNL ? 'Processing...' : 'Process'}</span>
+                          </button>
+                          <button
+                            onClick={clearNLQuery}
+                            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Results */}
+                <div className="flex-1 overflow-y-auto p-6">
+                  {nlResult ? (
+                    <div className="space-y-6">
+                      {/* Confidence and Status */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                            nlResult.confidence > 0.8 ? 'bg-green-600 text-white' :
+                            nlResult.confidence > 0.5 ? 'bg-yellow-600 text-white' :
+                            'bg-red-600 text-white'
+                          }`}>
+                            {Math.round(nlResult.confidence * 100)}% Confidence
+                          </div>
+                          <div className="text-sm text-gray-300">
+                            {nlResult.explanation}
+                          </div>
+                        </div>
+                        <button
+                          onClick={executeNLQuery}
+                          disabled={!nlResult.sql}
+                          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                        >
+                          <Zap className="w-4 h-4" />
+                          <span>Execute Query</span>
+                        </button>
+                      </div>
+
+                      {/* Generated SQL */}
+                      <div className="bg-gray-800 rounded-lg p-4">
+                        <h4 className="text-white font-medium mb-3 flex items-center space-x-2">
+                          <Code className="w-4 h-4" />
+                          <span>Generated SQL Query</span>
+                        </h4>
+                        <pre className="bg-gray-900 rounded p-4 text-sm text-green-400 overflow-x-auto">
+                          {nlResult.sql}
+                        </pre>
+                      </div>
+
+                      {/* Warnings */}
+                      {nlResult.warnings && nlResult.warnings.length > 0 && (
+                        <div className="bg-yellow-900 border border-yellow-600 rounded-lg p-4">
+                          <h4 className="text-yellow-400 font-medium mb-2 flex items-center space-x-2">
+                            <AlertTriangle className="w-4 h-4" />
+                            <span>Warnings</span>
+                          </h4>
+                          <ul className="space-y-1">
+                            {nlResult.warnings.map((warning, index) => (
+                              <li key={index} className="text-yellow-300 text-sm">• {warning}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Suggestions */}
+                      {nlResult.suggestions && nlResult.suggestions.length > 0 && (
+                        <div className="bg-blue-900 border border-blue-600 rounded-lg p-4">
+                          <h4 className="text-blue-400 font-medium mb-2 flex items-center space-x-2">
+                            <Lightbulb className="w-4 h-4" />
+                            <span>Suggestions</span>
+                          </h4>
+                          <ul className="space-y-1">
+                            {nlResult.suggestions.map((suggestion, index) => (
+                              <li key={index} className="text-blue-300 text-sm">• {suggestion}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <MessageCircle className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                        <h4 className="text-lg font-medium text-white mb-2">Natural Language Query Processing</h4>
+                        <p className="text-gray-400 mb-4">Ask questions in plain English and get SQL queries</p>
+                        <button
+                          onClick={() => setShowNLExamples(true)}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                        >
+                          View Examples
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Examples Sidebar */}
+              {showNLExamples && (
+                <div className="w-80 bg-gray-800 border-l border-gray-700 overflow-y-auto">
+                  <div className="p-4">
+                    <h4 className="text-white font-medium mb-4">Query Examples</h4>
+                    <div className="space-y-3">
+                      {nlExamples.map((example, index) => (
+                        <div
+                          key={index}
+                          className="p-3 bg-gray-700 rounded cursor-pointer hover:bg-gray-600 transition-colors"
+                          onClick={() => setNlQuery(example)}
+                        >
+                          <div className="text-white text-sm">{example}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

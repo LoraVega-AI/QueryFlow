@@ -6,7 +6,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Workflow, WorkflowExecution, WorkflowStep } from '@/types/database';
 import { WorkflowAutomation } from '@/utils/workflowAutomation';
-import { Play, Pause, Settings, Plus, Trash2, Eye, Clock, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { Play, Pause, Settings, Plus, Trash2, Eye, Clock, CheckCircle, XCircle, AlertTriangle, Palette, GitBranch, Zap, Database, Globe, Mail, Timer, BarChart3, Layers, Workflow as WorkflowIcon, Save, Download, Upload, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
+import { visualWorkflowEngine, WorkflowNode, WorkflowEdge, WorkflowTemplate, WorkflowExecution as VisualExecution } from '@/utils/visualWorkflowEngine';
 
 interface WorkflowManagerProps {
   schema: any;
@@ -19,6 +20,18 @@ export function WorkflowManager({ schema }: WorkflowManagerProps) {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  
+  // Visual workflow designer state
+  const [showVisualDesigner, setShowVisualDesigner] = useState(false);
+  const [visualNodes, setVisualNodes] = useState<WorkflowNode[]>([]);
+  const [visualEdges, setVisualEdges] = useState<WorkflowEdge[]>([]);
+  const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<WorkflowEdge | null>(null);
+  const [isDesignerFullscreen, setIsDesignerFullscreen] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [showNodePalette, setShowNodePalette] = useState(true);
+  const [workflowValidation, setWorkflowValidation] = useState<{ isValid: boolean; errors: string[]; warnings: string[] } | null>(null);
+  const [visualExecutions, setVisualExecutions] = useState<VisualExecution[]>([]);
   
   // Workflow creation form state
   const [newWorkflow, setNewWorkflow] = useState({
@@ -192,6 +205,199 @@ export function WorkflowManager({ schema }: WorkflowManagerProps) {
     setCurrentStep(prev => ({ ...prev, config }));
   }, []);
 
+  // Visual workflow designer functions
+  const openVisualDesigner = useCallback(() => {
+    setShowVisualDesigner(true);
+    setVisualNodes([]);
+    setVisualEdges([]);
+    setSelectedNode(null);
+    setSelectedEdge(null);
+    setWorkflowValidation(null);
+  }, []);
+
+  const closeVisualDesigner = useCallback(() => {
+    setShowVisualDesigner(false);
+    setSelectedNode(null);
+    setSelectedEdge(null);
+    setWorkflowValidation(null);
+  }, []);
+
+  const addNode = useCallback((type: string, position: { x: number; y: number }) => {
+    try {
+      const node = visualWorkflowEngine.createNode(type, position);
+      setVisualNodes(prev => [...prev, node]);
+      validateWorkflow();
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to add node: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, []);
+
+  const updateNodePosition = useCallback((nodeId: string, position: { x: number; y: number }) => {
+    visualWorkflowEngine.updateNodePosition(nodeId, position);
+    setVisualNodes(prev => prev.map(node => 
+      node.id === nodeId ? { ...node, position } : node
+    ));
+  }, []);
+
+  const updateNodeData = useCallback((nodeId: string, data: any) => {
+    visualWorkflowEngine.updateNodeData(nodeId, data);
+    setVisualNodes(prev => prev.map(node => 
+      node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
+    ));
+    validateWorkflow();
+  }, []);
+
+  const deleteNode = useCallback((nodeId: string) => {
+    visualWorkflowEngine.deleteNode(nodeId);
+    setVisualNodes(prev => prev.filter(node => node.id !== nodeId));
+    setVisualEdges(prev => prev.filter(edge => edge.source !== nodeId && edge.target !== nodeId));
+    setSelectedNode(null);
+    validateWorkflow();
+  }, []);
+
+  const addEdge = useCallback((source: string, target: string, type: string = 'default') => {
+    try {
+      const edge = visualWorkflowEngine.createEdge(source, target, type);
+      setVisualEdges(prev => [...prev, edge]);
+      validateWorkflow();
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to add connection: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, []);
+
+  const deleteEdge = useCallback((edgeId: string) => {
+    visualWorkflowEngine.deleteEdge(edgeId);
+    setVisualEdges(prev => prev.filter(edge => edge.id !== edgeId));
+    setSelectedEdge(null);
+    validateWorkflow();
+  }, []);
+
+  const validateWorkflow = useCallback(() => {
+    const validation = visualWorkflowEngine.validateWorkflow();
+    setWorkflowValidation(validation);
+  }, []);
+
+  const loadTemplate = useCallback((templateId: string) => {
+    try {
+      const { nodes, edges } = visualWorkflowEngine.loadTemplate(templateId);
+      setVisualNodes(nodes);
+      setVisualEdges(edges);
+      validateWorkflow();
+      setShowTemplates(false);
+      setNotification({ type: 'success', message: 'Template loaded successfully' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to load template: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, []);
+
+  const saveWorkflow = useCallback(() => {
+    if (!workflowValidation?.isValid) {
+      setNotification({ type: 'error', message: 'Please fix workflow errors before saving' });
+      setTimeout(() => setNotification(null), 3000);
+      return;
+    }
+
+    try {
+      const workflowData = {
+        name: `Visual Workflow ${Date.now()}`,
+        description: 'Created with Visual Designer',
+        trigger: 'manual' as const,
+        enabled: true,
+        steps: visualNodes.map((node, index) => ({
+          id: node.id,
+          type: 'schema_validation' as const, // Map visual node types to workflow step types
+          name: node.data.label,
+          description: node.data.description || '',
+          config: node.data.config || {},
+          enabled: true,
+          order: index + 1
+        }))
+      };
+
+      const workflow = WorkflowAutomation.createWorkflow(workflowData);
+      setWorkflows(prev => [workflow, ...prev]);
+      closeVisualDesigner();
+      
+      setNotification({ type: 'success', message: 'Visual workflow saved successfully' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to save workflow: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, [workflowValidation, visualNodes, closeVisualDesigner]);
+
+  const executeVisualWorkflow = useCallback(async () => {
+    if (!workflowValidation?.isValid) {
+      setNotification({ type: 'error', message: 'Please fix workflow errors before executing' });
+      setTimeout(() => setNotification(null), 3000);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const execution = await visualWorkflowEngine.executeWorkflow('visual_workflow', {});
+      setVisualExecutions(prev => [execution, ...prev]);
+      
+      setNotification({ type: 'success', message: 'Visual workflow executed successfully' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to execute workflow: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [workflowValidation]);
+
+  const exportWorkflow = useCallback(() => {
+    try {
+      const workflowJson = visualWorkflowEngine.exportWorkflow();
+      const blob = new Blob([workflowJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `workflow_${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setNotification({ type: 'success', message: 'Workflow exported successfully' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to export workflow: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, []);
+
+  const importWorkflow = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        visualWorkflowEngine.importWorkflow(content);
+        const nodes = visualWorkflowEngine.getNodes();
+        const edges = visualWorkflowEngine.getEdges();
+        setVisualNodes(nodes);
+        setVisualEdges(edges);
+        validateWorkflow();
+        
+        setNotification({ type: 'success', message: 'Workflow imported successfully' });
+        setTimeout(() => setNotification(null), 3000);
+      } catch (error: any) {
+        setNotification({ type: 'error', message: `Failed to import workflow: ${error.message}` });
+        setTimeout(() => setNotification(null), 3000);
+      }
+    };
+    reader.readAsText(file);
+  }, [validateWorkflow]);
+
   return (
     <div className="flex flex-col h-full bg-gray-900">
       {/* Header */}
@@ -201,6 +407,13 @@ export function WorkflowManager({ schema }: WorkflowManagerProps) {
           <span className="text-sm text-gray-300">Automate database operations</span>
         </div>
         <div className="flex items-center space-x-2">
+          <button
+            onClick={openVisualDesigner}
+            className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+          >
+            <Palette className="w-4 h-4" />
+            <span>Visual Designer</span>
+          </button>
           <button
             onClick={() => setShowCreateForm(true)}
             className="flex items-center space-x-2 px-3 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
@@ -714,6 +927,345 @@ export function WorkflowManager({ schema }: WorkflowManagerProps) {
                 >
                   {isLoading ? 'Creating...' : 'Create Workflow'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Visual Workflow Designer Modal */}
+      {showVisualDesigner && (
+        <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${isDesignerFullscreen ? 'p-0' : 'p-4'}`}>
+          <div className={`bg-gray-900 rounded-lg shadow-xl ${isDesignerFullscreen ? 'w-full h-full rounded-none' : 'w-11/12 h-5/6'} flex flex-col`}>
+            {/* Designer Header */}
+            <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+              <div className="flex items-center space-x-4">
+                <h3 className="text-lg font-semibold text-white">Visual Workflow Designer</h3>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setShowTemplates(!showTemplates)}
+                    className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors"
+                  >
+                    Templates
+                  </button>
+                  <button
+                    onClick={() => setShowNodePalette(!showNodePalette)}
+                    className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors"
+                  >
+                    {showNodePalette ? 'Hide' : 'Show'} Palette
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={exportWorkflow}
+                  className="p-2 text-gray-400 hover:text-white transition-colors"
+                  title="Export Workflow"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={importWorkflow}
+                  className="hidden"
+                  id="import-workflow"
+                />
+                <label
+                  htmlFor="import-workflow"
+                  className="p-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                  title="Import Workflow"
+                >
+                  <Upload className="w-4 h-4" />
+                </label>
+                <button
+                  onClick={() => setIsDesignerFullscreen(!isDesignerFullscreen)}
+                  className="p-2 text-gray-400 hover:text-white transition-colors"
+                  title={isDesignerFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                >
+                  {isDesignerFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                </button>
+                <button
+                  onClick={closeVisualDesigner}
+                  className="p-2 text-gray-400 hover:text-white transition-colors"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Designer Content */}
+            <div className="flex-1 flex overflow-hidden">
+              {/* Node Palette */}
+              {showNodePalette && (
+                <div className="w-64 bg-gray-800 border-r border-gray-700 overflow-y-auto">
+                  <div className="p-4">
+                    <h4 className="text-white font-medium mb-3">Node Types</h4>
+                    <div className="space-y-2">
+                      {Array.from(visualWorkflowEngine.getNodeTypes().entries()).map(([type, nodeType]) => (
+                        <div
+                          key={type}
+                          className="p-3 bg-gray-700 rounded cursor-pointer hover:bg-gray-600 transition-colors"
+                          onClick={() => addNode(type, { x: 200, y: 200 })}
+                          title={nodeType.description}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <span className="text-lg">{nodeType.icon}</span>
+                            <div>
+                              <div className="text-white text-sm font-medium">{nodeType.label}</div>
+                              <div className="text-gray-400 text-xs">{nodeType.description}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Canvas Area */}
+              <div className="flex-1 relative bg-gray-900 overflow-hidden">
+                {/* Canvas */}
+                <div className="w-full h-full relative">
+                  {visualNodes.length === 0 ? (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <Palette className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                        <h4 className="text-lg font-medium text-white mb-2">Start Building Your Workflow</h4>
+                        <p className="text-gray-400 mb-4">Drag nodes from the palette or use templates to get started</p>
+                        <button
+                          onClick={() => setShowTemplates(true)}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                        >
+                          Browse Templates
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full h-full relative">
+                      {/* Render Nodes */}
+                      {visualNodes.map((node) => (
+                        <div
+                          key={node.id}
+                          className={`absolute cursor-move p-3 rounded-lg border-2 min-w-32 ${
+                            selectedNode?.id === node.id ? 'border-orange-500' : 'border-gray-600'
+                          }`}
+                          style={{
+                            left: node.position.x,
+                            top: node.position.y,
+                            backgroundColor: node.style?.backgroundColor || '#374151',
+                            color: node.style?.color || '#FFFFFF'
+                          }}
+                          onClick={() => setSelectedNode(node)}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const startX = e.clientX - node.position.x;
+                            const startY = e.clientY - node.position.y;
+                            
+                            const handleMouseMove = (e: MouseEvent) => {
+                              updateNodePosition(node.id, {
+                                x: e.clientX - startX,
+                                y: e.clientY - startY
+                              });
+                            };
+                            
+                            const handleMouseUp = () => {
+                              document.removeEventListener('mousemove', handleMouseMove);
+                              document.removeEventListener('mouseup', handleMouseUp);
+                            };
+                            
+                            document.addEventListener('mousemove', handleMouseMove);
+                            document.addEventListener('mouseup', handleMouseUp);
+                          }}
+                        >
+                          <div className="text-center">
+                            <div className="text-sm font-medium">{node.data.label}</div>
+                            {node.data.description && (
+                              <div className="text-xs opacity-75 mt-1">{node.data.description}</div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Render Edges */}
+                      <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                        {visualEdges.map((edge) => {
+                          const sourceNode = visualNodes.find(n => n.id === edge.source);
+                          const targetNode = visualNodes.find(n => n.id === edge.target);
+                          
+                          if (!sourceNode || !targetNode) return null;
+                          
+                          const x1 = sourceNode.position.x + 64; // Center of node
+                          const y1 = sourceNode.position.y + 32;
+                          const x2 = targetNode.position.x + 64;
+                          const y2 = targetNode.position.y + 32;
+                          
+                          return (
+                            <line
+                              key={edge.id}
+                              x1={x1}
+                              y1={y1}
+                              x2={x2}
+                              y2={y2}
+                              stroke={edge.style?.stroke || '#94A3B8'}
+                              strokeWidth={edge.style?.strokeWidth || 2}
+                              strokeDasharray={edge.style?.strokeDasharray}
+                              className={edge.animated ? 'animate-pulse' : ''}
+                            />
+                          );
+                        })}
+                      </svg>
+                    </div>
+                  )}
+                </div>
+
+                {/* Validation Panel */}
+                {workflowValidation && (
+                  <div className="absolute top-4 right-4 bg-gray-800 rounded-lg p-4 max-w-sm">
+                    <h5 className="text-white font-medium mb-2">Workflow Validation</h5>
+                    {workflowValidation.errors.length > 0 && (
+                      <div className="mb-2">
+                        <div className="text-red-400 text-sm font-medium">Errors:</div>
+                        {workflowValidation.errors.map((error, index) => (
+                          <div key={index} className="text-red-300 text-xs ml-2">• {error}</div>
+                        ))}
+                      </div>
+                    )}
+                    {workflowValidation.warnings.length > 0 && (
+                      <div>
+                        <div className="text-yellow-400 text-sm font-medium">Warnings:</div>
+                        {workflowValidation.warnings.map((warning, index) => (
+                          <div key={index} className="text-yellow-300 text-xs ml-2">• {warning}</div>
+                        ))}
+                      </div>
+                    )}
+                    {workflowValidation.isValid && workflowValidation.errors.length === 0 && (
+                      <div className="text-green-400 text-sm">✓ Workflow is valid</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Properties Panel */}
+              {selectedNode && (
+                <div className="w-80 bg-gray-800 border-l border-gray-700 overflow-y-auto">
+                  <div className="p-4">
+                    <h4 className="text-white font-medium mb-4">Node Properties</h4>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Label</label>
+                        <input
+                          type="text"
+                          value={selectedNode.data.label}
+                          onChange={(e) => updateNodeData(selectedNode.id, { label: e.target.value })}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                        <textarea
+                          value={selectedNode.data.description || ''}
+                          onChange={(e) => updateNodeData(selectedNode.id, { description: e.target.value })}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          rows={3}
+                        />
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => deleteNode(selectedNode.id)}
+                          className="flex-1 px-3 py-2 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition-colors"
+                        >
+                          Delete Node
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Designer Footer */}
+            <div className="flex items-center justify-between p-4 bg-gray-800 border-t border-gray-700">
+              <div className="flex items-center space-x-4">
+                <div className="text-sm text-gray-300">
+                  Nodes: {visualNodes.length} | Connections: {visualEdges.length}
+                </div>
+                {workflowValidation && (
+                  <div className={`text-sm ${workflowValidation.isValid ? 'text-green-400' : 'text-red-400'}`}>
+                    {workflowValidation.isValid ? '✓ Valid' : '✗ Invalid'}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={executeVisualWorkflow}
+                  disabled={!workflowValidation?.isValid || isLoading}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                >
+                  <Play className="w-4 h-4" />
+                  <span>{isLoading ? 'Executing...' : 'Execute'}</span>
+                </button>
+                <button
+                  onClick={saveWorkflow}
+                  disabled={!workflowValidation?.isValid}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Save Workflow</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Templates Modal */}
+      {showTemplates && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60">
+          <div className="bg-gray-900 rounded-lg shadow-xl w-4/5 h-4/5 flex flex-col">
+            <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+              <h3 className="text-lg font-semibold text-white">Workflow Templates</h3>
+              <button
+                onClick={() => setShowTemplates(false)}
+                className="p-2 text-gray-400 hover:text-white transition-colors"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {visualWorkflowEngine.getTemplates().map((template) => (
+                  <div key={template.id} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-white font-medium">{template.name}</h4>
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        template.complexity === 'simple' ? 'bg-green-600' :
+                        template.complexity === 'medium' ? 'bg-yellow-600' :
+                        'bg-red-600'
+                      } text-white`}>
+                        {template.complexity}
+                      </span>
+                    </div>
+                    <p className="text-gray-300 text-sm mb-3">{template.description}</p>
+                    <div className="flex items-center justify-between text-xs text-gray-400 mb-4">
+                      <span>{template.nodes.length} nodes</span>
+                      <span>~{template.estimatedTime} min</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {template.tags.map((tag) => (
+                        <span key={tag} className="px-2 py-1 bg-gray-700 text-gray-300 rounded text-xs">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => loadTemplate(template.id)}
+                      className="w-full px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    >
+                      Use Template
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

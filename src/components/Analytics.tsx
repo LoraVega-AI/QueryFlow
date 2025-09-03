@@ -8,7 +8,8 @@ import { DatabaseSchema, Table, QueryResult, PerformanceMetric, AuditLog } from 
 import { dbManager } from '@/utils/database';
 import { PerformanceMonitor } from '@/utils/performanceMonitor';
 import { AnalyticsEngine } from '@/utils/analyticsEngine';
-import { BarChart3, Database, Table as TableIcon, Users, TrendingUp, Activity, PieChart, Info, Monitor, AlertTriangle, CheckCircle, Clock, Zap, Settings, Eye, Download, Upload, Filter, Search, Calendar, Target, Layers, BarChart, LineChart, Map, Globe, Shield, Star, Bookmark, Share2, Maximize2, Minimize2, RotateCcw, Play, Pause, Square } from 'lucide-react';
+import { BarChart3, Database, Table as TableIcon, Users, TrendingUp, Activity, PieChart, Info, Monitor, AlertTriangle, CheckCircle, Clock, Zap, Settings, Eye, Download, Upload, Filter, Search, Calendar, Target, Layers, BarChart, LineChart, Map, Globe, Shield, Star, Bookmark, Share2, Maximize2, Minimize2, RotateCcw, Play, Pause, Square, Brain, Lightbulb, TrendingDown, AlertCircle, BarChart2, GitBranch } from 'lucide-react';
+import { mlEngine, MLInsight } from '@/utils/machineLearningEngine';
 
 interface AnalyticsProps {
   schema: DatabaseSchema | null;
@@ -42,12 +43,19 @@ export function Analytics({ schema }: AnalyticsProps) {
   const [queryMetrics, setQueryMetrics] = useState<QueryMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedMetric, setSelectedMetric] = useState<'overview' | 'tables' | 'performance' | 'schema' | 'monitoring' | 'dashboard' | 'insights' | 'kpis' | 'trends' | 'reports' | 'alerts'>('overview');
+  const [selectedMetric, setSelectedMetric] = useState<'overview' | 'tables' | 'performance' | 'schema' | 'monitoring' | 'dashboard' | 'insights' | 'ml_insights' | 'kpis' | 'trends' | 'reports' | 'alerts'>('overview');
   const [realTimeData, setRealTimeData] = useState<any>(null);
   const [performanceStats, setPerformanceStats] = useState<any>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [customDashboard, setCustomDashboard] = useState<any[]>([]);
+  
+  // Machine Learning state
+  const [mlInsights, setMlInsights] = useState<MLInsight[]>([]);
+  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
+  const [selectedInsightType, setSelectedInsightType] = useState<string>('all');
+  const [showMLPanel, setShowMLPanel] = useState(false);
+  const [mlData, setMlData] = useState<any[]>([]);
   
   // Advanced BI features state
   const [dataInsights, setDataInsights] = useState<any[]>([]);
@@ -870,6 +878,165 @@ export function Analytics({ schema }: AnalyticsProps) {
     }
   }, [schema, trendAnalyses, dataInsights, kpis, alerts]);
 
+  // Machine Learning functions
+  const generateMLInsights = useCallback(async () => {
+    if (!schema) return;
+    
+    setIsGeneratingInsights(true);
+    try {
+      // Initialize database and get data
+      await dbManager.initialize();
+      await dbManager.createTablesFromSchema(schema);
+      
+      const allData: any[] = [];
+      
+      // Collect data from all tables
+      for (const table of schema.tables) {
+        try {
+          const result = await dbManager.executeQuery(`SELECT * FROM "${table.name}"`);
+          if (result.rows.length > 0) {
+            const tableData = result.rows.map(row => {
+              const record: any = { _table: table.name };
+              result.columns.forEach((col, index) => {
+                record[col] = row[index];
+              });
+              return record;
+            });
+            allData.push(...tableData);
+          }
+        } catch (err) {
+          console.warn(`Could not fetch data from table ${table.name}:`, err);
+        }
+      }
+      
+      setMlData(allData);
+      
+      // Generate ML insights
+      const insights = mlEngine.generateInsights(allData, schema);
+      setMlInsights(insights);
+      
+      setNotification({ 
+        type: 'success', 
+        message: `Generated ${insights.length} ML insights from ${allData.length} data points` 
+      });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ 
+        type: 'error', 
+        message: `Failed to generate ML insights: ${error.message}` 
+      });
+      setTimeout(() => setNotification(null), 5000);
+    } finally {
+      setIsGeneratingInsights(false);
+    }
+  }, [schema]);
+
+  const predictiveAnalysis = useCallback(async (tableName: string, targetColumn: string) => {
+    if (!schema || !mlData.length) return;
+    
+    setIsGeneratingInsights(true);
+    try {
+      // Filter data for specific table
+      const tableData = mlData.filter(row => row._table === tableName);
+      if (tableData.length === 0) {
+        throw new Error(`No data found for table ${tableName}`);
+      }
+      
+      // Generate predictions specifically for this table/column
+      const predictions = mlEngine.generateInsights(tableData, schema)
+        .filter(insight => insight.type === 'prediction');
+      
+      setMlInsights(prev => [...predictions, ...prev.filter(i => i.type !== 'prediction')]);
+      
+      setNotification({ 
+        type: 'success', 
+        message: `Generated ${predictions.length} predictions for ${targetColumn}` 
+      });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ 
+        type: 'error', 
+        message: `Failed to generate predictions: ${error.message}` 
+      });
+      setTimeout(() => setNotification(null), 5000);
+    } finally {
+      setIsGeneratingInsights(false);
+    }
+  }, [schema, mlData]);
+
+  const detectAnomalies = useCallback(async (tableName?: string) => {
+    if (!schema || !mlData.length) return;
+    
+    setIsGeneratingInsights(true);
+    try {
+      const dataToAnalyze = tableName 
+        ? mlData.filter(row => row._table === tableName)
+        : mlData;
+        
+      if (dataToAnalyze.length === 0) {
+        throw new Error('No data available for anomaly detection');
+      }
+      
+      // Generate anomaly insights
+      const anomalies = mlEngine.generateInsights(dataToAnalyze, schema)
+        .filter(insight => insight.type === 'anomaly');
+      
+      setMlInsights(prev => [...anomalies, ...prev.filter(i => i.type !== 'anomaly')]);
+      
+      setNotification({ 
+        type: 'success', 
+        message: `Detected ${anomalies.length} anomalies in ${dataToAnalyze.length} data points` 
+      });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ 
+        type: 'error', 
+        message: `Failed to detect anomalies: ${error.message}` 
+      });
+      setTimeout(() => setNotification(null), 5000);
+    } finally {
+      setIsGeneratingInsights(false);
+    }
+  }, [schema, mlData]);
+
+  const performClusterAnalysis = useCallback(async (tableName: string) => {
+    if (!schema || !mlData.length) return;
+    
+    setIsGeneratingInsights(true);
+    try {
+      const tableData = mlData.filter(row => row._table === tableName);
+      if (tableData.length < 10) {
+        throw new Error('Insufficient data for cluster analysis (minimum 10 records required)');
+      }
+      
+      // Generate clustering insights
+      const clusters = mlEngine.generateInsights(tableData, schema)
+        .filter(insight => insight.type === 'clustering');
+      
+      setMlInsights(prev => [...clusters, ...prev.filter(i => i.type !== 'clustering')]);
+      
+      setNotification({ 
+        type: 'success', 
+        message: `Performed cluster analysis on ${tableData.length} records from ${tableName}` 
+      });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ 
+        type: 'error', 
+        message: `Failed to perform cluster analysis: ${error.message}` 
+      });
+      setTimeout(() => setNotification(null), 5000);
+    } finally {
+      setIsGeneratingInsights(false);
+    }
+  }, [schema, mlData]);
+
+  // Filter ML insights by type
+  const getFilteredInsights = useCallback(() => {
+    if (selectedInsightType === 'all') return mlInsights;
+    return mlInsights.filter(insight => insight.type === selectedInsightType);
+  }, [mlInsights, selectedInsightType]);
+
   // Load analytics data
   useEffect(() => {
     if (schema) {
@@ -1297,6 +1464,191 @@ export function Analytics({ schema }: AnalyticsProps) {
     </div>
   );
 
+  // Render ML Insights
+  const renderMLInsights = () => (
+    <div className="space-y-6">
+      <div className="bg-gray-800 rounded-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Machine Learning Insights</h3>
+          <div className="flex items-center space-x-3">
+            <select
+              value={selectedInsightType}
+              onChange={(e) => setSelectedInsightType(e.target.value)}
+              className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="all">All Insights</option>
+              <option value="prediction">Predictions</option>
+              <option value="anomaly">Anomalies</option>
+              <option value="pattern">Patterns</option>
+              <option value="trend">Trends</option>
+              <option value="classification">Classification</option>
+              <option value="clustering">Clustering</option>
+            </select>
+            <button
+              onClick={generateMLInsights}
+              disabled={isGeneratingInsights}
+              className={`px-4 py-2 rounded-md transition-colors flex items-center space-x-2 ${
+                isGeneratingInsights
+                  ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                  : 'bg-orange-600 text-white hover:bg-orange-700'
+              }`}
+            >
+              {isGeneratingInsights ? (
+                <Activity className="w-4 h-4 animate-spin" />
+              ) : (
+                <Brain className="w-4 h-4" />
+              )}
+              <span>{isGeneratingInsights ? 'Analyzing...' : 'Generate Insights'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ML Controls */}
+        <div className="mb-6 p-4 bg-gray-700 rounded-lg">
+          <h4 className="text-white font-medium mb-3">ML Analysis Tools</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <button
+              onClick={() => detectAnomalies()}
+              disabled={isGeneratingInsights || mlData.length === 0}
+              className="flex items-center space-x-2 px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+            >
+              <AlertCircle className="w-4 h-4" />
+              <span>Detect Anomalies</span>
+            </button>
+            <button
+              onClick={() => schema?.tables && schema.tables.length > 0 && performClusterAnalysis(schema.tables[0].name)}
+              disabled={isGeneratingInsights || mlData.length < 10}
+              className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+            >
+              <GitBranch className="w-4 h-4" />
+              <span>Cluster Analysis</span>
+            </button>
+            <button
+              onClick={() => schema?.tables && schema.tables.length > 0 && predictiveAnalysis(schema.tables[0].name, 'value')}
+              disabled={isGeneratingInsights || mlData.length < 5}
+              className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
+            >
+              <TrendingUp className="w-4 h-4" />
+              <span>Predictive Analysis</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ML Insights Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {getFilteredInsights().length === 0 ? (
+            <div className="col-span-2 text-center py-12">
+              <Brain className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+              <h4 className="text-lg font-medium text-white mb-2">No ML Insights Yet</h4>
+              <p className="text-gray-400 mb-4">
+                {mlData.length === 0 
+                  ? 'Click "Generate Insights" to analyze your data with machine learning'
+                  : `Ready to analyze ${mlData.length} data points`
+                }
+              </p>
+              {mlData.length > 0 && (
+                <button
+                  onClick={generateMLInsights}
+                  className="px-6 py-3 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+                >
+                  <Brain className="w-5 h-5 mr-2 inline" />
+                  Start ML Analysis
+                </button>
+              )}
+            </div>
+          ) : (
+            getFilteredInsights().map((insight) => (
+              <div key={insight.id} className="bg-gray-700 rounded-lg p-6 border-l-4 border-orange-500">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center space-x-2">
+                    {insight.type === 'prediction' && <TrendingUp className="w-5 h-5 text-blue-400" />}
+                    {insight.type === 'anomaly' && <AlertCircle className="w-5 h-5 text-red-400" />}
+                    {insight.type === 'pattern' && <BarChart2 className="w-5 h-5 text-green-400" />}
+                    {insight.type === 'trend' && <TrendingUp className="w-5 h-5 text-purple-400" />}
+                    {insight.type === 'classification' && <Target className="w-5 h-5 text-yellow-400" />}
+                    {insight.type === 'clustering' && <GitBranch className="w-5 h-5 text-pink-400" />}
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      insight.impact === 'critical' ? 'bg-red-600 text-white' :
+                      insight.impact === 'high' ? 'bg-orange-600 text-white' :
+                      insight.impact === 'medium' ? 'bg-yellow-600 text-white' :
+                      'bg-green-600 text-white'
+                    }`}>
+                      {insight.impact} impact
+                    </span>
+                  </div>
+                  <span className="text-xs text-gray-400">
+                    {(insight.confidence * 100).toFixed(0)}% confidence
+                  </span>
+                </div>
+                
+                <h4 className="text-lg font-semibold text-white mb-2">{insight.title}</h4>
+                <p className="text-gray-300 mb-4">{insight.description}</p>
+                
+                {insight.recommendations && insight.recommendations.length > 0 && (
+                  <div className="mb-4">
+                    <h5 className="text-sm font-medium text-white mb-2">Recommendations:</h5>
+                    <ul className="text-sm text-gray-300 space-y-1">
+                      {insight.recommendations.slice(0, 3).map((rec, index) => (
+                        <li key={index} className="flex items-start space-x-2">
+                          <span className="text-orange-400 mt-1">•</span>
+                          <span>{rec}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {insight.visualizations && insight.visualizations.length > 0 && (
+                  <div className="mt-4 p-3 bg-gray-800 rounded">
+                    <div className="flex items-center space-x-2 text-sm text-gray-400">
+                      <BarChart className="w-4 h-4" />
+                      <span>Visualization available</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 flex items-center justify-between text-xs text-gray-400">
+                  <span>Type: {insight.type}</span>
+                  <span>{new Date(insight.timestamp).toLocaleString()}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* ML Statistics */}
+        {mlInsights.length > 0 && (
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-gray-700 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-white">
+                {mlInsights.filter(i => i.type === 'prediction').length}
+              </div>
+              <div className="text-sm text-gray-400">Predictions</div>
+            </div>
+            <div className="bg-gray-700 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-white">
+                {mlInsights.filter(i => i.type === 'anomaly').length}
+              </div>
+              <div className="text-sm text-gray-400">Anomalies</div>
+            </div>
+            <div className="bg-gray-700 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-white">
+                {mlInsights.filter(i => i.type === 'pattern').length}
+              </div>
+              <div className="text-sm text-gray-400">Patterns</div>
+            </div>
+            <div className="bg-gray-700 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-white">
+                {mlInsights.filter(i => i.impact === 'high' || i.impact === 'critical').length}
+              </div>
+              <div className="text-sm text-gray-400">High Impact</div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   // Render KPIs
   const renderKPIs = () => (
     <div className="space-y-6">
@@ -1581,6 +1933,17 @@ export function Analytics({ schema }: AnalyticsProps) {
             Insights
           </button>
           <button
+            onClick={() => setSelectedMetric('ml_insights')}
+            className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              selectedMetric === 'ml_insights'
+                ? 'bg-orange-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            <Brain className="w-4 h-4 mr-1 inline" />
+            ML Insights
+          </button>
+          <button
             onClick={() => setSelectedMetric('kpis')}
             className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
               selectedMetric === 'kpis'
@@ -1665,6 +2028,7 @@ export function Analytics({ schema }: AnalyticsProps) {
             {selectedMetric === 'monitoring' && renderRealTimeMonitoring()}
             {selectedMetric === 'dashboard' && renderCustomDashboard()}
             {selectedMetric === 'insights' && renderDataInsights()}
+            {selectedMetric === 'ml_insights' && renderMLInsights()}
             {selectedMetric === 'kpis' && renderKPIs()}
             {selectedMetric === 'trends' && renderTrendAnalysis()}
             {selectedMetric === 'reports' && renderReports()}

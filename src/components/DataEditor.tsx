@@ -8,7 +8,8 @@ import { DatabaseSchema, Table, DatabaseRecord, QueryResult, QueryError, BulkOpe
 import { dbManager } from '@/utils/database';
 import { BulkOperationsManager } from '@/utils/bulkOperations';
 import { DataManagementManager } from '@/utils/dataManagement';
-import { Plus, Edit, Trash2, Save, X, RefreshCw, Upload, Download, FileText, AlertTriangle, CheckCircle, Filter, BarChart3, Settings, Eye, Database, TrendingUp, Shield, History, Zap } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X, RefreshCw, Upload, Download, FileText, AlertTriangle, CheckCircle, Filter, BarChart3, Settings, Eye, Database, TrendingUp, Shield, History, Zap, Wifi, WifiOff, Users, Activity, Clock } from 'lucide-react';
+import { realtimeDataStream, DataStreamEvent, UserActivity } from '@/utils/realtimeDataStream';
 
 interface DataEditorProps {
   schema: DatabaseSchema | null;
@@ -46,6 +47,19 @@ export function DataEditor({ schema }: DataEditorProps) {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [dataTransformations, setDataTransformations] = useState<any[]>([]);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  
+  // Real-time streaming state
+  const [isRealtimeEnabled, setIsRealtimeEnabled] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
+  const [activeUsers, setActiveUsers] = useState<UserActivity[]>([]);
+  const [realtimeUpdates, setRealtimeUpdates] = useState<DataStreamEvent[]>([]);
+  const [showRealtimePanel, setShowRealtimePanel] = useState(false);
+
+  // Notification helper function
+  const showNotification = useCallback((type: 'success' | 'error', message: string) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), type === 'success' ? 3000 : 5000);
+  }, []);
 
   // Load records when table is selected
   const loadRecords = useCallback(async () => {
@@ -80,6 +94,88 @@ export function DataEditor({ schema }: DataEditorProps) {
       setIsLoading(false);
     }
   }, [selectedTable, schema]);
+
+  // Real-time streaming functions
+  const enableRealtimeStreaming = useCallback(async () => {
+    try {
+      setConnectionStatus('connecting');
+      await realtimeDataStream.connect();
+      setIsRealtimeEnabled(true);
+      setConnectionStatus('connected');
+      
+      // Subscribe to current table updates
+      if (selectedTable) {
+        realtimeDataStream.subscribeToTable(selectedTable.name);
+      }
+      
+      // Set up event listeners
+      realtimeDataStream.on('data_update', handleRealtimeDataUpdate);
+      realtimeDataStream.on('user_activity', handleUserActivity);
+      realtimeDataStream.on('connection_status', handleConnectionStatus);
+      realtimeDataStream.on('error', handleRealtimeError);
+      
+      // Start simulating updates for demo
+      realtimeDataStream.simulateDataUpdates(selectedTable?.name || 'default', 3000);
+      
+      showNotification('success', 'Real-time streaming enabled');
+    } catch (error) {
+      setConnectionStatus('disconnected');
+      showNotification('error', 'Failed to connect to real-time stream');
+    }
+  }, [selectedTable, showNotification]);
+
+  const disableRealtimeStreaming = useCallback(() => {
+    realtimeDataStream.disconnect();
+    setIsRealtimeEnabled(false);
+    setConnectionStatus('disconnected');
+    setActiveUsers([]);
+    setRealtimeUpdates([]);
+    showNotification('success', 'Real-time streaming disabled');
+  }, [showNotification]);
+
+  const handleRealtimeDataUpdate = useCallback((event: DataStreamEvent) => {
+    if (event.tableName === selectedTable?.name) {
+      setRealtimeUpdates(prev => [event, ...prev.slice(0, 9)]); // Keep last 10 updates
+      
+      // Refresh records if it's an update to current table
+      if (event.operation && ['insert', 'update', 'delete'].includes(event.operation)) {
+        loadRecords();
+      }
+    }
+  }, [selectedTable, loadRecords]);
+
+  const handleUserActivity = useCallback((event: DataStreamEvent) => {
+    if (event.tableName === selectedTable?.name) {
+      const activity: UserActivity = {
+        userId: event.userId || '',
+        userName: event.userName || 'Unknown',
+        tableName: event.tableName || '',
+        operation: event.operation || 'view',
+        recordId: event.recordId,
+        timestamp: event.timestamp,
+        cursor: event.data?.cursor
+      };
+      
+      setActiveUsers(prev => {
+        const updated = prev.filter(user => user.userId !== activity.userId);
+        return [activity, ...updated].slice(0, 5); // Keep last 5 users
+      });
+    }
+  }, [selectedTable]);
+
+  const handleConnectionStatus = useCallback((event: DataStreamEvent) => {
+    setConnectionStatus(event.message?.includes('Connected') ? 'connected' : 'disconnected');
+  }, []);
+
+  const handleRealtimeError = useCallback((event: DataStreamEvent) => {
+    showNotification('error', event.message || 'Real-time streaming error');
+  }, [showNotification]);
+
+  const sendUserActivity = useCallback((operation: string, recordId?: string) => {
+    if (isRealtimeEnabled && selectedTable) {
+      realtimeDataStream.sendUserActivity(selectedTable.name, operation, recordId);
+    }
+  }, [isRealtimeEnabled, selectedTable]);
 
   // Load bulk operations
   const loadBulkOperations = useCallback(() => {
@@ -466,6 +562,12 @@ export function DataEditor({ schema }: DataEditorProps) {
         editingRecord.data
       );
 
+      // Send user activity for real-time collaboration
+      sendUserActivity(
+        editingRecord.isNew ? 'insert' : 'update',
+        editingRecord.id || 'new_record'
+      );
+
       // Reload records
       await loadRecords();
       setShowAddForm(false);
@@ -503,6 +605,9 @@ export function DataEditor({ schema }: DataEditorProps) {
 
       // Log audit event
       logAuditEvent('delete', record.id, record.data, undefined);
+
+      // Send user activity for real-time collaboration
+      sendUserActivity('delete', record.id);
 
       // Reload records
       await loadRecords();
@@ -1154,6 +1259,35 @@ export function DataEditor({ schema }: DataEditorProps) {
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
                 <span>Refresh</span>
               </button>
+              <button
+                onClick={isRealtimeEnabled ? disableRealtimeStreaming : enableRealtimeStreaming}
+                className={`flex items-center space-x-2 px-3 py-2 rounded-md transition-colors ${
+                  isRealtimeEnabled 
+                    ? 'bg-green-600 text-white hover:bg-green-700' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {connectionStatus === 'connected' ? (
+                  <Wifi className="w-4 h-4" />
+                ) : connectionStatus === 'connecting' ? (
+                  <Activity className="w-4 h-4 animate-pulse" />
+                ) : (
+                  <WifiOff className="w-4 h-4" />
+                )}
+                <span>{isRealtimeEnabled ? 'Disable' : 'Enable'} Real-time</span>
+              </button>
+              <button
+                onClick={() => setShowRealtimePanel(!showRealtimePanel)}
+                className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+              >
+                <Users className="w-4 h-4" />
+                <span>Live Activity</span>
+                {activeUsers.length > 0 && (
+                  <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
+                    {activeUsers.length}
+                  </span>
+                )}
+              </button>
             </>
           )}
         </div>
@@ -1531,6 +1665,98 @@ export function DataEditor({ schema }: DataEditorProps) {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Real-time Activity Panel */}
+      {showRealtimePanel && (
+        <div className="fixed top-4 right-4 bg-gray-800 rounded-lg p-4 w-80 z-40 max-h-96 overflow-y-auto">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-white font-semibold">Live Activity</h4>
+            <button
+              onClick={() => setShowRealtimePanel(false)}
+              className="text-gray-400 hover:text-white"
+            >
+              ×
+            </button>
+          </div>
+          
+          {/* Connection Status */}
+          <div className="mb-4 p-3 rounded-lg bg-gray-700">
+            <div className="flex items-center space-x-2 mb-2">
+              {connectionStatus === 'connected' ? (
+                <Wifi className="w-4 h-4 text-green-400" />
+              ) : connectionStatus === 'connecting' ? (
+                <Activity className="w-4 h-4 text-yellow-400 animate-pulse" />
+              ) : (
+                <WifiOff className="w-4 h-4 text-red-400" />
+              )}
+              <span className="text-white font-medium">
+                {connectionStatus === 'connected' ? 'Connected' : 
+                 connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+              </span>
+            </div>
+            <div className="text-sm text-gray-400">
+              Real-time streaming {isRealtimeEnabled ? 'enabled' : 'disabled'}
+            </div>
+          </div>
+
+          {/* Active Users */}
+          {activeUsers.length > 0 && (
+            <div className="mb-4">
+              <h5 className="text-white font-medium mb-2">Active Users</h5>
+              <div className="space-y-2">
+                {activeUsers.map((user) => (
+                  <div key={user.userId} className="flex items-center space-x-3 p-2 bg-gray-700 rounded">
+                    <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                    <div className="flex-1">
+                      <div className="text-white text-sm">{user.userName}</div>
+                      <div className="text-gray-400 text-xs">
+                        {user.operation} on {user.tableName}
+                      </div>
+                    </div>
+                    <div className="text-gray-400 text-xs">
+                      <Clock className="w-3 h-3 inline mr-1" />
+                      {new Date(user.timestamp).toLocaleTimeString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent Updates */}
+          {realtimeUpdates.length > 0 && (
+            <div>
+              <h5 className="text-white font-medium mb-2">Recent Updates</h5>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {realtimeUpdates.map((update, index) => (
+                  <div key={index} className="p-2 bg-gray-700 rounded text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white">
+                        {update.operation} on {update.tableName}
+                      </span>
+                      <span className="text-gray-400 text-xs">
+                        {new Date(update.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    {update.recordId && (
+                      <div className="text-gray-400 text-xs mt-1">
+                        Record: {update.recordId}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeUsers.length === 0 && realtimeUpdates.length === 0 && (
+            <div className="text-center py-4">
+              <Activity className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+              <div className="text-gray-400 text-sm">No live activity</div>
+            </div>
+          )}
         </div>
       )}
 
