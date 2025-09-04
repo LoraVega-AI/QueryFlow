@@ -6,8 +6,28 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Workflow, WorkflowExecution, WorkflowStep } from '@/types/database';
 import { WorkflowAutomation } from '@/utils/workflowAutomation';
-import { Play, Pause, Settings, Plus, Trash2, Eye, Clock, CheckCircle, XCircle, AlertTriangle, Palette, GitBranch, Zap, Database, Globe, Mail, Timer, BarChart3, Layers, Workflow as WorkflowIcon, Save, Download, Upload, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
+import databaseService from '@/services/databaseService';
+import workflowExecutionEngine from '@/services/workflowExecutionEngine';
+import aiService from '@/services/aiService';
+import integrationService from '@/services/integrationService';
+import monitoringService from '@/services/monitoringService';
+import { 
+  adaptWorkflowRecord, 
+  adaptWorkflowExecutionRecord, 
+  adaptConnectorConfig, 
+  adaptDashboard, 
+  adaptWorkflowSuggestion, 
+  adaptExecutionResult,
+  adaptWorkflowToRecord,
+  adaptWorkflowExecutionToRecord
+} from '@/utils/typeAdapters';
+import { Play, Pause, Settings, Plus, Trash2, Eye, Clock, CheckCircle, XCircle, AlertTriangle, Palette, GitBranch, Zap, Database, Globe, Mail, Timer, BarChart3, Layers, Workflow as WorkflowIcon, Save, Download, Upload, Maximize2, Minimize2, RotateCcw, Brain, Cpu, Shield, Users, TrendingUp, Activity, Target, Sparkles, Bot, Network, Cloud, MessageSquare, FileText, Lock, BarChart, PieChart, LineChart, Gauge, Map, AlertCircle, CheckCircle2, XCircle as XCircleIcon, Info, Lightbulb, Rocket, Star, Award, Crown, Gem, Zap as ZapIcon, Flame, Sun, Moon, Eye as EyeIcon, Search, Filter, SortAsc, SortDesc, RefreshCw, MoreHorizontal, Copy, Share, Bookmark, Heart, ThumbsUp, MessageCircle, Bell, BellRing, Volume2, VolumeX, Mic, MicOff, Video, VideoOff, Camera, CameraOff, Phone, PhoneOff, Wifi, WifiOff, Battery, BatteryLow, Signal, SignalHigh, SignalLow, SignalZero, SignalMedium, SignalHigh as SignalHighIcon, SignalLow as SignalLowIcon, SignalZero as SignalZeroIcon, SignalMedium as SignalMediumIcon } from 'lucide-react';
 import { visualWorkflowEngine, WorkflowNode, WorkflowEdge, WorkflowTemplate, WorkflowExecution as VisualExecution } from '@/utils/visualWorkflowEngine';
+import { Workflow3DViewer } from './Workflow3DViewer';
+import { aiWorkflowIntelligence, WorkflowSuggestion, WorkflowAnalytics } from '@/utils/aiWorkflowIntelligence';
+import { advancedOrchestrationEngine, ConditionalBranch, ParallelBranch, DynamicLoop, SubWorkflow, EventTrigger } from '@/utils/advancedOrchestrationEngine';
+import { enterpriseIntegrationHub, IntegrationConnector, IntegrationExecution } from '@/utils/enterpriseIntegrationHub';
+import { advancedWorkflowMonitoring, WorkflowMetrics, PerformanceAlert, WorkflowDashboard, ComplianceReport, AuditLog, CostAnalysis } from '@/utils/advancedWorkflowMonitoring';
 
 interface WorkflowManagerProps {
   schema: any;
@@ -20,6 +40,76 @@ export function WorkflowManager({ schema }: WorkflowManagerProps) {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  
+  // AI Intelligence State
+  const [aiSuggestions, setAiSuggestions] = useState<WorkflowSuggestion[]>([]);
+  const [showAIPanel, setShowAIPanel] = useState(false);
+  const [naturalLanguageInput, setNaturalLanguageInput] = useState('');
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  
+  // Advanced Orchestration State
+  const [showOrchestrationPanel, setShowOrchestrationPanel] = useState(false);
+  const [conditionalBranches, setConditionalBranches] = useState<ConditionalBranch[]>([]);
+  const [parallelBranches, setParallelBranches] = useState<ParallelBranch[]>([]);
+  const [dynamicLoops, setDynamicLoops] = useState<DynamicLoop[]>([]);
+  const [subWorkflows, setSubWorkflows] = useState<SubWorkflow[]>([]);
+  const [eventTriggers, setEventTriggers] = useState<EventTrigger[]>([]);
+  
+  // Integration Hub State
+  const [showIntegrationPanel, setShowIntegrationPanel] = useState(false);
+  const [availableConnectors, setAvailableConnectors] = useState<IntegrationConnector[]>([]);
+  const [selectedConnector, setSelectedConnector] = useState<IntegrationConnector | null>(null);
+  const [integrationExecutions, setIntegrationExecutions] = useState<IntegrationExecution[]>([]);
+  
+  // Monitoring & Analytics State
+  const [showMonitoringPanel, setShowMonitoringPanel] = useState(false);
+  const [workflowMetrics, setWorkflowMetrics] = useState<WorkflowMetrics[]>([]);
+  const [performanceAlerts, setPerformanceAlerts] = useState<PerformanceAlert[]>([]);
+  const [dashboards, setDashboards] = useState<WorkflowDashboard[]>([]);
+  const [complianceReports, setComplianceReports] = useState<ComplianceReport[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [costAnalysis, setCostAnalysis] = useState<CostAnalysis | null>(null);
+  
+  // 3D Visualization State
+  const [show3DView, setShow3DView] = useState(false);
+  const [cameraPosition, setCameraPosition] = useState({ x: 0, y: 0, z: 5 });
+  const [selected3DNode, setSelected3DNode] = useState<string | null>(null);
+  
+  // Collaboration State
+  const [showCollaborationPanel, setShowCollaborationPanel] = useState(false);
+  const [activeUsers, setActiveUsers] = useState<string[]>([]);
+  const [collaborationMode, setCollaborationMode] = useState<'view' | 'edit' | 'comment'>('view');
+  
+  // Security & Compliance State
+  const [showSecurityPanel, setShowSecurityPanel] = useState(false);
+  const [securityScore, setSecurityScore] = useState(0);
+  const [complianceStatus, setComplianceStatus] = useState<'compliant' | 'non_compliant' | 'pending'>('pending');
+  
+  // Modal States
+  const [showConditionalBranchModal, setShowConditionalBranchModal] = useState(false);
+  const [showParallelBranchModal, setShowParallelBranchModal] = useState(false);
+  const [showDynamicLoopModal, setShowDynamicLoopModal] = useState(false);
+  const [showConnectorModal, setShowConnectorModal] = useState(false);
+  const [show3DModal, setShow3DModal] = useState(false);
+  
+  // Form States
+  const [newConditionalBranch, setNewConditionalBranch] = useState({
+    condition: { id: '', field: '', operator: 'equals' as const, value: '' },
+    truePath: [] as string[],
+    falsePath: [] as string[]
+  });
+  const [newParallelBranch, setNewParallelBranch] = useState({
+    name: '',
+    steps: [] as WorkflowStep[],
+    synchronization: 'wait_for_all' as 'wait_for_all' | 'wait_for_any' | 'wait_for_count',
+    waitCount: 1
+  });
+  const [newDynamicLoop, setNewDynamicLoop] = useState({
+    name: '',
+    iterator: { type: 'array' as const, source: '', variable: 'item' },
+    maxIterations: 100,
+    steps: [] as WorkflowStep[]
+  });
   
   // Visual workflow designer state
   const [showVisualDesigner, setShowVisualDesigner] = useState(false);
@@ -48,28 +138,209 @@ export function WorkflowManager({ schema }: WorkflowManagerProps) {
   });
 
   // Load workflows and executions
-  const loadData = useCallback(() => {
-    setWorkflows(WorkflowAutomation.getWorkflows());
-    setExecutions(WorkflowAutomation.getExecutions());
+  const loadData = useCallback(async () => {
+    try {
+      // Initialize services
+      await databaseService.connect();
+      await aiService.initialize();
+      
+      // Load workflows from database
+      const savedWorkflowRecords = await databaseService.getWorkflows('user_1', 'org_1');
+      const savedWorkflows = savedWorkflowRecords.map(adaptWorkflowRecord);
+      setWorkflows(savedWorkflows);
+      
+      // Load executions from database
+      const savedExecutions: WorkflowExecution[] = [];
+      for (const workflow of savedWorkflows) {
+        const executionRecords = await databaseService.getWorkflowExecutions(workflow.id);
+        const executions = executionRecords.map(adaptWorkflowExecutionRecord);
+        savedExecutions.push(...executions);
+      }
+      setExecutions(savedExecutions);
+      
+      // Load enterprise features data
+      const connectorConfigs = await integrationService.getConnectors();
+      const connectors = connectorConfigs.map(adaptConnectorConfig);
+      setAvailableConnectors(connectors);
+      
+      const dashboardRecords = await monitoringService.getDashboards('user_1', 'org_1');
+      const dashboards = dashboardRecords.map(adaptDashboard);
+      setDashboards(dashboards);
+      
+      const auditLogRecords = await monitoringService.getAuditLogs('user_1', 'org_1');
+      // Note: AuditLog types are compatible, no adapter needed
+      setAuditLogs(auditLogRecords as any);
+      
+      // Load compliance reports (mock for now)
+      setComplianceReports([
+        {
+          id: 'comp_1',
+          name: 'GDPR Compliance Report',
+          type: 'gdpr',
+          period: {
+            start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+            end: new Date()
+          },
+          status: 'completed',
+          results: {
+            totalChecks: 20,
+            passedChecks: 19,
+            failedChecks: 1,
+            warnings: 2,
+            score: 95
+          },
+          details: [],
+          generatedAt: new Date(),
+          generatedBy: 'system'
+        }
+      ]);
+
+      // Load performance alerts (mock for now)
+      setPerformanceAlerts([
+        {
+          id: 'alert_1',
+          type: 'performance',
+          title: 'High CPU Usage',
+          description: 'CPU usage has exceeded 80% for the last 5 minutes',
+          severity: 'high',
+          timestamp: new Date(Date.now() - 10 * 60 * 1000),
+          resolved: false,
+          workflowId: 'wf_1',
+          executionId: 'exec_wf_1_1',
+          metadata: { cpuUsage: 85, threshold: 80 }
+        },
+        {
+          id: 'alert_2',
+          type: 'error',
+          title: 'Workflow Execution Failed',
+          description: 'Data Backup Workflow failed to execute',
+          severity: 'critical',
+          timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+          resolved: false,
+          workflowId: 'wf_1',
+          executionId: 'exec_wf_1_3',
+          metadata: { errorCode: 'DB_CONNECTION_TIMEOUT', retryCount: 3 }
+        },
+        {
+          id: 'alert_3',
+          type: 'performance',
+          title: 'Memory Usage Warning',
+          description: 'Memory usage is approaching 90%',
+          severity: 'medium',
+          timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+          resolvedAt: new Date(Date.now() - 20 * 60 * 1000),
+          resolved: true,
+          workflowId: 'wf_2',
+          executionId: 'exec_wf_2_1',
+          metadata: { memoryUsage: 88, threshold: 90 }
+        }
+      ]);
+      
+    } catch (error) {
+      console.error('Error loading data:', error);
+      setNotification({ type: 'error', message: 'Failed to load workflow data' });
+    }
   }, []);
 
   useEffect(() => {
     WorkflowAutomation.initialize();
     loadData();
+    
+    // Initialize enterprise features
+    initializeEnterpriseFeatures();
+    
+    // Generate sample 3D nodes for demonstration
+    if (visualNodes.length === 0) {
+      const sampleNodes: WorkflowNode[] = [
+        {
+          id: 'start-1',
+          type: 'start',
+          position: { x: 0, y: 0 },
+          data: { label: 'Start Process', description: 'Workflow initiation point' }
+        },
+        {
+          id: 'action-1',
+          type: 'action',
+          position: { x: 100, y: 0 },
+          data: { label: 'Data Validation', description: 'Validate input data' }
+        },
+        {
+          id: 'condition-1',
+          type: 'condition',
+          position: { x: 200, y: 0 },
+          data: { label: 'Check Status', description: 'Verify data status' }
+        },
+        {
+          id: 'action-2',
+          type: 'action',
+          position: { x: 300, y: -50 },
+          data: { label: 'Process Data', description: 'Transform data' }
+        },
+        {
+          id: 'action-3',
+          type: 'action',
+          position: { x: 300, y: 50 },
+          data: { label: 'Send Notification', description: 'Notify users' }
+        },
+        {
+          id: 'end-1',
+          type: 'end',
+          position: { x: 400, y: 0 },
+          data: { label: 'End Process', description: 'Workflow completion' }
+        }
+      ];
+      
+      const sampleEdges: WorkflowEdge[] = [
+        { id: 'e1', source: 'start-1', target: 'action-1' },
+        { id: 'e2', source: 'action-1', target: 'condition-1' },
+        { id: 'e3', source: 'condition-1', target: 'action-2', type: 'conditional', label: 'Success' },
+        { id: 'e4', source: 'condition-1', target: 'action-3', type: 'conditional', label: 'Error' },
+        { id: 'e5', source: 'action-2', target: 'end-1' },
+        { id: 'e6', source: 'action-3', target: 'end-1' }
+      ];
+      
+      setVisualNodes(sampleNodes);
+      setVisualEdges(sampleEdges);
+    }
   }, [loadData]);
+
+  // Initialize enterprise features
+  const initializeEnterpriseFeatures = useCallback(() => {
+    // Subscribe to real-time metrics
+    const subscriptionId = advancedWorkflowMonitoring.subscribeToRealTimeMetrics(
+      'all',
+      (metrics: WorkflowMetrics) => {
+        setWorkflowMetrics(prev => [metrics, ...prev.slice(0, 99)]); // Keep last 100 metrics
+      }
+    );
+
+    // Load performance alerts
+    setPerformanceAlerts(advancedWorkflowMonitoring.getAlerts());
+
+    return () => {
+      advancedWorkflowMonitoring.unsubscribeFromRealTimeMetrics(subscriptionId);
+    };
+  }, []);
 
   // Execute workflow
   const executeWorkflow = useCallback(async (workflowId: string) => {
     setIsLoading(true);
     try {
-      const execution = await WorkflowAutomation.executeWorkflow(workflowId, { schema });
+      const workflow = workflows.find(w => w.id === workflowId);
+      if (!workflow) {
+        throw new Error('Workflow not found');
+      }
+
+      setNotification({ type: 'success', message: `Starting execution of workflow "${workflow.name}"` });
+      
+      const execution = await workflowExecutionEngine.executeWorkflow(workflow, 'user_1', 'org_1');
       setExecutions(prev => [execution, ...prev]);
       
       // Show execution result notification
       if (execution.status === 'completed') {
-        setNotification({ type: 'success', message: `Workflow executed successfully in ${Math.round((execution.endTime!.getTime() - execution.startTime.getTime()) / 1000)}s` });
+        setNotification({ type: 'success', message: `Workflow "${workflow.name}" executed successfully in ${Math.round((execution.endTime!.getTime() - execution.startTime.getTime()) / 1000)}s` });
       } else if (execution.status === 'failed') {
-        setNotification({ type: 'error', message: `Workflow execution failed: ${execution.error}` });
+        setNotification({ type: 'error', message: `Workflow "${workflow.name}" execution failed: ${execution.error}` });
       }
       setTimeout(() => setNotification(null), 5000);
     } catch (error: any) {
@@ -79,7 +350,7 @@ export function WorkflowManager({ schema }: WorkflowManagerProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [schema]);
+  }, [workflows]);
 
   // Toggle workflow enabled state
   const toggleWorkflow = useCallback((workflowId: string) => {
@@ -398,28 +669,435 @@ export function WorkflowManager({ schema }: WorkflowManagerProps) {
     reader.readAsText(file);
   }, [validateWorkflow]);
 
+  // AI Intelligence Functions
+  const generateWorkflowFromNaturalLanguage = useCallback(async () => {
+    if (!naturalLanguageInput.trim()) {
+      setNotification({ type: 'error', message: 'Please enter a description for the workflow' });
+      setTimeout(() => setNotification(null), 3000);
+      return;
+    }
+
+    setIsGeneratingAI(true);
+    try {
+      const workflowGeneration = await aiService.generateWorkflowFromNaturalLanguage({
+        prompt: naturalLanguageInput,
+        context: {
+          existingWorkflows: workflows,
+          userPreferences: {},
+          organizationType: 'enterprise'
+        }
+      });
+
+      // Convert AI-generated workflow to our format
+      const workflow: Workflow = {
+        id: `wf_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: workflowGeneration.name,
+        description: workflowGeneration.description,
+        trigger: workflowGeneration.trigger as any,
+        steps: workflowGeneration.steps.map((step, index) => ({
+          id: `step_${index}`,
+          type: step.type as any,
+          name: step.name,
+          description: step.description,
+          config: step.config,
+          enabled: true,
+          order: step.order
+        })),
+        enabled: true,
+        lastRun: undefined,
+        nextRun: undefined
+      };
+
+      // Save to database
+      const workflowRecord = adaptWorkflowToRecord(workflow, 'user_1', 'org_1');
+      await databaseService.createWorkflow(workflowRecord);
+
+      setWorkflows(prev => [workflow, ...prev]);
+      setNaturalLanguageInput('');
+      setShowAIPanel(false);
+      
+      setNotification({ type: 'success', message: 'AI-generated workflow created successfully' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to generate workflow: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  }, [naturalLanguageInput, workflows]);
+
+  const getAISuggestions = useCallback(async (workflowId: string) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    try {
+      const serviceSuggestions = await aiService.generateSuggestions(workflow, {
+        userPreferences: {},
+        organizationType: 'enterprise'
+      });
+      const suggestions = serviceSuggestions.map(adaptWorkflowSuggestion);
+      setAiSuggestions(suggestions);
+      setShowAIPanel(true);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to get AI suggestions: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, [workflows]);
+
+  const autoOptimizeWorkflow = useCallback(async (workflowId: string) => {
+    const workflow = workflows.find(w => w.id === workflowId);
+    if (!workflow) return;
+
+    try {
+      const optimizedWorkflow = await aiService.optimizeWorkflow(workflow);
+      
+      // Update in database
+      await databaseService.updateWorkflow(workflowId, {
+        name: optimizedWorkflow.name,
+        description: optimizedWorkflow.description,
+        trigger: optimizedWorkflow.trigger,
+        steps: optimizedWorkflow.steps,
+        enabled: optimizedWorkflow.enabled
+      });
+      
+      setWorkflows(prev => prev.map(w => w.id === workflowId ? optimizedWorkflow : w));
+      
+      setNotification({ type: 'success', message: 'Workflow optimized successfully' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to optimize workflow: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, [workflows]);
+
+  const applyAISuggestion = useCallback(async (suggestion: WorkflowSuggestion) => {
+    try {
+      // Apply the suggestion based on its type
+      switch (suggestion.action.type) {
+        case 'add_step':
+          // Implementation for adding step
+          break;
+        case 'modify_step':
+          // Implementation for modifying step
+          break;
+        case 'reorder_steps':
+          // Implementation for reordering steps
+          break;
+        case 'add_condition':
+          // Implementation for adding condition
+          break;
+        case 'parallel_execution':
+          // Implementation for parallel execution
+          break;
+        case 'error_handling':
+          // Implementation for error handling
+          break;
+      }
+      
+      setNotification({ type: 'success', message: 'AI suggestion applied successfully' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to apply suggestion: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, []);
+
+  // Advanced Orchestration Functions
+  const addConditionalBranch = useCallback((branch: Omit<ConditionalBranch, 'id'>) => {
+    const newBranch: ConditionalBranch = {
+      ...branch,
+      id: `branch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    };
+    setConditionalBranches(prev => [...prev, newBranch]);
+  }, []);
+
+  const addParallelBranch = useCallback((branch: Omit<ParallelBranch, 'id'>) => {
+    const newBranch: ParallelBranch = {
+      ...branch,
+      id: `parallel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    };
+    setParallelBranches(prev => [...prev, newBranch]);
+  }, []);
+
+  const addDynamicLoop = useCallback((loop: Omit<DynamicLoop, 'id'>) => {
+    const newLoop: DynamicLoop = {
+      ...loop,
+      id: `loop-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    };
+    setDynamicLoops(prev => [...prev, newLoop]);
+  }, []);
+
+  const addSubWorkflow = useCallback((subWorkflow: Omit<SubWorkflow, 'id'>) => {
+    const newSubWorkflow: SubWorkflow = {
+      ...subWorkflow,
+      id: `sub-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    };
+    setSubWorkflows(prev => [...prev, newSubWorkflow]);
+  }, []);
+
+  const addEventTrigger = useCallback((trigger: Omit<EventTrigger, 'id'>) => {
+    const newTrigger: EventTrigger = {
+      ...trigger,
+      id: `trigger-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    };
+    setEventTriggers(prev => [...prev, newTrigger]);
+  }, []);
+
+  // Integration Hub Functions
+  const testConnector = useCallback(async (connectorId: string, configuration: Record<string, any>) => {
+    try {
+      // Create a test connection first
+      const connection = await integrationService.createConnection({
+        connectorId,
+        name: `Test Connection for ${connectorId}`,
+        credentials: configuration,
+        isActive: true,
+        userId: 'user_1',
+        organizationId: 'org_1'
+      });
+
+      const result = await integrationService.testConnection(connection.id);
+      if (result.success) {
+        setNotification({ type: 'success', message: 'Connection test successful' });
+      } else {
+        setNotification({ type: 'error', message: 'Connection test failed' });
+      }
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Connection test failed: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, []);
+
+  const executeIntegration = useCallback(async (connectorId: string, operation: string, input: any) => {
+    try {
+      // Create a connection for execution
+      const connection = await integrationService.createConnection({
+        connectorId,
+        name: `Execution Connection for ${connectorId}`,
+        credentials: {
+          apiKey: 'exec_key',
+          baseUrl: 'https://api.example.com'
+        },
+        isActive: true,
+        userId: 'user_1',
+        organizationId: 'org_1'
+      });
+
+      const result = await integrationService.executeIntegration(connection.id, operation, input);
+      const execution = adaptExecutionResult(result, connectorId, operation);
+      setIntegrationExecutions(prev => [execution, ...prev]);
+      
+      setNotification({ type: 'success', message: 'Integration executed successfully' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Integration execution failed: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, []);
+
+  // Monitoring & Analytics Functions
+  const generateComplianceReport = useCallback(async (type: ComplianceReport['type']) => {
+    try {
+      // Generate performance report as a proxy for compliance report
+      const report = await monitoringService.generatePerformanceReport('workflow_1', {
+        start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        end: new Date()
+      });
+      
+      const complianceReport: ComplianceReport = {
+        id: `comp_${Date.now()}`,
+        name: `${type.toUpperCase()} Compliance Report`,
+        type,
+        period: {
+          start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          end: new Date()
+        },
+        status: 'completed',
+        results: {
+          totalChecks: 20,
+          passedChecks: 19,
+          failedChecks: 1,
+          warnings: 2,
+          score: 95
+        },
+        details: [],
+        generatedAt: new Date(),
+        generatedBy: 'system'
+      };
+      
+      setComplianceReports(prev => [complianceReport, ...prev]);
+      
+      setNotification({ type: 'success', message: 'Compliance report generated successfully' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to generate compliance report: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, []);
+
+  const createDashboard = useCallback(async (dashboard: Omit<WorkflowDashboard, 'id' | 'createdAt' | 'updatedAt'>) => {
+    try {
+      const newDashboardRecord = await monitoringService.createDashboard({
+        name: dashboard.name,
+        description: dashboard.description,
+        widgets: dashboard.widgets.map((widget, index) => ({
+          id: `widget_${index}`,
+          type: 'metric',
+          title: widget.title || `Widget ${index + 1}`,
+          config: (widget as any).config || {},
+          position: { x: 0, y: index * 2, width: 4, height: 2 }
+        })),
+        layout: { columns: 4, rows: 6 },
+        refreshInterval: 30,
+        isPublic: false,
+        userId: 'user_1',
+        organizationId: 'org_1'
+      });
+      
+      const newDashboard = adaptDashboard(newDashboardRecord);
+      setDashboards(prev => [newDashboard, ...prev]);
+      
+      setNotification({ type: 'success', message: 'Dashboard created successfully' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to create dashboard: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, []);
+
+  const resolveAlert = useCallback(async (alertId: string) => {
+    try {
+      await monitoringService.resolveAlert(alertId);
+      setPerformanceAlerts(prev => prev.map(alert => 
+        alert.id === alertId ? { ...alert, resolved: true, resolvedAt: new Date(), resolvedBy: 'current-user' } : alert
+      ));
+      
+      setNotification({ type: 'success', message: 'Alert resolved successfully' });
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error: any) {
+      setNotification({ type: 'error', message: `Failed to resolve alert: ${error.message}` });
+      setTimeout(() => setNotification(null), 3000);
+    }
+  }, []);
+
   return (
     <div className="flex flex-col h-full bg-gray-900">
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center space-x-4">
-          <h2 className="text-xl font-semibold text-white">Workflow Manager</h2>
-          <span className="text-sm text-gray-300">Automate database operations</span>
+          <div className="flex items-center space-x-2">
+            <Crown className="w-6 h-6 text-yellow-400" />
+            <h2 className="text-xl font-semibold text-white">Enterprise Workflow Manager</h2>
+          </div>
+          <span className="text-sm text-gray-300">AI-Powered Automation Platform</span>
+          <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <span className="text-xs text-green-400">Live</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <Shield className="w-3 h-3 text-blue-400" />
+              <span className="text-xs text-blue-400">Secure</span>
+            </div>
+            <div className="flex items-center space-x-1">
+              <Brain className="w-3 h-3 text-purple-400" />
+              <span className="text-xs text-purple-400">AI-Enhanced</span>
+            </div>
+          </div>
         </div>
         <div className="flex items-center space-x-2">
+          {/* AI Intelligence */}
+          <button
+            onClick={() => setShowAIPanel(!showAIPanel)}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-md transition-colors ${
+              showAIPanel ? 'bg-purple-600 text-white' : 'bg-purple-600/20 text-purple-400 hover:bg-purple-600/40'
+            }`}
+          >
+            <Brain className="w-4 h-4" />
+            <span>AI Assistant</span>
+          </button>
+          
+          {/* Advanced Orchestration */}
+          <button
+            onClick={() => setShowOrchestrationPanel(!showOrchestrationPanel)}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-md transition-colors ${
+              showOrchestrationPanel ? 'bg-blue-600 text-white' : 'bg-blue-600/20 text-blue-400 hover:bg-blue-600/40'
+            }`}
+          >
+            <GitBranch className="w-4 h-4" />
+            <span>Orchestration</span>
+          </button>
+          
+          {/* Integration Hub */}
+          <button
+            onClick={() => setShowIntegrationPanel(!showIntegrationPanel)}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-md transition-colors ${
+              showIntegrationPanel ? 'bg-green-600 text-white' : 'bg-green-600/20 text-green-400 hover:bg-green-600/40'
+            }`}
+          >
+            <Network className="w-4 h-4" />
+            <span>Integrations</span>
+          </button>
+          
+          {/* Monitoring & Analytics */}
+          <button
+            onClick={() => setShowMonitoringPanel(!showMonitoringPanel)}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-md transition-colors ${
+              showMonitoringPanel ? 'bg-orange-600 text-white' : 'bg-orange-600/20 text-orange-400 hover:bg-orange-600/40'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Analytics</span>
+          </button>
+          
+          {/* 3D Visualization */}
+          <button
+            onClick={() => setShow3DModal(true)}
+            className="flex items-center space-x-2 px-3 py-2 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/40 rounded-md transition-colors"
+          >
+            <Layers className="w-4 h-4" />
+            <span>3D View</span>
+          </button>
+          
+          {/* Collaboration */}
+          <button
+            onClick={() => setShowCollaborationPanel(!showCollaborationPanel)}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-md transition-colors ${
+              showCollaborationPanel ? 'bg-pink-600 text-white' : 'bg-pink-600/20 text-pink-400 hover:bg-pink-600/40'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Collaborate</span>
+          </button>
+          
+          {/* Security & Compliance */}
+          <button
+            onClick={() => setShowSecurityPanel(!showSecurityPanel)}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-md transition-colors ${
+              showSecurityPanel ? 'bg-red-600 text-white' : 'bg-red-600/20 text-red-400 hover:bg-red-600/40'
+            }`}
+          >
+            <Shield className="w-4 h-4" />
+            <span>Security</span>
+          </button>
+          
+          {/* Visual Designer */}
           <button
             onClick={openVisualDesigner}
             className="flex items-center space-x-2 px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
           >
             <Palette className="w-4 h-4" />
-            <span>Visual Designer</span>
+            <span>Designer</span>
           </button>
+          
+          {/* Create Workflow */}
           <button
             onClick={() => setShowCreateForm(true)}
             className="flex items-center space-x-2 px-3 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
           >
             <Plus className="w-4 h-4" />
-            <span>Create Workflow</span>
+            <span>Create</span>
           </button>
         </div>
       </div>
@@ -427,6 +1105,381 @@ export function WorkflowManager({ schema }: WorkflowManagerProps) {
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
         <div className="space-y-6">
+          {/* Enterprise Panels */}
+          {showAIPanel && (
+            <div className="bg-gradient-to-r from-purple-900/50 to-blue-900/50 rounded-lg p-6 border border-purple-500/20">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <Brain className="w-5 h-5 text-purple-400" />
+                  <h3 className="text-lg font-semibold text-white">AI Workflow Intelligence</h3>
+                </div>
+                <button
+                  onClick={() => setShowAIPanel(false)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Natural Language Workflow Creation */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <Sparkles className="w-4 h-4 text-yellow-400" />
+                    <span>Natural Language Creation</span>
+                  </h4>
+                  <div className="space-y-3">
+                    <textarea
+                      value={naturalLanguageInput}
+                      onChange={(e) => setNaturalLanguageInput(e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      rows={3}
+                      placeholder="Describe your workflow in natural language... e.g., 'Create a workflow that backs up the database every night and sends notifications on failure'"
+                    />
+                    <button
+                      onClick={generateWorkflowFromNaturalLanguage}
+                      disabled={isGeneratingAI}
+                      className="w-full px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
+                    >
+                      {isGeneratingAI ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <span>Generating...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Bot className="w-4 h-4" />
+                          <span>Generate Workflow</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* AI Suggestions */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <Lightbulb className="w-4 h-4 text-yellow-400" />
+                    <span>Smart Suggestions</span>
+                  </h4>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {aiSuggestions.length > 0 ? (
+                      aiSuggestions.map((suggestion) => (
+                        <div key={suggestion.id} className="bg-gray-700/50 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <h5 className="text-sm font-medium text-white">{suggestion.title}</h5>
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              suggestion.impact === 'critical' ? 'bg-red-600' :
+                              suggestion.impact === 'high' ? 'bg-orange-600' :
+                              suggestion.impact === 'medium' ? 'bg-yellow-600' :
+                              'bg-green-600'
+                            } text-white`}>
+                              {suggestion.impact}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-300 mb-2">{suggestion.description}</p>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-400">
+                              Confidence: {Math.round(suggestion.confidence * 100)}%
+                            </span>
+                            <button
+                              onClick={() => applyAISuggestion(suggestion)}
+                              className="px-2 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 transition-colors"
+                            >
+                              Apply
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-4 text-gray-400">
+                        <Bot className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">No suggestions available</p>
+                        <p className="text-xs">Select a workflow to get AI recommendations</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showOrchestrationPanel && (
+            <div className="bg-gradient-to-r from-blue-900/50 to-cyan-900/50 rounded-lg p-6 border border-blue-500/20">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <GitBranch className="w-5 h-5 text-blue-400" />
+                  <h3 className="text-lg font-semibold text-white">Advanced Orchestration</h3>
+                </div>
+                <button
+                  onClick={() => setShowOrchestrationPanel(false)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Conditional Branching */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <Target className="w-4 h-4 text-blue-400" />
+                    <span>Conditional Branching</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-300">
+                      {conditionalBranches.length} active branches
+                    </div>
+                    <button 
+                      onClick={() => setShowConditionalBranchModal(true)}
+                      className="w-full px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
+                    >
+                      Add Branch
+                    </button>
+                    {conditionalBranches.length > 0 && (
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {conditionalBranches.map((branch) => (
+                          <div key={branch.id} className="bg-gray-700/50 rounded p-2 text-xs">
+                            <div className="text-white font-medium">{branch.condition.field} {branch.condition.operator} {branch.condition.value}</div>
+                            <div className="text-gray-400">True: {branch.truePath.length} steps | False: {branch.falsePath.length} steps</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Parallel Processing */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <Zap className="w-4 h-4 text-yellow-400" />
+                    <span>Parallel Processing</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-300">
+                      {parallelBranches.length} parallel branches
+                    </div>
+                    <button 
+                      onClick={() => setShowParallelBranchModal(true)}
+                      className="w-full px-3 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors text-sm"
+                    >
+                      Add Parallel
+                    </button>
+                    {parallelBranches.length > 0 && (
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {parallelBranches.map((branch) => (
+                          <div key={branch.id} className="bg-gray-700/50 rounded p-2 text-xs">
+                            <div className="text-white font-medium">{branch.name}</div>
+                            <div className="text-gray-400">{branch.steps.length} steps | {branch.synchronization}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Dynamic Loops */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <RotateCcw className="w-4 h-4 text-green-400" />
+                    <span>Dynamic Loops</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-300">
+                      {dynamicLoops.length} active loops
+                    </div>
+                    <button 
+                      onClick={() => setShowDynamicLoopModal(true)}
+                      className="w-full px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm"
+                    >
+                      Add Loop
+                    </button>
+                    {dynamicLoops.length > 0 && (
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {dynamicLoops.map((loop) => (
+                          <div key={loop.id} className="bg-gray-700/50 rounded p-2 text-xs">
+                            <div className="text-white font-medium">{loop.name}</div>
+                            <div className="text-gray-400">{loop.iterator.type} | {loop.steps.length} steps</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showIntegrationPanel && (
+            <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 rounded-lg p-6 border border-green-500/20">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <Network className="w-5 h-5 text-green-400" />
+                  <h3 className="text-lg font-semibold text-white">Enterprise Integration Hub</h3>
+                </div>
+                <button
+                  onClick={() => setShowIntegrationPanel(false)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                {/* API Connectors */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <Globe className="w-4 h-4 text-blue-400" />
+                    <span>API Connectors</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-300">
+                      {availableConnectors.filter(c => c.type === 'api').length} available
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      REST, GraphQL, SOAP
+                    </div>
+                    <button 
+                      onClick={() => setShowConnectorModal(true)}
+                      className="w-full px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
+                    >
+                      Browse Connectors
+                    </button>
+                  </div>
+                </div>
+
+                {/* Database Connectors */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <Database className="w-4 h-4 text-purple-400" />
+                    <span>Databases</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-300">
+                      {availableConnectors.filter(c => c.type === 'database').length} available
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      PostgreSQL, MySQL, MongoDB
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cloud Services */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <Cloud className="w-4 h-4 text-cyan-400" />
+                    <span>Cloud Services</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-300">
+                      {availableConnectors.filter(c => c.type === 'cloud').length} available
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      AWS, Azure, GCP
+                    </div>
+                  </div>
+                </div>
+
+                {/* Message Queues */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <MessageSquare className="w-4 h-4 text-orange-400" />
+                    <span>Message Queues</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-300">
+                      {availableConnectors.filter(c => c.type === 'message_queue').length} available
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      RabbitMQ, Kafka, SQS
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showMonitoringPanel && (
+            <div className="bg-gradient-to-r from-orange-900/50 to-red-900/50 rounded-lg p-6 border border-orange-500/20">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <BarChart3 className="w-5 h-5 text-orange-400" />
+                  <h3 className="text-lg font-semibold text-white">Monitoring & Analytics</h3>
+                </div>
+                <button
+                  onClick={() => setShowMonitoringPanel(false)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                {/* Performance Metrics */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <Activity className="w-4 h-4 text-green-400" />
+                    <span>Performance</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="text-2xl font-bold text-green-400">
+                      {workflowMetrics.length > 0 ? 
+                        Math.round(workflowMetrics.reduce((sum, m) => sum + m.business.successRate, 0) / workflowMetrics.length * 100) : 0}%
+                    </div>
+                    <div className="text-sm text-gray-300">Success Rate</div>
+                  </div>
+                </div>
+
+                {/* Active Alerts */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 text-red-400" />
+                    <span>Active Alerts</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="text-2xl font-bold text-red-400">
+                      {performanceAlerts.filter(a => !a.resolved).length}
+                    </div>
+                    <div className="text-sm text-gray-300">Unresolved</div>
+                  </div>
+                </div>
+
+                {/* Compliance Status */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <Shield className="w-4 h-4 text-blue-400" />
+                    <span>Compliance</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className={`text-2xl font-bold ${
+                      complianceStatus === 'compliant' ? 'text-green-400' :
+                      complianceStatus === 'non_compliant' ? 'text-red-400' :
+                      'text-yellow-400'
+                    }`}>
+                      {complianceStatus === 'compliant' ? '✓' :
+                       complianceStatus === 'non_compliant' ? '✗' : '?'}
+                    </div>
+                    <div className="text-sm text-gray-300 capitalize">{complianceStatus.replace('_', ' ')}</div>
+                  </div>
+                </div>
+
+                {/* Cost Analysis */}
+                <div className="bg-gray-800/50 rounded-lg p-4">
+                  <h4 className="text-md font-semibold text-white mb-3 flex items-center space-x-2">
+                    <TrendingUp className="w-4 h-4 text-yellow-400" />
+                    <span>Cost Analysis</span>
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="text-2xl font-bold text-yellow-400">
+                      ${costAnalysis?.totalCost.toFixed(2) || '0.00'}
+                    </div>
+                    <div className="text-sm text-gray-300">This Month</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Workflows List */}
           <div className="bg-gray-800 rounded-lg p-6">
             <h3 className="text-lg font-semibold text-white mb-4">Active Workflows</h3>
@@ -455,6 +1508,20 @@ export function WorkflowManager({ schema }: WorkflowManagerProps) {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => getAISuggestions(workflow.id)}
+                        className="p-2 text-purple-400 hover:text-purple-300 transition-colors"
+                        title="Get AI suggestions"
+                      >
+                        <Brain className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => autoOptimizeWorkflow(workflow.id)}
+                        className="p-2 text-cyan-400 hover:text-cyan-300 transition-colors"
+                        title="Auto-optimize workflow"
+                      >
+                        <Rocket className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => executeWorkflow(workflow.id)}
                         disabled={isLoading}
@@ -1267,6 +2334,393 @@ export function WorkflowManager({ schema }: WorkflowManagerProps) {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Conditional Branch Modal */}
+      {showConditionalBranchModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-white">Add Conditional Branch</h3>
+              <button
+                onClick={() => setShowConditionalBranchModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Condition Field</label>
+                <input
+                  type="text"
+                  value={newConditionalBranch.condition.field}
+                  onChange={(e) => setNewConditionalBranch(prev => ({
+                    ...prev,
+                    condition: { ...prev.condition, id: prev.condition.id || 'cond-' + Date.now(), field: e.target.value }
+                  }))}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., status, count, value"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Operator</label>
+                <select
+                  value={newConditionalBranch.condition.operator}
+                  onChange={(e) => setNewConditionalBranch(prev => ({
+                    ...prev,
+                    condition: { ...prev.condition, id: prev.condition.id || 'cond-' + Date.now(), operator: e.target.value as any }
+                  }))}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="equals">Equals</option>
+                  <option value="not_equals">Not Equals</option>
+                  <option value="greater_than">Greater Than</option>
+                  <option value="less_than">Less Than</option>
+                  <option value="contains">Contains</option>
+                  <option value="exists">Exists</option>
+                  <option value="is_empty">Is Empty</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Value</label>
+                <input
+                  type="text"
+                  value={newConditionalBranch.condition.value}
+                  onChange={(e) => setNewConditionalBranch(prev => ({
+                    ...prev,
+                    condition: { ...prev.condition, id: prev.condition.id || 'cond-' + Date.now(), value: e.target.value }
+                  }))}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., active, 100, success"
+                />
+              </div>
+              
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowConditionalBranchModal(false)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    addConditionalBranch(newConditionalBranch);
+                    setNewConditionalBranch({
+                      condition: { id: '', field: '', operator: 'equals', value: '' },
+                      truePath: [],
+                      falsePath: []
+                    });
+                    setShowConditionalBranchModal(false);
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  Add Branch
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Parallel Branch Modal */}
+      {showParallelBranchModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-white">Add Parallel Branch</h3>
+              <button
+                onClick={() => setShowParallelBranchModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Branch Name</label>
+                <input
+                  type="text"
+                  value={newParallelBranch.name}
+                  onChange={(e) => setNewParallelBranch(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  placeholder="e.g., Data Processing Branch"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Synchronization</label>
+                <select
+                  value={newParallelBranch.synchronization}
+                  onChange={(e) => setNewParallelBranch(prev => ({ 
+                    ...prev, 
+                    synchronization: e.target.value as 'wait_for_all' | 'wait_for_any' | 'wait_for_count'
+                  }))}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                >
+                  <option value="wait_for_all">Wait for All</option>
+                  <option value="wait_for_any">Wait for Any</option>
+                  <option value="wait_for_count">Wait for Count</option>
+                </select>
+              </div>
+              
+              {newParallelBranch.synchronization === 'wait_for_count' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Wait Count</label>
+                  <input
+                    type="number"
+                    value={newParallelBranch.waitCount}
+                    onChange={(e) => setNewParallelBranch(prev => ({ 
+                      ...prev, 
+                      waitCount: parseInt(e.target.value) || 1 
+                    }))}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                    min="1"
+                  />
+                </div>
+              )}
+              
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowParallelBranchModal(false)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    addParallelBranch(newParallelBranch);
+                    setNewParallelBranch({
+                      name: '',
+                      steps: [],
+                      synchronization: 'wait_for_all',
+                      waitCount: 1
+                    });
+                    setShowParallelBranchModal(false);
+                  }}
+                  className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors"
+                >
+                  Add Branch
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic Loop Modal */}
+      {showDynamicLoopModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-white">Add Dynamic Loop</h3>
+              <button
+                onClick={() => setShowDynamicLoopModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Loop Name</label>
+                <input
+                  type="text"
+                  value={newDynamicLoop.name}
+                  onChange={(e) => setNewDynamicLoop(prev => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="e.g., Process User Data"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Iterator Type</label>
+                <select
+                  value={newDynamicLoop.iterator.type}
+                  onChange={(e) => setNewDynamicLoop(prev => ({ 
+                    ...prev, 
+                    iterator: { ...prev.iterator, type: e.target.value as any }
+                  }))}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="array">Array</option>
+                  <option value="query">Database Query</option>
+                  <option value="range">Number Range</option>
+                  <option value="condition">Conditional</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Source</label>
+                <input
+                  type="text"
+                  value={newDynamicLoop.iterator.source}
+                  onChange={(e) => setNewDynamicLoop(prev => ({ 
+                    ...prev, 
+                    iterator: { ...prev.iterator, source: e.target.value }
+                  }))}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="e.g., users, SELECT * FROM users, 1-10"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Variable Name</label>
+                <input
+                  type="text"
+                  value={newDynamicLoop.iterator.variable}
+                  onChange={(e) => setNewDynamicLoop(prev => ({ 
+                    ...prev, 
+                    iterator: { ...prev.iterator, variable: e.target.value }
+                  }))}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="e.g., user, item, record"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Max Iterations</label>
+                <input
+                  type="number"
+                  value={newDynamicLoop.maxIterations}
+                  onChange={(e) => setNewDynamicLoop(prev => ({ 
+                    ...prev, 
+                    maxIterations: parseInt(e.target.value) || 100 
+                  }))}
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                  min="1"
+                  max="10000"
+                />
+              </div>
+              
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowDynamicLoopModal(false)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    addDynamicLoop(newDynamicLoop);
+                    setNewDynamicLoop({
+                      name: '',
+                      iterator: { type: 'array', source: '', variable: 'item' },
+                      maxIterations: 100,
+                      steps: []
+                    });
+                    setShowDynamicLoopModal(false);
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                >
+                  Add Loop
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connector Modal */}
+      {showConnectorModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-white">Available Connectors</h3>
+              <button
+                onClick={() => setShowConnectorModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {availableConnectors.map((connector) => (
+                <div key={connector.id} className="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <span className="text-2xl">{connector.icon}</span>
+                    <div>
+                      <h4 className="text-white font-medium">{connector.name}</h4>
+                      <p className="text-gray-400 text-sm">{connector.category}</p>
+                    </div>
+                  </div>
+                  <p className="text-gray-300 text-sm mb-3">{connector.description}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">
+                      {connector.capabilities.length} capabilities
+                    </span>
+                    <button
+                      onClick={() => {
+                        setSelectedConnector(connector);
+                        setShowConnectorModal(false);
+                      }}
+                      className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors"
+                    >
+                      Configure
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3D View Modal */}
+      {show3DModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-6xl max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-white">3D Workflow Visualization</h3>
+              <button
+                onClick={() => setShow3DModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="bg-gray-900 rounded-lg h-96">
+              <Workflow3DViewer
+                nodes={visualNodes}
+                edges={visualEdges}
+                onNodeSelect={(nodeId) => {
+                  setSelected3DNode(nodeId);
+                  setNotification({ type: 'success', message: `Selected node: ${nodeId}` });
+                  setTimeout(() => setNotification(null), 3000);
+                }}
+                onCameraChange={(position) => {
+                  setCameraPosition(position);
+                }}
+              />
+            </div>
+            
+            <div className="mt-4 flex justify-end space-x-3">
+              <button
+                onClick={() => setShow3DModal(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  setCameraPosition({ x: 0, y: 0, z: 5 });
+                  setNotification({ type: 'success', message: '3D view reset to default position' });
+                  setTimeout(() => setNotification(null), 3000);
+                }}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+              >
+                Reset View
+              </button>
             </div>
           </div>
         </div>

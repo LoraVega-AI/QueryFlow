@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     let parsedFilters: SearchFilters | undefined;
     if (filters) {
       parsedFilters = { ...filters };
-      if (filters.dateRange) {
+      if (filters.dateRange && parsedFilters) {
         parsedFilters.dateRange = {
           start: new Date(filters.dateRange.start),
           end: new Date(filters.dateRange.end)

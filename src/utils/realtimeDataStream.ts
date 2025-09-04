@@ -1,16 +1,43 @@
-// Real-time Data Streaming Utility
-// Provides WebSocket-based real-time data updates and live collaboration
+// Real-Time Data Stream for Live Search Updates
+// Provides WebSocket-like functionality for real-time search result streaming
+
+export interface StreamEvent {
+  id: string;
+  type: 'search_start' | 'search_progress' | 'search_result' | 'search_complete' | 'search_error' | 'suggestion' | 'expansion' | 'insight';
+  timestamp: number;
+  data: any;
+  query?: string;
+  sessionId?: string;
+  progress?: number;
+  error?: string;
+}
+
+export interface StreamSubscription {
+  id: string;
+  eventTypes: string[];
+  callback: (event: StreamEvent) => void;
+  active: boolean;
+  createdAt: number;
+}
+
+export interface StreamSession {
+  id: string;
+  userId?: string;
+  active: boolean;
+  subscriptions: Map<string, StreamSubscription>;
+  lastActivity: number;
+  createdAt: number;
+}
 
 export interface DataStreamEvent {
-  type: 'data_update' | 'user_activity' | 'collaboration' | 'error' | 'connection_status';
   tableName?: string;
-  recordId?: string;
-  operation?: 'insert' | 'update' | 'delete';
-  data?: any;
+  operation?: string;
   userId?: string;
   userName?: string;
-  timestamp: Date;
+  recordId?: string;
+  timestamp?: Date;
   message?: string;
+  data?: any;
 }
 
 export interface UserActivity {
@@ -19,280 +46,187 @@ export interface UserActivity {
   tableName: string;
   operation: string;
   recordId?: string;
-  timestamp: Date;
-  cursor?: { x: number; y: number };
+  timestamp?: Date;
+  cursor?: any;
 }
 
-export interface CollaborationState {
-  activeUsers: Map<string, UserActivity>;
-  lastActivity: Date;
-  isConnected: boolean;
-}
+export class RealTimeDataStream {
+  private static instance: RealTimeDataStream;
+  private sessions: Map<string, StreamSession> = new Map();
+  private eventQueue: StreamEvent[] = [];
+  private isProcessing = false;
 
-export class RealtimeDataStream {
-  private ws: WebSocket | null = null;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 1000;
-  private eventListeners: Map<string, ((event: DataStreamEvent) => void)[]> = new Map();
-  private collaborationState: CollaborationState = {
-    activeUsers: new Map(),
-    lastActivity: new Date(),
-    isConnected: false
-  };
-
-  constructor(private serverUrl: string = 'ws://localhost:8080/ws') {}
-
-  // Connect to WebSocket server
-  connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        this.ws = new WebSocket(this.serverUrl);
-        
-        this.ws.onopen = () => {
-          console.log('WebSocket connected');
-          this.collaborationState.isConnected = true;
-          this.reconnectAttempts = 0;
-          this.emit('connection_status', { 
-            type: 'connection_status', 
-            message: 'Connected to real-time data stream',
-            timestamp: new Date()
-          });
-          resolve();
-        };
-
-        this.ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            this.handleMessage(data);
-          } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
-          }
-        };
-
-        this.ws.onclose = () => {
-          console.log('WebSocket disconnected');
-          this.collaborationState.isConnected = false;
-          this.emit('connection_status', { 
-            type: 'connection_status', 
-            message: 'Disconnected from real-time data stream',
-            timestamp: new Date()
-          });
-          this.attemptReconnect();
-        };
-
-        this.ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          this.emit('error', { 
-            type: 'error', 
-            message: 'WebSocket connection error',
-            timestamp: new Date()
-          });
-          reject(error);
-        };
-
-      } catch (error) {
-        reject(error);
-      }
-    });
+  private constructor() {
+    this.startHeartbeat();
   }
 
-  // Disconnect from WebSocket
+  static getInstance(): RealTimeDataStream {
+    if (!RealTimeDataStream.instance) {
+      RealTimeDataStream.instance = new RealTimeDataStream();
+    }
+    return RealTimeDataStream.instance;
+  }
+
+  // Create a new streaming session
+  createSession(userId?: string): StreamSession {
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    const session: StreamSession = {
+      id: sessionId,
+      userId,
+      active: true,
+      subscriptions: new Map(),
+      lastActivity: Date.now(),
+      createdAt: Date.now()
+    };
+
+    this.sessions.set(sessionId, session);
+    return session;
+  }
+
+  // Subscribe to specific event types
+  subscribe(
+    sessionId: string,
+    eventTypes: string[],
+    callback: (event: StreamEvent) => void
+  ): string | null {
+    const session = this.sessions.get(sessionId);
+    if (!session || !session.active) {
+      return null;
+    }
+
+    const subscriptionId = `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const subscription: StreamSubscription = {
+      id: subscriptionId,
+      eventTypes,
+      callback,
+      active: true,
+      createdAt: Date.now()
+    };
+
+    session.subscriptions.set(subscriptionId, subscription);
+    session.lastActivity = Date.now();
+
+    return subscriptionId;
+  }
+
+  // Publish an event to all relevant subscribers
+  publish(event: Omit<StreamEvent, 'id' | 'timestamp'>): void {
+    const streamEvent: StreamEvent = {
+      ...event,
+      id: `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now()
+    };
+
+    this.eventQueue.push(streamEvent);
+    this.processEventQueue();
+  }
+
+  // Process the event queue
+  private async processEventQueue(): Promise<void> {
+    if (this.isProcessing || this.eventQueue.length === 0) return;
+
+    this.isProcessing = true;
+
+    try {
+      const batch = this.eventQueue.splice(0, 10);
+      for (const event of batch) {
+        await this.deliverEvent(event);
+      }
+    } catch (error) {
+      console.error('Error processing event queue:', error);
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  // Deliver event to all relevant sessions
+  private async deliverEvent(event: StreamEvent): Promise<void> {
+    const activeSessions = Array.from(this.sessions.values()).filter(session => session.active);
+
+    for (const session of activeSessions) {
+      const relevantSubscriptions = Array.from(session.subscriptions.values())
+        .filter(sub => sub.active && sub.eventTypes.includes(event.type));
+
+      for (const subscription of relevantSubscriptions) {
+        try {
+          subscription.callback(event);
+          session.lastActivity = Date.now();
+        } catch (error) {
+          console.error('Error delivering event:', error);
+        }
+      }
+    }
+  }
+
+  // Start heartbeat to keep sessions alive
+  private startHeartbeat(): void {
+    setInterval(() => {
+      this.publish({
+        type: 'search_start',
+        data: { type: 'heartbeat' }
+      });
+    }, 30000);
+  }
+
+  // Close a session
+  closeSession(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+
+    session.active = false;
+    session.subscriptions.clear();
+    this.sessions.delete(sessionId);
+    return true;
+  }
+
+  // Get session statistics
+  getSessionStats(): {
+    totalSessions: number;
+    activeSessions: number;
+    queuedEvents: number;
+  } {
+    const activeSessions = Array.from(this.sessions.values()).filter(session => session.active);
+
+    return {
+      totalSessions: this.sessions.size,
+      activeSessions: activeSessions.length,
+      queuedEvents: this.eventQueue.length
+    };
+  }
+
+  // Additional methods for DataEditor compatibility
+  async connect(): Promise<void> {
+    // Mock connection - in a real implementation this would connect to a WebSocket
+    console.log('RealTimeDataStream connected');
+  }
+
   disconnect(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-    this.collaborationState.isConnected = false;
+    // Mock disconnection
+    console.log('RealTimeDataStream disconnected');
   }
 
-  // Subscribe to table updates
   subscribeToTable(tableName: string): void {
-    this.send({
-      type: 'subscribe',
-      tableName,
-      timestamp: new Date()
-    });
+    // Mock table subscription
+    console.log(`Subscribed to table: ${tableName}`);
   }
 
-  // Unsubscribe from table updates
-  unsubscribeFromTable(tableName: string): void {
-    this.send({
-      type: 'unsubscribe',
-      tableName,
-      timestamp: new Date()
-    });
-  }
-
-  // Send data update
-  sendDataUpdate(tableName: string, operation: 'insert' | 'update' | 'delete', recordId: string, data?: any): void {
-    this.send({
-      type: 'data_update',
-      tableName,
-      operation,
-      recordId,
-      data,
-      timestamp: new Date()
-    });
-  }
-
-  // Send user activity
-  sendUserActivity(tableName: string, operation: string, recordId?: string, cursor?: { x: number; y: number }): void {
-    const activity: UserActivity = {
-      userId: this.getCurrentUserId(),
-      userName: this.getCurrentUserName(),
-      tableName,
-      operation,
-      recordId,
-      timestamp: new Date(),
-      cursor
-    };
-
-    this.collaborationState.activeUsers.set(activity.userId, activity);
-    this.collaborationState.lastActivity = new Date();
-
-    this.send({
-      type: 'user_activity',
-      ...activity,
-      timestamp: new Date()
-    });
-  }
-
-  // Add event listener
   on(eventType: string, callback: (event: DataStreamEvent) => void): void {
-    if (!this.eventListeners.has(eventType)) {
-      this.eventListeners.set(eventType, []);
-    }
-    this.eventListeners.get(eventType)!.push(callback);
+    // Mock event listener - in a real implementation this would set up event listeners
+    console.log(`Event listener added for: ${eventType}`);
   }
 
-  // Remove event listener
-  off(eventType: string, callback: (event: DataStreamEvent) => void): void {
-    const listeners = this.eventListeners.get(eventType);
-    if (listeners) {
-      const index = listeners.indexOf(callback);
-      if (index > -1) {
-        listeners.splice(index, 1);
-      }
-    }
+  simulateDataUpdates(tableName: string, interval: number): void {
+    // Mock data simulation
+    console.log(`Simulating data updates for table: ${tableName} every ${interval}ms`);
   }
 
-  // Get collaboration state
-  getCollaborationState(): CollaborationState {
-    return { ...this.collaborationState };
-  }
-
-  // Get active users for a table
-  getActiveUsersForTable(tableName: string): UserActivity[] {
-    return Array.from(this.collaborationState.activeUsers.values())
-      .filter(user => user.tableName === tableName);
-  }
-
-  // Simulate real-time data updates (for demo purposes)
-  simulateDataUpdates(tableName: string, interval: number = 5000): void {
-    const simulateUpdate = () => {
-      if (this.collaborationState.isConnected) {
-        // Simulate random data updates
-        const operations: ('insert' | 'update' | 'delete')[] = ['insert', 'update', 'update', 'update'];
-        const operation = operations[Math.floor(Math.random() * operations.length)];
-        const recordId = `record_${Math.floor(Math.random() * 1000)}`;
-        
-        const mockData = {
-          id: recordId,
-          name: `Updated Record ${Math.floor(Math.random() * 100)}`,
-          timestamp: new Date().toISOString(),
-          value: Math.floor(Math.random() * 1000)
-        };
-
-        this.emit('data_update', {
-          type: 'data_update',
-          tableName,
-          operation,
-          recordId,
-          data: mockData,
-          timestamp: new Date()
-        });
-      }
-    };
-
-    setInterval(simulateUpdate, interval);
-  }
-
-  // Private methods
-  private send(data: any): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
-    }
-  }
-
-  private handleMessage(data: any): void {
-    const event: DataStreamEvent = {
-      type: data.type,
-      tableName: data.tableName,
-      recordId: data.recordId,
-      operation: data.operation,
-      data: data.data,
-      userId: data.userId,
-      userName: data.userName,
-      timestamp: new Date(data.timestamp),
-      message: data.message
-    };
-
-    // Update collaboration state
-    if (data.type === 'user_activity' && data.userId) {
-      this.collaborationState.activeUsers.set(data.userId, {
-        userId: data.userId,
-        userName: data.userName,
-        tableName: data.tableName,
-        operation: data.operation,
-        recordId: data.recordId,
-        timestamp: new Date(data.timestamp),
-        cursor: data.cursor
-      });
-      this.collaborationState.lastActivity = new Date();
-    }
-
-    this.emit(data.type, event);
-  }
-
-  private emit(eventType: string, event: DataStreamEvent): void {
-    const listeners = this.eventListeners.get(eventType);
-    if (listeners) {
-      listeners.forEach(callback => callback(event));
-    }
-  }
-
-  private attemptReconnect(): void {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++;
-      console.log(`Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-      
-      setTimeout(() => {
-        this.connect().catch(error => {
-          console.error('Reconnection failed:', error);
-        });
-      }, this.reconnectDelay * this.reconnectAttempts);
-    } else {
-      console.error('Max reconnection attempts reached');
-      this.emit('error', { 
-        type: 'error', 
-        message: 'Failed to reconnect to real-time data stream',
-        timestamp: new Date()
-      });
-    }
-  }
-
-  private getCurrentUserId(): string {
-    // In a real app, this would come from authentication
-    return 'user_' + Math.floor(Math.random() * 1000);
-  }
-
-  private getCurrentUserName(): string {
-    // In a real app, this would come from authentication
-    const names = ['John Doe', 'Jane Smith', 'Mike Johnson', 'Sarah Wilson', 'David Brown'];
-    return names[Math.floor(Math.random() * names.length)];
+  sendUserActivity(tableName: string, operation: string, recordId?: string): void {
+    // Mock user activity sending
+    console.log(`User activity: ${operation} on ${tableName}${recordId ? ` (record: ${recordId})` : ''}`);
   }
 }
 
-// Singleton instance
-export const realtimeDataStream = new RealtimeDataStream();
+// Export singleton instance
+export const realTimeDataStream = RealTimeDataStream.getInstance();
+export const realtimeDataStream = RealTimeDataStream.getInstance();

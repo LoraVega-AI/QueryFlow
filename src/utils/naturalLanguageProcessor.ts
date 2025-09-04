@@ -31,7 +31,7 @@ export interface TableInfo {
 export class NaturalLanguageProcessor {
   private patterns: QueryPattern[] = [];
   private tableInfo: TableInfo[] = [];
-  private commonWords: Set<string>;
+  private commonWords: Set<string> = new Set();
 
   constructor() {
     this.initializeCommonWords();

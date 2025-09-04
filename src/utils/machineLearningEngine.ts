@@ -584,7 +584,7 @@ export class MachineLearningEngine {
         this.calculateDistance(point, cluster.centroid)
       );
       const closestCluster = distances.indexOf(Math.min(...distances));
-      clusters[closestCluster].points.push({ index, point });
+      (clusters[closestCluster] as any).points.push({ index, point });
     });
 
     return clusters.filter(cluster => cluster.points.length > 0);
@@ -762,9 +762,9 @@ export class MachineLearningEngine {
   // Visualization data creators
   private createAnomalyVisualization(data: any[], column: string, anomalies: any[]): any {
     return {
-      normal: data.filter((_, index) => !anomalies.some(a => a.index === index)).map(row => ({
+      normal: data.filter((_, idx) => !anomalies.some(a => a.index === idx)).map((row, idx) => ({
         x: row[column],
-        y: index
+        y: idx
       })),
       anomalies: anomalies.map(anomaly => ({
         x: anomaly.value,

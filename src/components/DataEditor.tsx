@@ -1717,7 +1717,7 @@ export function DataEditor({ schema }: DataEditorProps) {
                     </div>
                     <div className="text-gray-400 text-xs">
                       <Clock className="w-3 h-3 inline mr-1" />
-                      {new Date(user.timestamp).toLocaleTimeString()}
+                      {user.timestamp ? new Date(user.timestamp).toLocaleTimeString() : 'Unknown time'}
                     </div>
                   </div>
                 ))}
@@ -1737,7 +1737,7 @@ export function DataEditor({ schema }: DataEditorProps) {
                         {update.operation} on {update.tableName}
                       </span>
                       <span className="text-gray-400 text-xs">
-                        {new Date(update.timestamp).toLocaleTimeString()}
+                        {update.timestamp ? new Date(update.timestamp).toLocaleTimeString() : 'Unknown time'}
                       </span>
                     </div>
                     {update.recordId && (

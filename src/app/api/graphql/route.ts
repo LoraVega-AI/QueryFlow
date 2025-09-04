@@ -14,7 +14,7 @@ const resolvers = {
       let parsedFilters: SearchFilters | undefined;
       if (filters) {
         parsedFilters = { ...filters };
-        if (filters.dateRange) {
+        if (filters.dateRange && parsedFilters) {
           parsedFilters.dateRange = {
             start: new Date(filters.dateRange.start),
             end: new Date(filters.dateRange.end)
@@ -120,7 +120,8 @@ function executeGraphQL(query: string, variables: any = {}) {
     throw new Error('Unknown GraphQL operation');
     
   } catch (error) {
-    throw new Error(`GraphQL execution error: ${error.message}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`GraphQL execution error: ${errorMessage}`);
   }
 }
 
