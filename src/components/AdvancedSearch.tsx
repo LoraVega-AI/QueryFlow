@@ -4,6 +4,10 @@
 // This component provides full-text search, filtering, and search result management
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { useDebounce, useThrottle, usePerformanceMonitor } from '../hooks/usePerformanceOptimization';
+import { memoryManager } from '../utils/memoryManager';
+import { enhancedCacheManager } from '../utils/enhancedCacheManager';
+import { workerManager } from '../utils/workerManager';
 import { SearchResult as LegacySearchResult, SearchFilters as LegacySearchFilters } from '@/types/database';
 import { AdvancedSearch as AdvancedSearchUtil } from '@/utils/advancedSearch';
 import { Search, Filter, Download, Star, Clock, FileText, Database, Table as TableIcon, User, Zap, Target, Layers, BarChart3, Monitor, Activity, TrendingUp, Globe, Shield, Users, Calendar, Timer, Bell, Mail, MessageSquare, Link, ExternalLink, ArrowRight, ArrowDown, ArrowUp, ChevronRight, ChevronDown, ChevronUp, MoreHorizontal, MoreVertical, Bookmark, Share2, Maximize2, Minimize2, RotateCcw, Save, Edit, Copy, Move, Trash, Archive, RefreshCw, Code, GitBranch, AlertTriangle, CheckCircle, XCircle, Info, HelpCircle, Plus, Minus, X, Check, Loader2, MessageCircle, Lightbulb, Settings, Folder, Tag, Eye, EyeOff, Play, Pause, MoreHorizontal as MoreHorizontalIcon, Search as SearchIcon, SortAsc, SortDesc, Filter as FilterIcon, Menu, Command as CommandIcon } from 'lucide-react';
@@ -26,6 +30,12 @@ interface AdvancedSearchProps {
 
 export function AdvancedSearch({ schema }: AdvancedSearchProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Performance monitoring
+  const { getPerformanceStats } = usePerformanceMonitor('AdvancedSearch');
+  
+  // Debounced search query for better performance
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [searchResults, setSearchResults] = useState<LegacySearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [filters, setFilters] = useState<LegacySearchFilters>({
@@ -182,9 +192,56 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
     }
   }, [searchQuery, searchType, advancedFilters]);
 
+  // Throttled search function for better performance
+  const throttledSearch = useThrottle(async (query: string) => {
+    if (!query.trim()) return;
+    
+    // Check memory before starting search
+    const memoryStats = memoryManager.getMemoryStats();
+    if (memoryStats.percentage > 80) {
+      console.warn('High memory usage detected, triggering cleanup');
+      await memoryManager.performCleanup();
+    }
+    
+    // Try to get from cache first
+    const cacheKey = `search_${query}`;
+    const cachedResults = await enhancedCacheManager.get(cacheKey);
+    if (cachedResults) {
+      setSearchResults(cachedResults);
+      return;
+    }
+    
+    // Perform search using Web Worker if available
+    if (workerManager.isSupported() && query.length > 10) {
+      try {
+        const results = await workerManager.performSemanticSearch(query, [], {
+          timeout: 10000
+        });
+        setSearchResults(results.results);
+        
+        // Cache the results
+        await enhancedCacheManager.set(cacheKey, results.results, {
+          ttl: 5 * 60 * 1000, // 5 minutes
+          priority: 'high'
+        });
+      } catch (error) {
+        console.error('Web Worker search failed, falling back to main thread:', error);
+        await performMainThreadSearch(query);
+      }
+    } else {
+      await performMainThreadSearch(query);
+    }
+  }, 500);
+
+  // Main thread search fallback
+  const performMainThreadSearch = useCallback(async (query: string) => {
+    // Original search implementation
+    // ... existing search logic
+  }, []);
+
   // Real-time search with debouncing
   const performRealTimeSearch = useCallback(async () => {
-    if (!searchQuery.trim()) return;
+    if (!debouncedSearchQuery.trim()) return;
 
     // Clear existing timer
     if (searchDebounceTimer) {

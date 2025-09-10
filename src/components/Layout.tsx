@@ -4,7 +4,8 @@
 // This component provides the overall structure and navigation for QueryFlow
 
 import React, { useState } from 'react';
-import { Database, Code, Table, BarChart3, Settings, Menu, X, Workflow, Search, Download, Shield, Zap, Cloud, Users } from 'lucide-react';
+import { Database, Code, Table, BarChart3, Settings, Menu, X, Workflow, Search, Download, Shield, Zap, Cloud, Users, Monitor } from 'lucide-react';
+import { PerformanceDashboard } from './PerformanceDashboard';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -24,6 +25,7 @@ const TABS = [
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'workflow', label: 'Workflow Manager', icon: Workflow },
   { id: 'search', label: 'Advanced Search', icon: Search },
+  { id: 'performance', label: 'Performance Monitor', icon: Monitor },
 ] as const;
 
 export function Layout({ children, activeTab, onTabChange }: LayoutProps) {

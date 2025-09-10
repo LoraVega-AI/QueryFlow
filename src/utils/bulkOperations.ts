@@ -1,20 +1,34 @@
-// Bulk operations utilities for QueryFlow
-// This module provides bulk insert, update, delete, and import/export functionality
+// Enhanced Bulk operations utilities for QueryFlow
+// This module provides optimized bulk insert, update, delete, and import/export functionality
+// with progressive loading, memory management, and Web Worker support
 
 import { BulkOperation, DatabaseRecord, DataValidationRule } from '@/types/database';
 import { dbManager } from './database';
+import { memoryManager } from './memoryManager';
+import { workerManager } from './workerManager';
+
+export interface BulkOperationOptions {
+  batchSize?: number;
+  useWebWorker?: boolean;
+  memoryThreshold?: number;
+  progressCallback?: (progress: number, processed: number, total: number) => void;
+  errorCallback?: (error: string, record: any, index: number) => void;
+}
 
 export class BulkOperationsManager {
   private static readonly OPERATIONS_KEY = 'queryflow_bulk_operations';
   private static readonly VALIDATION_RULES_KEY = 'queryflow_validation_rules';
+  private static readonly DEFAULT_BATCH_SIZE = 1000; // Increased from 100
+  private static readonly MEMORY_THRESHOLD = 80; // percentage
 
   /**
-   * Perform bulk insert operation
+   * Perform optimized bulk insert operation with progressive loading
    */
   static async bulkInsert(
     tableId: string, 
     data: Record<string, any>[], 
-    validationRules: DataValidationRule[] = []
+    validationRules: DataValidationRule[] = [],
+    options: BulkOperationOptions = {}
   ): Promise<BulkOperation> {
     const operation: BulkOperation = {
       id: `bulk-insert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -30,8 +44,19 @@ export class BulkOperationsManager {
       operation.status = 'processing';
       this.saveOperation(operation);
 
-      // Validate data
-      const validationErrors = this.validateBulkData(data, validationRules);
+      const batchSize = options.batchSize || this.DEFAULT_BATCH_SIZE;
+      const useWebWorker = options.useWebWorker ?? true;
+      const memoryThreshold = options.memoryThreshold || this.MEMORY_THRESHOLD;
+
+      // Check memory before starting
+      const memoryStats = memoryManager.getMemoryStats();
+      if (memoryStats.percentage > memoryThreshold) {
+        console.warn('High memory usage detected, triggering cleanup');
+        await memoryManager.performCleanup();
+      }
+
+      // Validate data in batches to avoid memory issues
+      const validationErrors = await this.validateBulkDataProgressive(data, validationRules, batchSize);
       if (validationErrors.length > 0) {
         operation.errors = validationErrors;
         operation.status = 'failed';
@@ -39,32 +64,11 @@ export class BulkOperationsManager {
         return operation;
       }
 
-      // Perform bulk insert
-      const batchSize = 100;
-      const totalBatches = Math.ceil(data.length / batchSize);
-      
-      for (let i = 0; i < totalBatches; i++) {
-        const batch = data.slice(i * batchSize, (i + 1) * batchSize);
-        
-        for (const record of batch) {
-          try {
-            const columns = Object.keys(record);
-            const values = Object.values(record);
-            const placeholders = values.map(() => '?').join(', ');
-            
-            // Replace placeholders with actual values
-            const query = `INSERT INTO ${tableId} (${columns.join(', ')}) VALUES (${values.map(v => 
-              v === null || v === undefined ? 'NULL' : 
-              typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : v
-            ).join(', ')})`;
-            await dbManager.executeQuery(query);
-          } catch (error: any) {
-            operation.errors.push(`Row ${i * batchSize + batch.indexOf(record) + 1}: ${error.message}`);
-          }
-        }
-        
-        operation.progress = Math.round(((i + 1) / totalBatches) * 100);
-        this.saveOperation(operation);
+      // Use Web Worker for large datasets if available
+      if (useWebWorker && data.length > 5000 && workerManager.isSupported()) {
+        await this.performBulkInsertWithWorker(operation, tableId, data, batchSize, options);
+      } else {
+        await this.performBulkInsertMainThread(operation, tableId, data, batchSize, options);
       }
 
       operation.status = 'completed';
@@ -296,11 +300,37 @@ export class BulkOperationsManager {
   }
 
   /**
+   * Validate bulk data against validation rules with progressive processing
+   */
+  private static async validateBulkDataProgressive(
+    data: Record<string, any>[], 
+    validationRules: DataValidationRule[],
+    batchSize: number
+  ): Promise<string[]> {
+    const errors: string[] = [];
+    const totalBatches = Math.ceil(data.length / batchSize);
+
+    for (let i = 0; i < totalBatches; i++) {
+      const batch = data.slice(i * batchSize, (i + 1) * batchSize);
+      const batchErrors = this.validateBulkData(batch, validationRules, i * batchSize);
+      errors.push(...batchErrors);
+
+      // Yield control to prevent blocking
+      if (i % 10 === 0) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+
+    return errors;
+  }
+
+  /**
    * Validate bulk data against validation rules
    */
   private static validateBulkData(
     data: Record<string, any>[], 
-    validationRules: DataValidationRule[]
+    validationRules: DataValidationRule[],
+    startIndex: number = 0
   ): string[] {
     const errors: string[] = [];
 
@@ -312,7 +342,7 @@ export class BulkOperationsManager {
           switch (rule.type) {
             case 'required':
               if (value === null || value === undefined || value === '') {
-                errors.push(`Row ${index + 1}: ${rule.message}`);
+                errors.push(`Row ${startIndex + index + 1}: ${rule.message}`);
               }
               break;
             case 'unique':
@@ -320,7 +350,7 @@ export class BulkOperationsManager {
               break;
             case 'format':
               if (value && !new RegExp(rule.rule).test(value)) {
-                errors.push(`Row ${index + 1}: ${rule.message}`);
+                errors.push(`Row ${startIndex + index + 1}: ${rule.message}`);
               }
               break;
             case 'range':
@@ -328,7 +358,7 @@ export class BulkOperationsManager {
               if (!isNaN(numValue)) {
                 const [min, max] = rule.rule.split(',').map(Number);
                 if (numValue < min || numValue > max) {
-                  errors.push(`Row ${index + 1}: ${rule.message}`);
+                  errors.push(`Row ${startIndex + index + 1}: ${rule.message}`);
                 }
               }
               break;
@@ -338,6 +368,119 @@ export class BulkOperationsManager {
     });
 
     return errors;
+  }
+
+  /**
+   * Perform bulk insert using Web Worker
+   */
+  private static async performBulkInsertWithWorker(
+    operation: BulkOperation,
+    tableId: string,
+    data: Record<string, any>[],
+    batchSize: number,
+    options: BulkOperationOptions
+  ): Promise<void> {
+    try {
+      // Process data in Web Worker
+      const processedData = await workerManager.processLargeDataset(
+        data,
+        'transform',
+        {
+          transformFunction: (record) => {
+            const columns = Object.keys(record);
+            const values = Object.values(record);
+            return {
+              tableId,
+              columns,
+              values: values.map(v => 
+                v === null || v === undefined ? 'NULL' : 
+                typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : v
+              )
+            };
+          },
+          batchSize: Math.min(batchSize, 1000)
+        }
+      );
+
+      // Execute inserts in batches
+      const totalBatches = Math.ceil(processedData.length / batchSize);
+      
+      for (let i = 0; i < totalBatches; i++) {
+        const batch = processedData.slice(i * batchSize, (i + 1) * batchSize);
+        
+        for (const item of batch) {
+          try {
+            const query = `INSERT INTO ${item.tableId} (${item.columns.join(', ')}) VALUES (${item.values.join(', ')})`;
+            await dbManager.executeQuery(query);
+          } catch (error: any) {
+            operation.errors.push(`Row ${i * batchSize + batch.indexOf(item) + 1}: ${error.message}`);
+            options.errorCallback?.(error.message, item, i * batchSize + batch.indexOf(item));
+          }
+        }
+        
+        operation.progress = Math.round(((i + 1) / totalBatches) * 100);
+        this.saveOperation(operation);
+        options.progressCallback?.(operation.progress, (i + 1) * batchSize, data.length);
+
+        // Check memory and cleanup if needed
+        const memoryStats = memoryManager.getMemoryStats();
+        if (memoryStats.percentage > this.MEMORY_THRESHOLD) {
+          await memoryManager.performCleanup();
+        }
+
+        // Yield control to prevent blocking
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    } catch (error: any) {
+      throw new Error(`Web Worker bulk insert failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Perform bulk insert on main thread
+   */
+  private static async performBulkInsertMainThread(
+    operation: BulkOperation,
+    tableId: string,
+    data: Record<string, any>[],
+    batchSize: number,
+    options: BulkOperationOptions
+  ): Promise<void> {
+    const totalBatches = Math.ceil(data.length / batchSize);
+    
+    for (let i = 0; i < totalBatches; i++) {
+      const batch = data.slice(i * batchSize, (i + 1) * batchSize);
+      
+      for (const record of batch) {
+        try {
+          const columns = Object.keys(record);
+          const values = Object.values(record);
+          
+          const query = `INSERT INTO ${tableId} (${columns.join(', ')}) VALUES (${values.map(v => 
+            v === null || v === undefined ? 'NULL' : 
+            typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : v
+          ).join(', ')})`;
+          await dbManager.executeQuery(query);
+        } catch (error: any) {
+          const recordIndex = i * batchSize + batch.indexOf(record);
+          operation.errors.push(`Row ${recordIndex + 1}: ${error.message}`);
+          options.errorCallback?.(error.message, record, recordIndex);
+        }
+      }
+      
+      operation.progress = Math.round(((i + 1) / totalBatches) * 100);
+      this.saveOperation(operation);
+      options.progressCallback?.(operation.progress, (i + 1) * batchSize, data.length);
+
+      // Check memory and cleanup if needed
+      const memoryStats = memoryManager.getMemoryStats();
+      if (memoryStats.percentage > this.MEMORY_THRESHOLD) {
+        await memoryManager.performCleanup();
+      }
+
+      // Yield control to prevent blocking
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
   }
 
   /**

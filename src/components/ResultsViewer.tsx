@@ -1,60 +1,82 @@
 'use client';
 
-// Results Viewer component for displaying query results
-// This component provides a styled data grid for viewing SQL query results
+// Enhanced Results Viewer component for displaying query results
+// This component provides a high-performance virtualized data grid for viewing SQL query results
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { QueryResult, QueryError } from '@/types/database';
-import { Download, Copy, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
+import { Download, Copy, RefreshCw, AlertCircle, CheckCircle, Settings, Zap } from 'lucide-react';
+import { VirtualizedTable } from './VirtualizedTable';
 
 interface ResultsViewerProps {
   result: QueryResult | null;
   error: QueryError | null;
   isLoading: boolean;
+  enableVirtualization?: boolean;
+  maxHeight?: number;
+  onRowClick?: (row: any, index: number) => void;
 }
 
-export function ResultsViewer({ result, error, isLoading }: ResultsViewerProps) {
+export function ResultsViewer({ 
+  result, 
+  error, 
+  isLoading, 
+  enableVirtualization = true,
+  maxHeight = 600,
+  onRowClick 
+}: ResultsViewerProps) {
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [showSettings, setShowSettings] = useState(false);
+  const [virtualizationEnabled, setVirtualizationEnabled] = useState(enableVirtualization);
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
 
-  // Sort data based on selected column
-  const sortedData = useMemo(() => {
-    if (!result || !sortColumn) return result?.rows || [];
-
-    const columnIndex = result.columns.indexOf(sortColumn);
-    if (columnIndex === -1) return result.rows;
-
-    return [...result.rows].sort((a, b) => {
-      const aVal = a[columnIndex];
-      const bVal = b[columnIndex];
-
-      if (aVal === null || aVal === undefined) return 1;
-      if (bVal === null || bVal === undefined) return -1;
-
-      if (typeof aVal === 'number' && typeof bVal === 'number') {
-        return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
-      }
-
-      const aStr = String(aVal).toLowerCase();
-      const bStr = String(bVal).toLowerCase();
-      
-      if (sortDirection === 'asc') {
-        return aStr.localeCompare(bStr);
-      } else {
-        return bStr.localeCompare(aStr);
-      }
+  // Prepare data for virtualized table
+  const tableData = useMemo(() => {
+    if (!result) return [];
+    
+    return result.rows.map((row, index) => {
+      const rowData: Record<string, any> = { _index: index };
+      result.columns.forEach((column, colIndex) => {
+        rowData[column] = row[colIndex];
+      });
+      return rowData;
     });
-  }, [result, sortColumn, sortDirection]);
+  }, [result]);
 
-  // Handle column header click for sorting
-  const handleColumnClick = (column: string) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('asc');
-    }
-  };
+  // Prepare columns for virtualized table
+  const tableColumns = useMemo(() => {
+    if (!result) return [];
+    
+    return result.columns.map(column => ({
+      key: column,
+      label: column,
+      width: 200,
+      sortable: true,
+      filterable: true,
+      render: (value: any) => (
+        <span className="truncate" title={String(value || '')}>
+          {formatCellValue(value)}
+        </span>
+      )
+    }));
+  }, [result]);
+
+  // Handle sorting
+  const handleSort = useCallback((column: string, direction: 'asc' | 'desc') => {
+    setSortColumn(column);
+    setSortDirection(direction);
+  }, []);
+
+  // Handle row selection
+  const handleSelectionChange = useCallback((selected: Set<number>) => {
+    setSelectedRows(selected);
+  }, []);
+
+  // Handle row click
+  const handleRowClick = useCallback((row: any, index: number) => {
+    onRowClick?.(row, index);
+  }, [onRowClick]);
 
   // Export data as CSV
   const exportAsCSV = () => {
@@ -191,17 +213,59 @@ export function ResultsViewer({ result, error, isLoading }: ResultsViewerProps) 
             {/* Results Summary */}
             <div className="bg-gray-700 px-4 py-2 border-b border-gray-600">
               <div className="flex items-center justify-between text-sm text-gray-300">
-                <span>
-                  {result.rowCount} row{result.rowCount !== 1 ? 's' : ''} returned
-                </span>
-                <span>
-                  Executed in {result.executionTime.toFixed(2)}ms
-                </span>
+                <div className="flex items-center space-x-4">
+                  <span>
+                    {result.rowCount.toLocaleString()} row{result.rowCount !== 1 ? 's' : ''} returned
+                  </span>
+                  <span>
+                    Executed in {result.executionTime.toFixed(2)}ms
+                  </span>
+                  {result.performanceMetrics && (
+                    <span>
+                      Memory: {Math.round(result.performanceMetrics.memoryUsage / 1024 / 1024)}MB
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setShowSettings(!showSettings)}
+                    className="p-1 text-gray-400 hover:text-white transition-colors"
+                    title="Settings"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </button>
+                  {virtualizationEnabled && (
+                    <span className="text-xs bg-green-600 text-white px-2 py-1 rounded">
+                      <Zap className="w-3 h-3 inline mr-1" />
+                      Virtualized
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
+            {/* Settings Panel */}
+            {showSettings && (
+              <div className="bg-gray-800 border-b border-gray-600 p-4">
+                <div className="flex items-center space-x-4">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={virtualizationEnabled}
+                      onChange={(e) => setVirtualizationEnabled(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span className="text-sm text-gray-300">Enable Virtualization</span>
+                  </label>
+                  <span className="text-xs text-gray-400">
+                    {virtualizationEnabled ? 'Optimized for large datasets' : 'Standard rendering'}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Data Grid */}
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 overflow-hidden">
               {result.rowCount === 0 ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
@@ -210,45 +274,61 @@ export function ResultsViewer({ result, error, isLoading }: ResultsViewerProps) 
                     <p className="text-sm text-gray-400">No rows returned</p>
                   </div>
                 </div>
+              ) : virtualizationEnabled && result.rowCount > 100 ? (
+                <VirtualizedTable
+                  data={tableData}
+                  columns={tableColumns}
+                  height={maxHeight}
+                  onSort={handleSort}
+                  onRowClick={handleRowClick}
+                  enableSelection={true}
+                  selectedRows={selectedRows}
+                  onSelectionChange={handleSelectionChange}
+                  enableSearch={true}
+                  enableExport={true}
+                  loading={isLoading}
+                />
               ) : (
-                <table className="w-full border-collapse">
-                  <thead className="bg-gray-700 sticky top-0">
-                    <tr>
-                      {result.columns.map((column, index) => (
-                        <th
-                          key={index}
-                          onClick={() => handleColumnClick(column)}
-                          className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider border-b border-gray-600 cursor-pointer hover:bg-gray-600 select-none"
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>{column}</span>
-                            {sortColumn === column && (
-                              <span className="text-orange-400">
-                                {sortDirection === 'asc' ? '↑' : '↓'}
-                              </span>
-                            )}
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="bg-gray-800 divide-y divide-gray-600">
-                    {sortedData.map((row, rowIndex) => (
-                      <tr key={rowIndex} className="hover:bg-gray-700">
-                        {row.map((cell, cellIndex) => (
-                          <td
-                            key={cellIndex}
-                            className="px-4 py-3 text-sm text-gray-200 border-b border-gray-700"
+                <div className="h-full overflow-auto">
+                  <table className="w-full border-collapse">
+                    <thead className="bg-gray-700 sticky top-0">
+                      <tr>
+                        {result.columns.map((column, index) => (
+                          <th
+                            key={index}
+                            onClick={() => handleSort(column, sortColumn === column && sortDirection === 'asc' ? 'desc' : 'asc')}
+                            className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider border-b border-gray-600 cursor-pointer hover:bg-gray-600 select-none"
                           >
-                            <div className="max-w-xs truncate" title={formatCellValue(cell)}>
-                              {formatCellValue(cell)}
+                            <div className="flex items-center space-x-1">
+                              <span>{column}</span>
+                              {sortColumn === column && (
+                                <span className="text-orange-400">
+                                  {sortDirection === 'asc' ? '↑' : '↓'}
+                                </span>
+                              )}
                             </div>
-                          </td>
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="bg-gray-800 divide-y divide-gray-600">
+                      {tableData.map((row, rowIndex) => (
+                        <tr key={rowIndex} className="hover:bg-gray-700">
+                          {result.columns.map((column, cellIndex) => (
+                            <td
+                              key={cellIndex}
+                              className="px-4 py-3 text-sm text-gray-200 border-b border-gray-700"
+                            >
+                              <div className="max-w-xs truncate" title={formatCellValue(row[column])}>
+                                {formatCellValue(row[column])}
+                              </div>
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>
