@@ -484,7 +484,7 @@ export class EnhancedCacheManager {
     }, this.config.cleanupInterval);
   }
 
-  private async performCleanup(): Promise<void> {
+  public async performCleanup(): Promise<void> {
     const now = Date.now();
     const entriesToDelete: string[] = [];
 

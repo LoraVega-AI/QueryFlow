@@ -17,8 +17,17 @@ import { DataValidationManager } from '@/components/DataValidationManager';
 import { QueryOptimizationManager } from '@/components/QueryOptimizationManager';
 import { CloudStorageManager } from '@/components/CloudStorageManager';
 import { CollaborationManager } from '@/components/CollaborationManager';
+import { ProjectBrowser } from '@/components/ProjectBrowser';
+import { ProjectUploader } from '@/components/ProjectUploader';
+import { GitHubConnector } from '@/components/GitHubConnector';
+import { DatabaseLinker } from '@/components/DatabaseLinker';
+import { SyncManager } from '@/components/SyncManager';
 import { DatabaseSchema, QueryResult, QueryError, DatabaseRecord } from '@/types/database';
+import { Database, RefreshCw } from 'lucide-react';
+import { Project, ProjectDetectionResult } from '@/types/project';
 import { StorageManager } from '@/utils/storage';
+import { ProjectService } from '@/services/projectService';
+import { DatabaseConnector } from '@/utils/databaseConnector';
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState('designer');
@@ -27,6 +36,13 @@ export default function HomePage() {
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [queryError, setQueryError] = useState<QueryError | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Project management state
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [showProjectUploader, setShowProjectUploader] = useState(false);
+  const [showGitHubConnector, setShowGitHubConnector] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [currentDatabase, setCurrentDatabase] = useState<any>(null);
   
   // Mock current user for collaboration
   const [currentUser] = useState({
@@ -96,7 +112,20 @@ export default function HomePage() {
     // Load records
     const savedRecords = StorageManager.loadRecords();
     setRecords(savedRecords);
+
+    // Load projects
+    loadProjects();
   }, []);
+
+  // Load projects from service
+  const loadProjects = async () => {
+    try {
+      const loadedProjects = await ProjectService.getProjects();
+      setProjects(loadedProjects);
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+    }
+  };
 
   // Save schema to localStorage whenever it changes
   useEffect(() => {
@@ -134,9 +163,202 @@ export default function HomePage() {
     setQueryError(null);
   }, []);
 
+  // Project management handlers
+  const handleProjectDetected = useCallback(async (result: ProjectDetectionResult) => {
+    // Create project from detection result
+    const project = await ProjectService.createProject(result, {
+      name: result.projectType,
+      type: 'local',
+      path: '/detected/project/path' // This would come from the file upload
+    });
+
+    setProjects(prev => [...prev, project]);
+    setCurrentProject(project);
+    setActiveTab('designer'); // Switch to designer to show the linked database
+  }, []);
+
+  const handleProjectSelect = useCallback(async (project: Project) => {
+    setCurrentProject(project);
+    // Set first available database for sync operations
+    if (project.databases.length > 0) {
+      setCurrentDatabase(project.databases[0]);
+
+      // Try to connect to database and load schema
+      const database = project.databases[0];
+      try {
+        // Test connection first
+        const connectionResult = await DatabaseConnector.testConnection(database.type, database.config);
+
+        // Update database status in project
+        const updatedProject = {
+          ...project,
+          databases: project.databases.map(db =>
+            db.id === database.id
+              ? { ...db, status: connectionResult.success ? 'connected' as const : 'error' as const }
+              : db
+          )
+        };
+
+        // Update project in state
+        setCurrentProject(updatedProject);
+        setProjects(prev => prev.map(p => p.id === project.id ? updatedProject : p));
+
+        if (connectionResult.success) {
+          // Load schema if connection successful
+          setIsLoading(true);
+          const introspectedSchema = await DatabaseConnector.introspectSchema(database.type, database.config);
+
+          // Create a proper DatabaseSchema object
+          const schema: DatabaseSchema = {
+            id: `schema_${database.id}_${Date.now()}`,
+            name: `${database.name} Schema`,
+            tables: introspectedSchema.tables,
+            relationships: introspectedSchema.relationships || [],
+            indexes: introspectedSchema.indexes || [],
+            constraints: introspectedSchema.constraints || [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            version: introspectedSchema.version || 1
+          };
+
+          setSchema(schema);
+          console.log('Loaded schema for database:', database.name, schema);
+        } else {
+          console.error('Failed to connect to database:', connectionResult.error);
+        }
+      } catch (error) {
+        console.error('Failed to test database connection:', error);
+
+        // Mark database as error
+        const updatedProject = {
+          ...project,
+          databases: project.databases.map(db =>
+            db.id === database.id
+              ? { ...db, status: 'error' as const }
+              : db
+          )
+        };
+        setCurrentProject(updatedProject);
+        setProjects(prev => prev.map(p => p.id === project.id ? updatedProject : p));
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    setActiveTab('designer');
+    console.log('Selected project:', project.name);
+  }, []);
+
+  const handleAddProject = useCallback(() => {
+    setShowProjectUploader(true);
+  }, []);
+
+  const handleGitHubProject = useCallback(() => {
+    setShowGitHubConnector(true);
+  }, []);
+
+  const handleSyncProject = useCallback(async (project: Project) => {
+    setCurrentProject(project);
+    if (project.databases.length > 0) {
+      setCurrentDatabase(project.databases[0]);
+    }
+    setActiveTab('sync');
+    console.log('Starting sync for project:', project.name);
+  }, []);
+
   // Render content based on active tab
   const renderContent = () => {
     switch (activeTab) {
+      case 'projects':
+        return (
+          <ProjectBrowser
+            onProjectSelect={handleProjectSelect}
+            onAddProject={handleAddProject}
+            onGitHubConnect={handleGitHubProject}
+            onSyncProject={handleSyncProject}
+          />
+        );
+      case 'databases':
+        return currentProject ? (
+          <DatabaseLinker
+            projectId={currentProject.id}
+            databases={currentProject.databases}
+            onDatabasesChange={async (databases) => {
+              if (currentProject) {
+                const updatedProject = { ...currentProject, databases };
+                setCurrentProject(updatedProject);
+
+                // Update in projects list
+                setProjects(prev => prev.map(p =>
+                  p.id === currentProject.id ? updatedProject : p
+                ));
+
+                // Persist to storage
+                await ProjectService.updateProject(currentProject.id, updatedProject);
+              }
+            }}
+            onSchemaLoaded={(databaseId, schema) => {
+              console.log('Schema loaded for database:', databaseId, schema);
+            }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <Database className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                No Project Selected
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Select a project from the Projects tab to manage databases
+              </p>
+              <button
+                onClick={() => setActiveTab('projects')}
+                className="inline-flex items-center px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+              >
+                Go to Projects
+              </button>
+            </div>
+          </div>
+        );
+      case 'sync':
+        return currentProject && currentDatabase ? (
+          <SyncManager
+            project={currentProject}
+            database={currentDatabase}
+            onSyncComplete={(session) => {
+              console.log('Sync completed:', session);
+            }}
+            onConflictResolved={(conflictId, resolution) => {
+              console.log('Conflict resolved:', conflictId, resolution);
+            }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <RefreshCw className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                No Database Selected
+              </h3>
+              <p className="text-gray-600 mb-6">
+                Select a project and database to manage synchronization
+              </p>
+              <div className="space-x-4">
+                <button
+                  onClick={() => setActiveTab('projects')}
+                  className="inline-flex items-center px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                >
+                  Select Project
+                </button>
+                <button
+                  onClick={() => setActiveTab('databases')}
+                  className="inline-flex items-center px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Manage Databases
+                </button>
+              </div>
+            </div>
+          </div>
+        );
       case 'designer':
         return (
           <SchemaDesigner
@@ -224,8 +446,30 @@ export default function HomePage() {
   };
 
   return (
-    <Layout activeTab={activeTab} onTabChange={setActiveTab}>
-      {renderContent()}
-    </Layout>
+    <>
+      <Layout activeTab={activeTab} onTabChange={setActiveTab}>
+        {renderContent()}
+      </Layout>
+
+      {/* Project Uploader Modal */}
+      {showProjectUploader && (
+        <ProjectUploader
+          onProjectDetected={handleProjectDetected}
+          onClose={() => setShowProjectUploader(false)}
+        />
+      )}
+
+      {/* GitHub Connector Modal */}
+      {showGitHubConnector && (
+        <GitHubConnector
+          onRepositorySelected={async (repository) => {
+            // Handle GitHub repository selection
+            console.log('GitHub repository selected:', repository);
+            setShowGitHubConnector(false);
+          }}
+          onClose={() => setShowGitHubConnector(false)}
+        />
+      )}
+    </>
   );
 }

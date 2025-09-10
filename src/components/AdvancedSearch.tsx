@@ -7,7 +7,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useDebounce, useThrottle, usePerformanceMonitor } from '../hooks/usePerformanceOptimization';
 import { memoryManager } from '../utils/memoryManager';
 import { enhancedCacheManager } from '../utils/enhancedCacheManager';
-import { workerManager } from '../utils/workerManager';
+import { workerManager, WorkerManager } from '../utils/workerManager';
 import { SearchResult as LegacySearchResult, SearchFilters as LegacySearchFilters } from '@/types/database';
 import { AdvancedSearch as AdvancedSearchUtil } from '@/utils/advancedSearch';
 import { Search, Filter, Download, Star, Clock, FileText, Database, Table as TableIcon, User, Zap, Target, Layers, BarChart3, Monitor, Activity, TrendingUp, Globe, Shield, Users, Calendar, Timer, Bell, Mail, MessageSquare, Link, ExternalLink, ArrowRight, ArrowDown, ArrowUp, ChevronRight, ChevronDown, ChevronUp, MoreHorizontal, MoreVertical, Bookmark, Share2, Maximize2, Minimize2, RotateCcw, Save, Edit, Copy, Move, Trash, Archive, RefreshCw, Code, GitBranch, AlertTriangle, CheckCircle, XCircle, Info, HelpCircle, Plus, Minus, X, Check, Loader2, MessageCircle, Lightbulb, Settings, Folder, Tag, Eye, EyeOff, Play, Pause, MoreHorizontal as MoreHorizontalIcon, Search as SearchIcon, SortAsc, SortDesc, Filter as FilterIcon, Menu, Command as CommandIcon } from 'lucide-react';
@@ -36,7 +36,7 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
   
   // Debounced search query for better performance
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
-  const [searchResults, setSearchResults] = useState<LegacySearchResult[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [filters, setFilters] = useState<LegacySearchFilters>({
     types: [],
@@ -206,13 +206,13 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
     // Try to get from cache first
     const cacheKey = `search_${query}`;
     const cachedResults = await enhancedCacheManager.get(cacheKey);
-    if (cachedResults) {
+    if (cachedResults && Array.isArray(cachedResults)) {
       setSearchResults(cachedResults);
       return;
     }
     
     // Perform search using Web Worker if available
-    if (workerManager.isSupported() && query.length > 10) {
+    if (WorkerManager.isSupported() && query.length > 10) {
       try {
         const results = await workerManager.performSemanticSearch(query, [], {
           timeout: 10000
@@ -298,9 +298,18 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
           },
           onResult: (result) => {
             setSearchResults(prev => [...prev, {
-              ...result,
-              type: result.type as 'schema' | 'table' | 'column' | 'query' | 'audit' | 'data',
-              description: result.content || result.title || ''
+              id: result.id,
+              title: result.title,
+              content: result.content,
+              type: (result.type as 'text' | 'image' | 'document' | 'code' | 'database' | 'api') || 'text',
+              source: 'realtime-search',
+              relevance: result.relevance,
+              metadata: result.metadata,
+              timestamp: result.timestamp,
+              preview: result.highlights?.join('...') || result.content.substring(0, 100),
+              tags: [],
+              category: 'search',
+              confidence: result.semanticScore || 0
             }]);
           },
           onComplete: async (results) => {

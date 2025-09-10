@@ -261,7 +261,7 @@ export class MemoryManager {
   }
 
   // Perform memory cleanup using strategies
-  private async performCleanup(): Promise<void> {
+  public async performCleanup(): Promise<void> {
     const stats = this.getMemoryStats();
     let totalFreed = 0;
 
