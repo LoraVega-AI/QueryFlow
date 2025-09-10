@@ -14,6 +14,7 @@ interface TableEditorProps {
 }
 
 const DATA_TYPES: DataType[] = [
+  // Basic SQLite types
   'TEXT',
   'INTEGER',
   'REAL',
@@ -21,7 +22,75 @@ const DATA_TYPES: DataType[] = [
   'BOOLEAN',
   'DATE',
   'DATETIME',
+  // Advanced numeric types
+  'BIGINT',
+  'DECIMAL',
+  'NUMERIC',
+  'FLOAT',
+  'DOUBLE',
+  'SMALLINT',
+  'TINYINT',
+  'MONEY',
+  // String types
+  'CHAR',
+  'VARCHAR',
+  'NCHAR',
+  'NVARCHAR',
+  'ENUM',
+  'SET',
+  // Date/Time types
+  'TIMESTAMP',
+  'INTERVAL',
+  'TIME',
+  'YEAR',
+  // Structured data types
+  'JSON',
+  'JSONB',
+  'XML',
+  'BINARY',
+  'VARBINARY',
+  // Unique identifier
+  'UUID',
+  'GUID',
+  // Array types
+  'ARRAY',
+  'TEXT_ARRAY',
+  'INTEGER_ARRAY',
+  'JSON_ARRAY',
+  // Spatial/Geographic types
+  'GEOMETRY',
+  'POINT',
+  'POLYGON',
+  'LINESTRING',
+  'MULTIPOINT',
+  'MULTIPOLYGON',
+  'MULTILINESTRING',
+  'GEOMETRYCOLLECTION',
+  // Network types
+  'INET',
+  'CIDR',
+  'MACADDR',
+  // Full-text search
+  'TSVECTOR',
+  'TSQUERY',
+  // Custom/User-defined
+  'CUSTOM',
 ];
+
+// Group data types by category for better UX
+const DATA_TYPE_CATEGORIES = {
+  'Basic Types': ['TEXT', 'INTEGER', 'REAL', 'BLOB', 'BOOLEAN', 'DATE', 'DATETIME'],
+  'Numeric Types': ['BIGINT', 'DECIMAL', 'NUMERIC', 'FLOAT', 'DOUBLE', 'SMALLINT', 'TINYINT', 'MONEY'],
+  'String Types': ['CHAR', 'VARCHAR', 'NCHAR', 'NVARCHAR', 'ENUM', 'SET'],
+  'Date/Time Types': ['TIMESTAMP', 'INTERVAL', 'TIME', 'YEAR'],
+  'Structured Types': ['JSON', 'JSONB', 'XML', 'BINARY', 'VARBINARY'],
+  'Identifier Types': ['UUID', 'GUID'],
+  'Array Types': ['ARRAY', 'TEXT_ARRAY', 'INTEGER_ARRAY', 'JSON_ARRAY'],
+  'Spatial Types': ['GEOMETRY', 'POINT', 'POLYGON', 'LINESTRING', 'MULTIPOINT', 'MULTIPOLYGON', 'MULTILINESTRING', 'GEOMETRYCOLLECTION'],
+  'Network Types': ['INET', 'CIDR', 'MACADDR'],
+  'Search Types': ['TSVECTOR', 'TSQUERY'],
+  'Custom Types': ['CUSTOM']
+} as const;
 
 export function TableEditor({ table, onSave, onClose }: TableEditorProps) {
   const [editedTable, setEditedTable] = useState<Table>({ ...table });
@@ -82,13 +151,67 @@ export function TableEditor({ table, onSave, onClose }: TableEditorProps) {
 
   const getDataTypeColor = (type: DataType): string => {
     const colors: Record<DataType, string> = {
-      'TEXT': 'bg-orange-100 text-orange-800',
-      'INTEGER': 'bg-yellow-100 text-yellow-800',
-      'REAL': 'bg-yellow-200 text-yellow-900',
-      'BLOB': 'bg-purple-100 text-purple-800',
-      'BOOLEAN': 'bg-pink-100 text-pink-800',
-      'DATE': 'bg-indigo-100 text-indigo-800',
-      'DATETIME': 'bg-gray-100 text-gray-800',
+      // Basic SQLite types
+      'TEXT': 'bg-green-100 text-green-800',
+      'INTEGER': 'bg-blue-100 text-blue-800',
+      'REAL': 'bg-purple-100 text-purple-800',
+      'BLOB': 'bg-gray-100 text-gray-800',
+      'BOOLEAN': 'bg-yellow-100 text-yellow-800',
+      'DATE': 'bg-red-100 text-red-800',
+      'DATETIME': 'bg-pink-100 text-pink-800',
+      // Advanced numeric types
+      'BIGINT': 'bg-blue-200 text-blue-900',
+      'DECIMAL': 'bg-indigo-100 text-indigo-800',
+      'NUMERIC': 'bg-indigo-200 text-indigo-900',
+      'FLOAT': 'bg-purple-200 text-purple-900',
+      'DOUBLE': 'bg-purple-300 text-purple-900',
+      'SMALLINT': 'bg-blue-50 text-blue-700',
+      'TINYINT': 'bg-blue-50 text-blue-600',
+      'MONEY': 'bg-emerald-100 text-emerald-800',
+      // String types
+      'CHAR': 'bg-green-200 text-green-900',
+      'VARCHAR': 'bg-green-300 text-green-900',
+      'NCHAR': 'bg-teal-100 text-teal-800',
+      'NVARCHAR': 'bg-teal-200 text-teal-900',
+      'ENUM': 'bg-cyan-100 text-cyan-800',
+      'SET': 'bg-cyan-200 text-cyan-900',
+      // Date/Time types
+      'TIMESTAMP': 'bg-red-200 text-red-900',
+      'INTERVAL': 'bg-orange-100 text-orange-800',
+      'TIME': 'bg-amber-100 text-amber-800',
+      'YEAR': 'bg-yellow-200 text-yellow-900',
+      // Structured data types
+      'JSON': 'bg-violet-100 text-violet-800',
+      'JSONB': 'bg-violet-200 text-violet-900',
+      'XML': 'bg-lime-100 text-lime-800',
+      'BINARY': 'bg-slate-100 text-slate-800',
+      'VARBINARY': 'bg-slate-200 text-slate-900',
+      // Unique identifier
+      'UUID': 'bg-fuchsia-100 text-fuchsia-800',
+      'GUID': 'bg-fuchsia-200 text-fuchsia-900',
+      // Array types
+      'ARRAY': 'bg-rose-100 text-rose-800',
+      'TEXT_ARRAY': 'bg-green-50 text-green-700',
+      'INTEGER_ARRAY': 'bg-blue-50 text-blue-700',
+      'JSON_ARRAY': 'bg-violet-50 text-violet-700',
+      // Spatial/Geographic types
+      'GEOMETRY': 'bg-emerald-200 text-emerald-900',
+      'POINT': 'bg-teal-300 text-teal-900',
+      'POLYGON': 'bg-green-400 text-green-900',
+      'LINESTRING': 'bg-lime-200 text-lime-900',
+      'MULTIPOINT': 'bg-teal-100 text-teal-700',
+      'MULTIPOLYGON': 'bg-green-300 text-green-800',
+      'MULTILINESTRING': 'bg-lime-300 text-lime-900',
+      'GEOMETRYCOLLECTION': 'bg-emerald-300 text-emerald-900',
+      // Network types
+      'INET': 'bg-sky-100 text-sky-800',
+      'CIDR': 'bg-sky-200 text-sky-900',
+      'MACADDR': 'bg-cyan-300 text-cyan-900',
+      // Full-text search
+      'TSVECTOR': 'bg-stone-100 text-stone-800',
+      'TSQUERY': 'bg-stone-200 text-stone-900',
+      // Custom/User-defined
+      'CUSTOM': 'bg-neutral-100 text-neutral-800',
     };
     return colors[type] || 'bg-gray-100 text-gray-800';
   };

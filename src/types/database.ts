@@ -12,14 +12,41 @@ export interface Column {
     tableId: string;
     columnId: string;
     relationshipType: 'one-to-one' | 'one-to-many' | 'many-to-many' | 'self-referencing';
-    cascadeDelete?: boolean;
-    cascadeUpdate?: boolean;
+    onDelete?: 'CASCADE' | 'SET NULL' | 'RESTRICT' | 'NO ACTION';
+    onUpdate?: 'CASCADE' | 'SET NULL' | 'RESTRICT' | 'NO ACTION';
   };
+  unique?: boolean;
+  autoIncrement?: boolean;
+  indexed?: boolean;
+  indexType?: 'B-tree' | 'Hash' | 'GIN' | 'GiST' | 'SP-GiST' | 'BRIN';
+  indexName?: string;
   constraints?: {
     unique?: boolean;
     check?: string;
     index?: boolean;
     autoIncrement?: boolean;
+    // Length constraints for string types
+    maxLength?: number;
+    minLength?: number;
+    // Precision and scale for numeric types
+    precision?: number;
+    scale?: number;
+    // Array constraints
+    arrayDimensions?: number;
+    arrayElementType?: DataType;
+    // Enum values
+    enumValues?: string[];
+    // Set values
+    setValues?: string[];
+    // Custom type definition
+    customTypeDefinition?: string;
+    // Spatial reference system for geographic types
+    srid?: number;
+    // Timezone info for timestamp types
+    withTimeZone?: boolean;
+    // Charset for text types
+    charset?: string;
+    collation?: string;
   };
   documentation?: string;
   tags?: string[];
@@ -184,13 +211,67 @@ export interface QueryError {
 }
 
 export type DataType = 
+  // Basic SQLite types
   | 'TEXT'
   | 'INTEGER'
   | 'REAL'
   | 'BLOB'
   | 'BOOLEAN'
   | 'DATE'
-  | 'DATETIME';
+  | 'DATETIME'
+  // Advanced numeric types
+  | 'BIGINT'
+  | 'DECIMAL'
+  | 'NUMERIC'
+  | 'FLOAT'
+  | 'DOUBLE'
+  | 'SMALLINT'
+  | 'TINYINT'
+  | 'MONEY'
+  // String types
+  | 'CHAR'
+  | 'VARCHAR'
+  | 'NCHAR'
+  | 'NVARCHAR'
+  | 'ENUM'
+  | 'SET'
+  // Date/Time types
+  | 'TIMESTAMP'
+  | 'INTERVAL'
+  | 'TIME'
+  | 'YEAR'
+  // Structured data types
+  | 'JSON'
+  | 'JSONB'
+  | 'XML'
+  | 'BINARY'
+  | 'VARBINARY'
+  // Unique identifier
+  | 'UUID'
+  | 'GUID'
+  // Array types
+  | 'ARRAY'
+  | 'TEXT_ARRAY'
+  | 'INTEGER_ARRAY'
+  | 'JSON_ARRAY'
+  // Spatial/Geographic types
+  | 'GEOMETRY'
+  | 'POINT'
+  | 'POLYGON'
+  | 'LINESTRING'
+  | 'MULTIPOINT'
+  | 'MULTIPOLYGON'
+  | 'MULTILINESTRING'
+  | 'GEOMETRYCOLLECTION'
+  // Network types
+  | 'INET'
+  | 'CIDR'
+  | 'MACADDR'
+  // Full-text search
+  | 'TSVECTOR'
+  | 'TSQUERY'
+  // Custom/User-defined
+  | 'CUSTOM';
 
 export interface DatabaseState {
   schema: DatabaseSchema | null;

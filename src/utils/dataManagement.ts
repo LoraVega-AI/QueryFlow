@@ -452,26 +452,137 @@ export class DataManagementManager {
   }
 
   private static isValidDataType(value: any, type: string): boolean {
+    if (value === null || value === undefined) return true; // Null values are handled by nullable constraint
+    
     switch (type.toUpperCase()) {
+      // Numeric types
       case 'INTEGER':
+      case 'BIGINT':
+      case 'SMALLINT':
+      case 'TINYINT':
         return Number.isInteger(Number(value));
       case 'REAL':
       case 'FLOAT':
+      case 'DOUBLE':
+      case 'DECIMAL':
+      case 'NUMERIC':
+      case 'MONEY':
         return !isNaN(Number(value));
+      
+      // String types
       case 'TEXT':
       case 'VARCHAR':
+      case 'CHAR':
+      case 'NCHAR':
+      case 'NVARCHAR':
         return typeof value === 'string';
+      
+      // Boolean type
       case 'BOOLEAN':
         return typeof value === 'boolean' || value === 'true' || value === 'false' || value === '1' || value === '0';
+      
+      // Date/Time types
+      case 'DATE':
       case 'DATETIME':
+      case 'TIMESTAMP':
+      case 'TIME':
         return !isNaN(Date.parse(value));
+      case 'YEAR':
+        const year = Number(value);
+        return Number.isInteger(year) && year >= 1901 && year <= 2155;
+      case 'INTERVAL':
+        return typeof value === 'string'; // Basic string validation for intervals
+      
+      // Structured data types
+      case 'JSON':
+      case 'JSONB':
+        try {
+          if (typeof value === 'string') {
+            JSON.parse(value);
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      case 'XML':
+        return typeof value === 'string'; // Basic string validation for XML
+      
+      // Binary types
+      case 'BLOB':
+      case 'BINARY':
+      case 'VARBINARY':
+        return typeof value === 'string' || value instanceof ArrayBuffer || value instanceof Uint8Array;
+      
+      // Identifier types
+      case 'UUID':
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        return typeof value === 'string' && uuidRegex.test(value);
+      case 'GUID':
+        const guidRegex = /^[{(]?[0-9a-f]{8}[-]?[0-9a-f]{4}[-]?[0-9a-f]{4}[-]?[0-9a-f]{4}[-]?[0-9a-f]{12}[)}]?$/i;
+        return typeof value === 'string' && guidRegex.test(value);
+      
+      // Array types
+      case 'ARRAY':
+      case 'TEXT_ARRAY':
+      case 'INTEGER_ARRAY':
+      case 'JSON_ARRAY':
+        try {
+          if (typeof value === 'string') {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed);
+          }
+          return Array.isArray(value);
+        } catch {
+          return false;
+        }
+      
+      // Enum and Set types
+      case 'ENUM':
+      case 'SET':
+        return typeof value === 'string';
+      
+      // Spatial types (basic validation - should be WKT or coordinate strings)
+      case 'GEOMETRY':
+      case 'POINT':
+      case 'POLYGON':
+      case 'LINESTRING':
+      case 'MULTIPOINT':
+      case 'MULTIPOLYGON':
+      case 'MULTILINESTRING':
+      case 'GEOMETRYCOLLECTION':
+        return typeof value === 'string';
+      
+      // Network types
+      case 'INET':
+        const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+        const ipv6Regex = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
+        return typeof value === 'string' && (ipRegex.test(value) || ipv6Regex.test(value));
+      case 'CIDR':
+        const cidrRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:[0-9]|[1-2][0-9]|3[0-2])$/;
+        return typeof value === 'string' && cidrRegex.test(value);
+      case 'MACADDR':
+        const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
+        return typeof value === 'string' && macRegex.test(value);
+      
+      // Full-text search types
+      case 'TSVECTOR':
+      case 'TSQUERY':
+        return typeof value === 'string';
+      
+      // Custom types
+      case 'CUSTOM':
+        return true; // Allow any value for custom types
+      
       default:
-        return true;
+        return true; // Unknown types default to valid
     }
   }
 
   private static isNumericType(type: string): boolean {
-    const numericTypes = ['INTEGER', 'REAL', 'FLOAT', 'NUMERIC', 'DECIMAL'];
+    const numericTypes = [
+      'INTEGER', 'BIGINT', 'SMALLINT', 'TINYINT',
+      'REAL', 'FLOAT', 'DOUBLE', 'NUMERIC', 'DECIMAL', 'MONEY'
+    ];
     return numericTypes.includes(type.toUpperCase());
   }
 

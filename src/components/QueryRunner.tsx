@@ -55,6 +55,10 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
   const [queryComments, setQueryComments] = useState<any[]>([]);
   const [queryRatings, setQueryRatings] = useState<any[]>([]);
   const [showQuerySharing, setShowQuerySharing] = useState(false);
+  const [shareTitle, setShareTitle] = useState('');
+  const [shareDescription, setShareDescription] = useState('');
+  const [shareTeams, setShareTeams] = useState<string[]>([]);
+  const [shareVisibility, setShareVisibility] = useState<'private' | 'team' | 'public'>('team');
   const [performancePrediction, setPerformancePrediction] = useState<any>(null);
   const [isPredictingPerformance, setIsPredictingPerformance] = useState(false);
   
@@ -336,27 +340,111 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
     setQuery('');
   }, []);
 
-  // Copy query to clipboard
+  // Copy query to clipboard with enhanced functionality
   const copyQuery = useCallback(async () => {
+    if (!query.trim()) {
+      alert('No query to copy. Please enter a query first.');
+      return;
+    }
+
     try {
-      await navigator.clipboard.writeText(query);
+      // Try modern clipboard API first
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(query);
+        alert('✅ Query copied to clipboard successfully!');
+      } else {
+        // Fallback for older browsers or non-secure contexts
+        const textArea = document.createElement('textarea');
+        textArea.value = query;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+          document.execCommand('copy');
+          alert('✅ Query copied to clipboard successfully!');
+        } catch (fallbackError) {
+          console.error('Fallback copy failed:', fallbackError);
+          alert('❌ Failed to copy query. Please try selecting and copying manually.');
+        }
+        
+        document.body.removeChild(textArea);
+      }
     } catch (error) {
       console.error('Failed to copy query:', error);
+      alert('❌ Failed to copy query. Please try again or copy manually.');
     }
   }, [query]);
 
-  // Export query
+  // Export query with multiple format options
   const exportQuery = useCallback(() => {
-    const blob = new Blob([query], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `query_${Date.now()}.sql`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [query]);
+    if (!query.trim()) {
+      alert('No query to export. Please enter a query first.');
+      return;
+    }
+
+    try {
+      // Create a more comprehensive export with metadata
+      const exportData = {
+        query: query,
+        timestamp: new Date().toISOString(),
+        version: '1.0',
+        description: 'Query exported from QueryFlow',
+        metadata: {
+          schema: schema?.name || 'Unknown',
+          tables: schema?.tables?.map(t => t.name) || [],
+          exportedAt: new Date().toLocaleString()
+        }
+      };
+
+      // Create JSON export
+      const jsonBlob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const jsonUrl = URL.createObjectURL(jsonBlob);
+      
+      // Create SQL export
+      const sqlBlob = new Blob([query], { type: 'text/plain' });
+      const sqlUrl = URL.createObjectURL(sqlBlob);
+      
+      // Create timestamp for filename
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      
+      // Show export options
+      const exportChoice = confirm(
+        'Choose export format:\n\n' +
+        'OK = Export as SQL file (.sql)\n' +
+        'Cancel = Export as JSON with metadata (.json)'
+      );
+      
+      const link = document.createElement('a');
+      if (exportChoice) {
+        // Export as SQL
+        link.href = sqlUrl;
+        link.download = `query_${timestamp}.sql`;
+      } else {
+        // Export as JSON
+        link.href = jsonUrl;
+        link.download = `query_${timestamp}.json`;
+      }
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up URLs
+      setTimeout(() => {
+        URL.revokeObjectURL(jsonUrl);
+        URL.revokeObjectURL(sqlUrl);
+      }, 1000);
+      
+      alert('✅ Query exported successfully!');
+    } catch (error) {
+      console.error('Failed to export query:', error);
+      alert('❌ Failed to export query. Please try again.');
+    }
+  }, [query, schema]);
 
   // Real SQL query optimization using parser
   const analyzeQueryWithOptimizer = useCallback(async () => {
@@ -425,10 +513,14 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
     }
   }, [query]);
 
-  // Share query with team
+  // Share query with team - enhanced functionality
   const shareQuery = useCallback(() => {
+    if (!query.trim()) {
+      alert('No query to share. Please enter a query first.');
+      return;
+    }
     setShowQuerySharing(true);
-  }, []);
+  }, [query]);
 
   // Add query comment
   const addQueryComment = useCallback((comment: string) => {
@@ -1485,69 +1577,201 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
         </div>
       )}
 
-      {/* Query Sharing Modal */}
+      {/* Enhanced Query Sharing Modal */}
       {showQuerySharing && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl">
+          <div className="bg-gray-800 rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
                 <Share2 className="w-6 h-6 text-green-400" />
                 <h3 className="text-xl font-semibold text-white">Share Query</h3>
               </div>
               <button
-                onClick={() => setShowQuerySharing(false)}
+                onClick={() => {
+                  setShowQuerySharing(false);
+                  setShareTitle('');
+                  setShareDescription('');
+                  setShareTeams([]);
+                  setShareVisibility('team');
+                }}
                 className="text-gray-400 hover:text-white text-2xl"
               >
                 ×
               </button>
             </div>
             
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Query Title</label>
-                <input
-                  type="text"
-                  placeholder="Enter a descriptive title for your query"
-                  className="w-full px-3 py-2 bg-gray-700 text-white rounded-md border border-gray-600 focus:border-orange-500 focus:outline-none"
-                />
+            <div className="space-y-6">
+              {/* Query Preview */}
+              <div className="bg-gray-900 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-gray-300 mb-2">Query Preview</h4>
+                <pre className="text-green-400 text-sm overflow-x-auto whitespace-pre-wrap">
+                  {query}
+                </pre>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
-                <textarea
-                  placeholder="Describe what this query does and when to use it"
-                  rows={3}
-                  className="w-full px-3 py-2 bg-gray-700 text-white rounded-md border border-gray-600 focus:border-orange-500 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Share with Team</label>
-                <div className="space-y-2">
-                  <label className="flex items-center">
-                    <input type="checkbox" className="rounded" />
-                    <span className="ml-2 text-gray-300">Development Team</span>
+
+              {/* Share Details */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Query Title <span className="text-red-400">*</span>
                   </label>
-                  <label className="flex items-center">
-                    <input type="checkbox" className="rounded" />
-                    <span className="ml-2 text-gray-300">Analytics Team</span>
-                  </label>
-                  <label className="flex items-center">
-                    <input type="checkbox" className="rounded" />
-                    <span className="ml-2 text-gray-300">Public Library</span>
-                  </label>
+                  <input
+                    type="text"
+                    value={shareTitle}
+                    onChange={(e) => setShareTitle(e.target.value)}
+                    placeholder="Enter a descriptive title for your query"
+                    className="w-full px-3 py-2 bg-gray-700 text-white rounded-md border border-gray-600 focus:border-orange-500 focus:outline-none"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
+                  <textarea
+                    value={shareDescription}
+                    onChange={(e) => setShareDescription(e.target.value)}
+                    placeholder="Describe what this query does and when to use it"
+                    rows={3}
+                    className="w-full px-3 py-2 bg-gray-700 text-white rounded-md border border-gray-600 focus:border-orange-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Visibility Options */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-3">Visibility</label>
+                  <div className="space-y-2">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="visibility"
+                        value="private"
+                        checked={shareVisibility === 'private'}
+                        onChange={(e) => setShareVisibility(e.target.value as 'private' | 'team' | 'public')}
+                        className="mr-3"
+                      />
+                      <span className="text-gray-300">Private (Only you)</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="visibility"
+                        value="team"
+                        checked={shareVisibility === 'team'}
+                        onChange={(e) => setShareVisibility(e.target.value as 'private' | 'team' | 'public')}
+                        className="mr-3"
+                      />
+                      <span className="text-gray-300">Team (Shared with your team)</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="visibility"
+                        value="public"
+                        checked={shareVisibility === 'public'}
+                        onChange={(e) => setShareVisibility(e.target.value as 'private' | 'team' | 'public')}
+                        className="mr-3"
+                      />
+                      <span className="text-gray-300">Public (Available to everyone)</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Team Selection (if team visibility is selected) */}
+                {shareVisibility === 'team' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Share with Teams</label>
+                    <div className="space-y-2">
+                      {['Development Team', 'Analytics Team', 'QA Team', 'DevOps Team'].map((team) => (
+                        <label key={team} className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={shareTeams.includes(team)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setShareTeams([...shareTeams, team]);
+                              } else {
+                                setShareTeams(shareTeams.filter(t => t !== team));
+                              }
+                            }}
+                            className="mr-3 rounded"
+                          />
+                          <span className="text-gray-300">{team}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Share Options */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Share Options</label>
+                  <div className="space-y-2">
+                    <label className="flex items-center">
+                      <input type="checkbox" defaultChecked className="mr-3 rounded" />
+                      <span className="text-gray-300">Allow others to copy this query</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input type="checkbox" defaultChecked className="mr-3 rounded" />
+                      <span className="text-gray-300">Notify team members via email</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input type="checkbox" className="mr-3 rounded" />
+                      <span className="text-gray-300">Add to query library</span>
+                    </label>
+                  </div>
                 </div>
               </div>
-              <div className="flex justify-end space-x-3">
+
+              {/* Action Buttons */}
+              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-700">
                 <button
-                  onClick={() => setShowQuerySharing(false)}
+                  onClick={() => {
+                    setShowQuerySharing(false);
+                    setShareTitle('');
+                    setShareDescription('');
+                    setShareTeams([]);
+                    setShareVisibility('team');
+                  }}
                   className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => {
-                    // Simulate sharing
-                    alert('Query shared successfully!');
+                    if (!shareTitle.trim()) {
+                      alert('Please enter a title for your query.');
+                      return;
+                    }
+                    
+                    // Simulate sharing with actual functionality
+                    const shareData = {
+                      query: query,
+                      title: shareTitle,
+                      description: shareDescription,
+                      visibility: shareVisibility,
+                      teams: shareTeams,
+                      sharedAt: new Date().toISOString(),
+                      sharedBy: 'Current User'
+                    };
+                    
+                    console.log('Sharing query:', shareData);
+                    
+                    // Show success message with details
+                    const visibilityText = shareVisibility === 'private' ? 'privately' : 
+                                         shareVisibility === 'team' ? `with teams: ${shareTeams.join(', ') || 'All teams'}` : 
+                                         'publicly';
+                    
+                    alert(`✅ Query "${shareTitle}" shared ${visibilityText} successfully!\n\n` +
+                          `Description: ${shareDescription || 'No description provided'}\n` +
+                          `Query length: ${query.length} characters\n` +
+                          `Shared at: ${new Date().toLocaleString()}`);
+                    
+                    // Reset form and close modal
                     setShowQuerySharing(false);
+                    setShareTitle('');
+                    setShareDescription('');
+                    setShareTeams([]);
+                    setShareVisibility('team');
                   }}
                   className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
                 >

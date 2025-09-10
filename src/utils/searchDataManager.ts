@@ -1,6 +1,8 @@
 // Search Data Manager for Advanced Search CRUD operations
 // Handles persistence and management of search-related data
 
+import { safeStorage } from './safeStorage';
+
 export interface SearchAlert {
   id: string;
   name: string;
@@ -93,7 +95,7 @@ export class SearchDataManager {
   // Storage management
   private loadFromStorage(): void {
     try {
-      const alertsData = localStorage.getItem('searchAlerts');
+      const alertsData = safeStorage.getItem('searchAlerts');
       if (alertsData) {
         this.alerts = JSON.parse(alertsData).map((alert: any) => ({
           ...alert,
@@ -102,7 +104,7 @@ export class SearchDataManager {
         }));
       }
 
-      const historyData = localStorage.getItem('searchHistory');
+      const historyData = safeStorage.getItem('searchHistory');
       if (historyData) {
         this.history = JSON.parse(historyData).map((item: any) => ({
           ...item,
@@ -110,7 +112,7 @@ export class SearchDataManager {
         }));
       }
 
-      const savedSearchesData = localStorage.getItem('savedSearches');
+      const savedSearchesData = safeStorage.getItem('savedSearches');
       if (savedSearchesData) {
         this.savedSearches = JSON.parse(savedSearchesData).map((search: any) => ({
           ...search,
@@ -119,12 +121,12 @@ export class SearchDataManager {
         }));
       }
 
-      const metricsData = localStorage.getItem('analyticsMetrics');
+      const metricsData = safeStorage.getItem('analyticsMetrics');
       if (metricsData) {
         this.analyticsMetrics = JSON.parse(metricsData);
       }
 
-      const reportsData = localStorage.getItem('analyticsReports');
+      const reportsData = safeStorage.getItem('analyticsReports');
       if (reportsData) {
         this.analyticsReports = JSON.parse(reportsData).map((report: any) => ({
           ...report,
@@ -139,11 +141,11 @@ export class SearchDataManager {
 
   private saveToStorage(): void {
     try {
-      localStorage.setItem('searchAlerts', JSON.stringify(this.alerts));
-      localStorage.setItem('searchHistory', JSON.stringify(this.history));
-      localStorage.setItem('savedSearches', JSON.stringify(this.savedSearches));
-      localStorage.setItem('analyticsMetrics', JSON.stringify(this.analyticsMetrics));
-      localStorage.setItem('analyticsReports', JSON.stringify(this.analyticsReports));
+      safeStorage.setItem('searchAlerts', JSON.stringify(this.alerts));
+      safeStorage.setItem('searchHistory', JSON.stringify(this.history));
+      safeStorage.setItem('savedSearches', JSON.stringify(this.savedSearches));
+      safeStorage.setItem('analyticsMetrics', JSON.stringify(this.analyticsMetrics));
+      safeStorage.setItem('analyticsReports', JSON.stringify(this.analyticsReports));
     } catch (error) {
       console.error('Failed to save search data to storage:', error);
     }

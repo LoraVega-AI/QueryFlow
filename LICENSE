@@ -1,0 +1,54 @@
+MIT License
+
+Copyright (c) 2024 QueryFlow
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Enterprise License
+
+For enterprise use, commercial licensing, or advanced features, please contact:
+
+**QueryFlow Enterprise**
+- Email: enterprise@queryflow.dev
+- Website: https://queryflow.dev/enterprise
+- Phone: +1 (555) 123-4567
+
+### Enterprise Features Include:
+- Advanced collaboration and real-time editing
+- Enterprise security and compliance
+- Cloud database integrations
+- Advanced data validation and optimization
+- Priority support and custom development
+- On-premises deployment options
+
+### Commercial Use
+This software is free for personal and educational use. For commercial use in production environments, enterprise licensing is recommended for:
+- Advanced security features
+- Priority support
+- Custom integrations
+- Compliance certifications
+- Professional services
+
+### Third-Party Licenses
+This software includes third-party libraries and components. See package.json for complete dependency list and their respective licenses.
+
+### Trademark
+QueryFlow is a trademark of QueryFlow Inc. All rights reserved.
