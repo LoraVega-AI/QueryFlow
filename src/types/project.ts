@@ -1,6 +1,8 @@
 // Project-related TypeScript definitions for QueryFlow
 // This file contains all types for project linking and management
 
+import { GitHubRepository, GitHubCommit, GitHubPullRequest } from './github';
+
 export interface BaseProject {
   id: string;
   name: string;

@@ -10,11 +10,11 @@ import {
   Relationship,
   Index,
   Constraint,
-  DataType,
   ForeignKey,
   Project,
   DatabaseConnection
 } from '@/types/project';
+import { DataType } from '@/types/database';
 import { DatabaseConnector } from '@/utils/databaseConnector';
 
 export class SchemaIntrospectionService {

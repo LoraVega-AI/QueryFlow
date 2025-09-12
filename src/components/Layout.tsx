@@ -3,9 +3,11 @@
 // Main application layout component
 // This component provides the overall structure and navigation for QueryFlow
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Database, Code, Table, BarChart3, Settings, Menu, X, Workflow, Search, Download, Shield, Zap, Cloud, Users, Monitor, FolderOpen, Server, RefreshCw } from 'lucide-react';
 import { PerformanceDashboard } from './PerformanceDashboard';
+import { projectsManager } from '../utils/projectsManager';
+import { Project } from '../types/projects';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -33,6 +35,48 @@ const TABS = [
 
 export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [projectNotification, setProjectNotification] = useState<{
+    type: 'success' | 'error' | 'info';
+    message: string;
+  } | null>(null);
+
+  useEffect(() => {
+    // Listen for project sync events
+    const handleProjectSyncComplete = (data: any) => {
+      setCurrentProject(data.project);
+      setProjectNotification({
+        type: 'success',
+        message: `Project "${data.project.name}" synced successfully! All database operations now use this project's embedded databases.`
+      });
+
+      // Auto-hide notification after 5 seconds
+      setTimeout(() => setProjectNotification(null), 5000);
+    };
+
+    const handleProjectDisconnected = () => {
+      setCurrentProject(null);
+      setProjectNotification({
+        type: 'info',
+        message: 'Disconnected from project. Using default database.'
+      });
+      setTimeout(() => setProjectNotification(null), 3000);
+    };
+
+    projectsManager.addEventListener('project_sync_complete', handleProjectSyncComplete);
+    projectsManager.addEventListener('project_disconnected', handleProjectDisconnected);
+
+    // Check for existing current project
+    const existingProject = projectsManager.getCurrentProject();
+    if (existingProject) {
+      setCurrentProject(existingProject);
+    }
+
+    return () => {
+      projectsManager.removeEventListener('project_sync_complete', handleProjectSyncComplete);
+      projectsManager.removeEventListener('project_disconnected', handleProjectDisconnected);
+    };
+  }, []);
 
   return (
     <div className="flex h-screen bg-gray-900">
@@ -58,7 +102,15 @@ export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
             <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center">
               <Database className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-xl font-bold text-white">QueryFlow</h1>
+            <div>
+              <h1 className="text-xl font-bold text-white">QueryFlow</h1>
+              {currentProject && (
+                <p className="text-xs text-gray-400 flex items-center">
+                  <span className="mr-1">{currentProject.icon}</span>
+                  {currentProject.name}
+                </p>
+              )}
+            </div>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
@@ -125,6 +177,40 @@ export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
             <div className="w-10"></div> {/* Spacer for centering */}
           </div>
         </header>
+
+        {/* Project Notification */}
+        {projectNotification && (
+          <div className={`px-4 py-3 border-b ${
+            projectNotification.type === 'success' ? 'bg-green-900 border-green-700' :
+            projectNotification.type === 'error' ? 'bg-red-900 border-red-700' :
+            'bg-blue-900 border-blue-700'
+          }`}>
+            <div className="flex items-center space-x-3">
+              <div className={`w-5 h-5 ${
+                projectNotification.type === 'success' ? 'text-green-400' :
+                projectNotification.type === 'error' ? 'text-red-400' :
+                'text-blue-400'
+              }`}>
+                {projectNotification.type === 'success' ? '✓' :
+                 projectNotification.type === 'error' ? '✕' :
+                 'ℹ'}
+              </div>
+              <p className={`text-sm ${
+                projectNotification.type === 'success' ? 'text-green-200' :
+                projectNotification.type === 'error' ? 'text-red-200' :
+                'text-blue-200'
+              }`}>
+                {projectNotification.message}
+              </p>
+              <button
+                onClick={() => setProjectNotification(null)}
+                className="ml-auto text-gray-400 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Page Content */}
         <main className="flex-1 overflow-hidden">

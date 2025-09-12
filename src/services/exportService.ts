@@ -611,11 +611,11 @@ export class ExportService {
     let constraint = `ALTER TABLE "${table.name}" ADD CONSTRAINT ${constraintName} `;
     constraint += `FOREIGN KEY ("${column.name}") REFERENCES "${fk.tableId}" ("${fk.columnId}")`;
     
-    if (fk.cascadeUpdate) {
+    if (fk.onUpdate === 'CASCADE') {
       constraint += ' ON UPDATE CASCADE';
     }
-    
-    if (fk.cascadeDelete) {
+
+    if (fk.onDelete === 'CASCADE') {
       constraint += ' ON DELETE CASCADE';
     }
     

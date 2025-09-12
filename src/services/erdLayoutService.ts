@@ -634,7 +634,7 @@ export class ERDLayoutService {
     const nodes = schema.tables.map(table => ({
       id: table.id,
       type: 'table',
-      position: table.position,
+      position: table.position || { x: 0, y: 0 },
       data: { table }
     }));
     

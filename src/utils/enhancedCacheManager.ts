@@ -376,13 +376,13 @@ export class EnhancedCacheManager {
     }
   }
 
-  private async getFromLocalStorage(key: string): Promise<CacheEntry | null> {
+  private async getFromLocalStorage(key: string): Promise<CacheEntry | undefined> {
     try {
       const stored = localStorage.getItem(`cache_${key}`);
-      return stored ? JSON.parse(stored) : null;
+      return stored ? JSON.parse(stored) : undefined;
     } catch (error) {
       console.warn('Failed to get from localStorage:', error);
-      return null;
+      return undefined;
     }
   }
 
@@ -399,15 +399,15 @@ export class EnhancedCacheManager {
     });
   }
 
-  private async getFromIndexedDB(key: string): Promise<CacheEntry | null> {
-    if (!this.db) return null;
+  private async getFromIndexedDB(key: string): Promise<CacheEntry | undefined> {
+    if (!this.db) return undefined;
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(['cache'], 'readonly');
       const store = transaction.objectStore('cache');
       const request = store.get(key);
-      
-      request.onsuccess = () => resolve(request.result || null);
+
+      request.onsuccess = () => resolve(request.result || undefined);
       request.onerror = () => reject(request.error);
     });
   }
@@ -444,7 +444,7 @@ export class EnhancedCacheManager {
       const keys = Object.keys(localStorage).filter(key => key.startsWith('cache_'));
       for (const key of keys.slice(0, 100)) { // Load first 100 items
         const entry = await this.getFromLocalStorage(key.replace('cache_', ''));
-        if (entry && entry.priority === 'high' || entry.priority === 'critical') {
+        if (entry && (entry.priority === 'high' || entry.priority === 'critical')) {
           this.memoryCache.set(entry.key, entry);
         }
       }

@@ -4,13 +4,13 @@
 // Provides real-time monitoring of application performance metrics
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Activity, 
-  Memory, 
-  Cpu, 
-  Database, 
-  Zap, 
-  TrendingUp, 
+import {
+  Activity,
+  HardDrive,
+  Cpu,
+  Database,
+  Zap,
+  TrendingUp,
   TrendingDown,
   AlertTriangle,
   CheckCircle,
@@ -165,7 +165,7 @@ export function PerformanceDashboard() {
         <div className="bg-gray-700 rounded-lg p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center space-x-2">
-              <Memory className="w-5 h-5 text-blue-400" />
+              <HardDrive className="w-5 h-5 text-blue-400" />
               <span className="text-sm font-medium text-gray-300">Memory Usage</span>
             </div>
             <div className={`w-3 h-3 rounded-full ${
@@ -274,7 +274,7 @@ export function PerformanceDashboard() {
               <div className="space-y-1 text-sm text-gray-400">
                 <div>Hit Rate: {formatPercentage(metrics.cache.hitRate)}</div>
                 <div>Miss Rate: {formatPercentage(100 - metrics.cache.hitRate)}</div>
-                <div>Average Access Time: {metrics.cache.averageAccessTime.toFixed(2)}ms</div>
+                <div>Total Entries: {metrics.cache.totalEntries}</div>
               </div>
             </div>
           </div>

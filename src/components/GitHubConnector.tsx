@@ -289,6 +289,7 @@ export function GitHubConnector({ onRepositorySelected, onClose }: GitHubConnect
       return {
         success: false,
         localPath: '',
+        branch: '',
         error: error instanceof Error ? error.message : 'Clone failed'
       };
     }

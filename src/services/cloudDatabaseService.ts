@@ -849,8 +849,8 @@ export class CloudDatabaseService {
               tableId: 'users_table',
               columnId: 'user_id',
               relationshipType: 'one-to-many',
-              cascadeDelete: false,
-              cascadeUpdate: true
+              onDelete: 'RESTRICT',
+              onUpdate: 'CASCADE'
             }
           },
           {

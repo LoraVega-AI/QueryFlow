@@ -44,13 +44,31 @@ Versioned schema migrations with rollback
 
 Custom validation rules
 
-☁️ Database Connections
+🗄️ Database Connectivity
 
-Works with PostgreSQL, MySQL, SQL Server, MongoDB, Redis, and more
+**Real Database Connections** with secure backend API
+- **MySQL**: Full support with connection pooling and schema introspection
+- **PostgreSQL**: Advanced features with query optimization and analytics
+- **SQLite**: File-based and in-memory databases for testing
+- **Secure**: Server-side only credentials, never exposed to frontend
+- **Interactive Query Editor**: Execute SELECT queries with real-time results
+- **Schema Discovery**: Automatic table and column detection
+- **Connection Testing**: Validate credentials before connecting
 
-Cloud database support (Supabase, PlanetScale, Firebase, AWS RDS, etc.)
+🔗 Projects & Database Sync
 
-Connection pooling and monitoring
+**Project-Based Database Management**
+- **Sync Button**: Connect to real databases with secure credential management
+- **Schema Discovery**: Automatically fetch and display database structure
+- **Query Editor**: Interactive SQL editor for SELECT queries
+- **Connection Status**: Real-time connection monitoring and error handling
+- **Example Configurations**: Pre-built connection templates for testing
+
+**Backend API Architecture**
+- Server-side database connections (credentials never exposed)
+- RESTful API endpoints for connection testing, schema fetching, and query execution
+- Comprehensive error handling and validation
+- Support for MySQL, PostgreSQL, and SQLite drivers
 
 Optional real-time sync with conflict resolution
 

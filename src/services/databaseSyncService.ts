@@ -218,9 +218,12 @@ export class DatabaseSyncService {
         entity: {
           type: 'table',
           name: 'users',
-          schema: 'public'
+          schema: 'public',
+          identifier: 'public.users'
         },
-        newValue: { name: 'users', columns: [] }
+        newValue: { name: 'users', columns: [] },
+        applied: false,
+        dependencies: []
       },
       {
         id: 'change_2',
@@ -229,10 +232,13 @@ export class DatabaseSyncService {
         entity: {
           type: 'column',
           name: 'email',
-          table: 'users'
+          table: 'users',
+          identifier: 'users.email'
         },
         oldValue: { type: 'VARCHAR(100)' },
-        newValue: { type: 'VARCHAR(255)' }
+        newValue: { type: 'VARCHAR(255)' },
+        applied: false,
+        dependencies: []
       }
     ];
 

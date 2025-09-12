@@ -9,11 +9,11 @@ import { memoryManager } from '../utils/memoryManager';
 import { enhancedCacheManager } from '../utils/enhancedCacheManager';
 import { workerManager, WorkerManager } from '../utils/workerManager';
 import { SearchResult as LegacySearchResult, SearchFilters as LegacySearchFilters } from '@/types/database';
-import { AdvancedSearch as AdvancedSearchUtil } from '@/utils/advancedSearch';
+import { AdvancedSearch as AdvancedSearchUtil, SearchResult, SearchFilters } from '@/utils/advancedSearch';
+import { advancedSearchEngine, SearchSuggestion, SearchTemplate, SearchQuery } from '@/utils/advancedSearchEngine';
 import { Search, Filter, Download, Star, Clock, FileText, Database, Table as TableIcon, User, Zap, Target, Layers, BarChart3, Monitor, Activity, TrendingUp, Globe, Shield, Users, Calendar, Timer, Bell, Mail, MessageSquare, Link, ExternalLink, ArrowRight, ArrowDown, ArrowUp, ChevronRight, ChevronDown, ChevronUp, MoreHorizontal, MoreVertical, Bookmark, Share2, Maximize2, Minimize2, RotateCcw, Save, Edit, Copy, Move, Trash, Archive, RefreshCw, Code, GitBranch, AlertTriangle, CheckCircle, XCircle, Info, HelpCircle, Plus, Minus, X, Check, Loader2, MessageCircle, Lightbulb, Settings, Folder, Tag, Eye, EyeOff, Play, Pause, MoreHorizontal as MoreHorizontalIcon, Search as SearchIcon, SortAsc, SortDesc, Filter as FilterIcon, Menu, Command as CommandIcon } from 'lucide-react';
 import { naturalLanguageProcessor, NLQueryResult } from '@/utils/naturalLanguageProcessor';
 import { searchDataManager, SearchAlert, SearchHistoryItem, SavedSearch, AnalyticsMetric, AnalyticsReport } from '@/utils/searchDataManager';
-import { advancedSearchEngine, SearchResult, SearchQuery, SearchFilters, SearchSuggestion, SearchTemplate } from '@/utils/advancedSearchEngine';
 import { searchAnalyticsEngine, SearchMetrics, PerformanceMetrics, PredictiveInsight } from '@/utils/searchAnalyticsEngine';
 import { keyboardShortcutsManager, KeyboardShortcut, Command } from '@/utils/keyboardShortcuts';
 import { advancedFilteringEngine, Facet, FilterOption, FilterResult } from '@/utils/advancedFilteringEngine';
@@ -300,16 +300,16 @@ export function AdvancedSearch({ schema }: AdvancedSearchProps) {
             setSearchResults(prev => [...prev, {
               id: result.id,
               title: result.title,
+              description: result.highlights?.join('...') || result.content.substring(0, 100),
               content: result.content,
-              type: (result.type as 'text' | 'image' | 'document' | 'code' | 'database' | 'api') || 'text',
-              source: 'realtime-search',
+              type: (result.type === 'database' ? 'schema' :
+                     result.type === 'table' ? 'table' :
+                     result.type === 'column' ? 'column' :
+                     result.type === 'code' ? 'query' :
+                     'data') as 'schema' | 'table' | 'column' | 'query' | 'data' | 'audit',
               relevance: result.relevance,
               metadata: result.metadata,
-              timestamp: result.timestamp,
-              preview: result.highlights?.join('...') || result.content.substring(0, 100),
-              tags: [],
-              category: 'search',
-              confidence: result.semanticScore || 0
+              timestamp: result.timestamp
             }]);
           },
           onComplete: async (results) => {

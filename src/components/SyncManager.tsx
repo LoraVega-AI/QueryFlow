@@ -129,6 +129,31 @@ export function SyncManager({ project, database, onSyncComplete, onConflictResol
         direction: 'bidirectional',
         startedAt: new Date(Date.now() - 3600000), // 1 hour ago
         completedAt: new Date(Date.now() - 3300000), // 55 minutes ago
+        options: {
+          batchSize: 1000,
+          timeout: 300000,
+          createBackups: true,
+          conflictResolution: 'manual' as const,
+          skipValidation: false,
+          selectiveSync: {
+            enabled: false,
+            includeTables: [],
+            excludeTables: [],
+            includeSchemas: [],
+            excludeSchemas: [],
+            syncData: true,
+            syncSchema: true,
+            syncIndexes: true,
+            syncConstraints: true
+          },
+          performance: {
+            maxConcurrentOperations: 5,
+            retryAttempts: 3,
+            retryDelay: 1000,
+            memoryLimit: 100000000,
+            enableCompression: true
+          }
+        },
         statistics: {
           totalChanges: 15,
           successfulChanges: 15,
@@ -211,7 +236,7 @@ export function SyncManager({ project, database, onSyncComplete, onConflictResol
         setSelectedConflict(null);
         setResolution(null);
         onConflictResolved?.(selectedConflict.id, resolution);
-        addAlert('success', `Conflict resolved: ${selectedConflict.description}`);
+        addAlert('info', `Conflict resolved: ${selectedConflict.description}`);
       } else {
         addAlert('error', 'Failed to resolve conflict');
       }

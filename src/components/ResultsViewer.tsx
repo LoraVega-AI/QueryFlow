@@ -84,7 +84,7 @@ export function ResultsViewer({
 
     const csvContent = [
       result.columns.join(','),
-      ...sortedData.map(row => 
+      ...result.rows.map(row => 
         row.map(cell => {
           const cellStr = String(cell || '');
           // Escape quotes and wrap in quotes if contains comma, quote, or newline
@@ -113,7 +113,7 @@ export function ResultsViewer({
 
     const textContent = [
       result.columns.join('\t'),
-      ...sortedData.map(row => row.map(cell => String(cell || '')).join('\t'))
+      ...result.rows.map(row => row.map(cell => String(cell || '')).join('\t'))
     ].join('\n');
 
     try {

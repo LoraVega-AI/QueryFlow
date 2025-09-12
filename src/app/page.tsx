@@ -28,6 +28,8 @@ import { Project, ProjectDetectionResult } from '@/types/project';
 import { StorageManager } from '@/utils/storage';
 import { ProjectService } from '@/services/projectService';
 import { DatabaseConnector } from '@/utils/databaseConnector';
+import { Projects } from '@/components/Projects';
+import { projectsManager } from '@/utils/projectsManager';
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState('designer');
@@ -212,13 +214,33 @@ export default function HomePage() {
           const schema: DatabaseSchema = {
             id: `schema_${database.id}_${Date.now()}`,
             name: `${database.name} Schema`,
-            tables: introspectedSchema.tables,
-            relationships: introspectedSchema.relationships || [],
-            indexes: introspectedSchema.indexes || [],
-            constraints: introspectedSchema.constraints || [],
+            tables: introspectedSchema.tables.map((table, index) => ({
+              id: `table_${index}`,
+              name: table.name,
+              columns: table.columns.map((col, colIndex) => ({
+                id: `col_${colIndex}`,
+                name: col.name,
+                type: col.type as any,
+                nullable: col.nullable,
+                primaryKey: col.primaryKey || false,
+                defaultValue: col.defaultValue,
+                unique: col.unique,
+                autoIncrement: col.autoIncrement
+              })),
+              position: { x: index * 200, y: index * 100 }, // Default positions
+              indexes: (table.indexes || []).map((idx, idxIndex) => ({
+                id: `idx_${idxIndex}`,
+                name: idx.name,
+                columns: idx.columns,
+                unique: idx.unique,
+                type: idx.type as any
+              })),
+              createdAt: new Date(),
+              updatedAt: new Date()
+            })),
             createdAt: new Date(),
             updatedAt: new Date(),
-            version: introspectedSchema.version || 1
+            version: typeof introspectedSchema.version === 'number' ? introspectedSchema.version : 1
           };
 
           setSchema(schema);
@@ -270,14 +292,7 @@ export default function HomePage() {
   const renderContent = () => {
     switch (activeTab) {
       case 'projects':
-        return (
-          <ProjectBrowser
-            onProjectSelect={handleProjectSelect}
-            onAddProject={handleAddProject}
-            onGitHubConnect={handleGitHubProject}
-            onSyncProject={handleSyncProject}
-          />
-        );
+        return <Projects />;
       case 'databases':
         return currentProject ? (
           <DatabaseLinker

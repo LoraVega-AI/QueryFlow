@@ -261,7 +261,7 @@ export function SchemaDesigner({ schema, onSchemaChange }: SchemaDesignerProps) 
           complexityReduction: 0,
           estimatedImplementationTime: suggestion.estimatedImprovement?.split(',')[1]?.trim() || 'Unknown',
           riskLevel: suggestion.riskLevel || 'medium',
-          rollbackComplexity: 'simple'
+          rollbackComplexity: 'simple' as 'simple' | 'moderate' | 'complex'
         },
         codeGeneration: suggestion.codeExamples || {
           sql: '-- No SQL provided',
@@ -406,7 +406,7 @@ export function SchemaDesigner({ schema, onSchemaChange }: SchemaDesignerProps) 
       return tables.map((table) => ({
         id: table.id,
         type: 'table',
-        position: table.position,
+        position: table.position || { x: 0, y: 0 },
         data: {
           table,
           onUpdateTable: handleUpdateTable,

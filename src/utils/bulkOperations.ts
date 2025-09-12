@@ -5,7 +5,7 @@
 import { BulkOperation, DatabaseRecord, DataValidationRule } from '@/types/database';
 import { dbManager } from './database';
 import { memoryManager } from './memoryManager';
-import { workerManager } from './workerManager';
+import { workerManager, WorkerManager } from './workerManager';
 
 export interface BulkOperationOptions {
   batchSize?: number;
@@ -65,7 +65,7 @@ export class BulkOperationsManager {
       }
 
       // Use Web Worker for large datasets if available
-      if (useWebWorker && data.length > 5000 && workerManager.isSupported()) {
+      if (useWebWorker && data.length > 5000 && WorkerManager.isSupported()) {
         await this.performBulkInsertWithWorker(operation, tableId, data, batchSize, options);
       } else {
         await this.performBulkInsertMainThread(operation, tableId, data, batchSize, options);

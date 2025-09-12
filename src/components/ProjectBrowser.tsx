@@ -172,8 +172,10 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
           packageManager: 'pip',
           language: 'python',
           dependencies: ['django', 'pandas', 'plotly'],
+          scripts: {},
           environment: 'production'
-        }
+        },
+        pullRequests: []
       },
       {
         id: '3',
@@ -191,6 +193,8 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
         metadata: {
           language: 'php',
           packageManager: 'composer',
+          dependencies: ['php', 'mysql'],
+          scripts: {},
           environment: 'staging'
         }
       }

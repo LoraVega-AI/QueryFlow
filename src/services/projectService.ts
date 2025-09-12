@@ -125,7 +125,7 @@ export class ProjectService {
       ...project,
       ...updates,
       updatedAt: new Date()
-    };
+    } as Project;
 
     this.projects.set(id, updatedProject);
     this.saveProjects();
@@ -188,9 +188,15 @@ export class ProjectService {
       ...project,
       databases: result.databases,
       configFiles: result.configFiles,
-      metadata: result.metadata,
+      metadata: {
+        ...project.metadata,
+        ...result.metadata,
+        dependencies: result.metadata.dependencies || project.metadata?.dependencies || [],
+        scripts: result.metadata.scripts || project.metadata?.scripts || {},
+        environment: result.metadata.environment || project.metadata?.environment || 'development'
+      },
       updatedAt: new Date()
-    };
+    } as Project;
 
     this.projects.set(projectId, updatedProject);
     this.saveProjects();

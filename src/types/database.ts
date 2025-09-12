@@ -56,7 +56,7 @@ export interface Table {
   id: string;
   name: string;
   columns: Column[];
-  position: { x: number; y: number };
+  position?: { x: number; y: number };
   size?: { width: number; height: number };
   documentation?: string;
   tags?: string[];

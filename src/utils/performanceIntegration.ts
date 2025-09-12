@@ -3,7 +3,7 @@
 
 import { memoryManager } from './memoryManager';
 import { enhancedCacheManager } from './enhancedCacheManager';
-import { workerManager } from './workerManager';
+import { workerManager, WorkerManager } from './workerManager';
 
 export interface PerformanceConfig {
   enableMemoryManagement: boolean;
@@ -59,7 +59,7 @@ export class PerformanceIntegration {
       }
 
       // Initialize Web Workers
-      if (this.config.enableWebWorkers && workerManager.isSupported()) {
+      if (this.config.enableWebWorkers && WorkerManager.isSupported()) {
         await workerManager.initialize();
         console.log('Web Workers initialized');
       }
