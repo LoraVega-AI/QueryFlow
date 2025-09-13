@@ -166,7 +166,7 @@ export class DatabaseManager {
   }
 
   // Execute SQL query
-  async executeQuery(sql: string): Promise<QueryResult> {
+  async executeQuery(sql: string, params: any[] = []): Promise<QueryResult> {
     if (!this.isInitialized) {
       await this.initialize();
     }
@@ -176,14 +176,41 @@ export class DatabaseManager {
     }
 
     const startTime = performance.now();
-    
+
     try {
-      console.log('Executing query:', sql);
-      const result = this.db.exec(sql);
+      console.log('Executing query:', sql, 'with params:', params);
+
+      let result;
+      if (params && params.length > 0) {
+        // Use run() for parameterized queries (INSERT, UPDATE, DELETE)
+        if (sql.trim().toUpperCase().startsWith('SELECT')) {
+          // For SELECT queries with parameters, we need to prepare and bind
+          const stmt = this.db.prepare(sql);
+          stmt.bind(params);
+          result = stmt.step() ? [stmt.getAsObject()] : [];
+          stmt.free();
+          // Convert result format to match exec() output
+          if (result.length > 0) {
+            const columns = Object.keys(result[0]);
+            const values = result.map(row => columns.map(col => row[col]));
+            result = [{ columns, values }];
+          } else {
+            result = [];
+          }
+        } else {
+          // For non-SELECT queries, use run() method
+          this.db.run(sql, params);
+          result = [];
+        }
+      } else {
+        // Use exec() for non-parameterized queries
+        result = this.db.exec(sql);
+      }
+
       const endTime = performance.now();
-      
+
       console.log('Query result:', result);
-      
+
       if (result.length === 0) {
         return {
           columns: [],
@@ -203,19 +230,21 @@ export class DatabaseManager {
     } catch (error: any) {
       const endTime = performance.now();
       console.error('Query execution failed:', error);
+      console.error('SQL:', sql);
+      console.error('Params:', params);
       console.error('Error details:', {
         name: error instanceof Error ? error.name : 'Unknown',
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined
       });
-      
+
       const queryError: QueryError = {
         message: error instanceof Error ? error.message : String(error),
         line: error.line,
         column: error.column,
         executionTime: endTime - startTime,
       };
-      
+
       throw queryError;
     }
   }

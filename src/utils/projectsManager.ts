@@ -356,16 +356,11 @@ export class ProjectsManager {
 
   private async insertSampleData(tableName: string, data: any[]): Promise<void> {
     for (const record of data) {
-      const columns = Object.keys(record);
-      const values = Object.values(record);
-      const placeholders = values.map(() => '?').join(', ');
-
-      const sql = `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`;
-
       try {
-        await dbManager.executeQuery(sql, values);
+        await dbManager.insertRecord(tableName, record);
       } catch (error) {
         console.error(`Failed to insert sample data into ${tableName}:`, error);
+        console.error('Record data:', record);
       }
     }
   }
