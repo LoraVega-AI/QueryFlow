@@ -24,7 +24,8 @@ import { DatabaseLinker } from '@/components/DatabaseLinker';
 import { SyncManager } from '@/components/SyncManager';
 import { DatabaseSchema, QueryResult, QueryError, DatabaseRecord } from '@/types/database';
 import { Database, RefreshCw } from 'lucide-react';
-import { Project, ProjectDetectionResult } from '@/types/project';
+import { ProjectDetectionResult } from '@/types/project';
+import { Project } from '@/types/projects';
 import { StorageManager } from '@/utils/storage';
 import { ProjectService } from '@/services/projectService';
 import { DatabaseConnector } from '@/utils/databaseConnector';
@@ -121,15 +122,50 @@ export default function HomePage() {
     loadProjects();
   }, []);
 
-  // Load projects from service
+  // Load projects from projectsManager (which uses the projects.ts types)
   const loadProjects = async () => {
     try {
-      const loadedProjects = await ProjectService.getProjects();
+      const loadedProjects = projectsManager.getAllProjects();
       setProjects(loadedProjects);
     } catch (error) {
       console.error('Failed to load projects:', error);
     }
   };
+
+  // Listen for project sync events to keep currentProject state in sync
+  useEffect(() => {
+    const handleProjectSyncComplete = (data: any) => {
+      console.log('Page component: Project synced:', data.project.name);
+      setCurrentProject(data.project);
+      // Set first available database for sync operations
+      if (data.project.databases.length > 0) {
+        setCurrentDatabase(data.project.databases[0]);
+      }
+    };
+
+    const handleProjectDisconnected = () => {
+      console.log('Page component: Project disconnected');
+      setCurrentProject(null);
+      setCurrentDatabase(null);
+    };
+
+    projectsManager.addEventListener('project_sync_complete', handleProjectSyncComplete);
+    projectsManager.addEventListener('project_disconnected', handleProjectDisconnected);
+
+    // Check for existing current project on mount
+    const existingProject = projectsManager.getCurrentProject();
+    if (existingProject) {
+      setCurrentProject(existingProject);
+      if (existingProject.databases.length > 0) {
+        setCurrentDatabase(existingProject.databases[0]);
+      }
+    }
+
+    return () => {
+      projectsManager.removeEventListener('project_sync_complete', handleProjectSyncComplete);
+      projectsManager.removeEventListener('project_disconnected', handleProjectDisconnected);
+    };
+  }, []);
 
   // Save schema to localStorage whenever it changes
   useEffect(() => {
@@ -221,19 +257,6 @@ export default function HomePage() {
     }
   }, [activeConnection, isConnected]);
 
-  // Project management handlers
-  const handleProjectDetected = useCallback(async (result: ProjectDetectionResult) => {
-    // Create project from detection result
-    const project = await ProjectService.createProject(result, {
-      name: result.projectType,
-      type: 'local',
-      path: '/detected/project/path' // This would come from the file upload
-    });
-
-    setProjects(prev => [...prev, project]);
-    setCurrentProject(project);
-    setActiveTab('designer'); // Switch to designer to show the linked database
-  }, []);
 
   const handleProjectSelect = useCallback(async (project: Project) => {
     setCurrentProject(project);
@@ -244,8 +267,14 @@ export default function HomePage() {
       // Try to connect to database and load schema
       const database = project.databases[0];
       try {
+        // Convert connectionString to DatabaseConfig format
+        const config: any = {
+          connectionString: database.connectionString,
+          filePath: database.type === 'sqlite' ? database.connectionString : undefined
+        };
+
         // Test connection first
-        const connectionResult = await DatabaseConnector.testConnection(database.type, database.config);
+        const connectionResult = await DatabaseConnector.testConnection(database.type, config);
 
         // Update database status in project
         const updatedProject = {
@@ -264,7 +293,7 @@ export default function HomePage() {
         if (connectionResult.success) {
           // Load schema if connection successful
           setIsLoading(true);
-          const introspectedSchema = await DatabaseConnector.introspectSchema(database.type, database.config);
+          const introspectedSchema = await DatabaseConnector.introspectSchema(database.type, config);
 
           // Create a proper DatabaseSchema object
           const schema: DatabaseSchema = {
@@ -296,7 +325,7 @@ export default function HomePage() {
             })),
             createdAt: new Date(),
             updatedAt: new Date(),
-            version: typeof introspectedSchema.version === 'number' ? introspectedSchema.version : 1
+            version: 1
           };
 
           setSchema(schema);
@@ -364,8 +393,7 @@ export default function HomePage() {
                   p.id === currentProject.id ? updatedProject : p
                 ));
 
-                // Persist to storage
-                await ProjectService.updateProject(currentProject.id, updatedProject);
+                // Project changes are handled by projectsManager
               }
             }}
             onSchemaLoaded={(databaseId, schema) => {
@@ -471,25 +499,15 @@ export default function HomePage() {
         );
       case 'validation':
         return (
-          <DataValidationManager
-            schema={schema}
-            records={records}
-            onSchemaChange={handleSchemaChange}
-          />
+          <DataValidationManager />
         );
       case 'optimization':
         return (
-          <QueryOptimizationManager
-            schema={schema}
-            onSchemaChange={handleSchemaChange}
-          />
+          <QueryOptimizationManager />
         );
       case 'cloud':
         return (
-          <CloudStorageManager
-            schema={schema}
-            onSchemaChange={handleSchemaChange}
-          />
+          <CloudStorageManager />
         );
       case 'collaboration':
         return (
@@ -502,7 +520,7 @@ export default function HomePage() {
         );
       case 'analytics':
         return (
-          <Analytics schema={schema} />
+          <Analytics />
         );
       case 'workflow':
         return (
@@ -526,7 +544,6 @@ export default function HomePage() {
       {/* Project Uploader Modal */}
       {showProjectUploader && (
         <ProjectUploader
-          onProjectDetected={handleProjectDetected}
           onClose={() => setShowProjectUploader(false)}
         />
       )}

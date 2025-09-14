@@ -10,9 +10,10 @@ import { PerformanceMonitor } from '@/utils/performanceMonitor';
 import { AnalyticsEngine } from '@/utils/analyticsEngine';
 import { BarChart3, Database, Table as TableIcon, Users, TrendingUp, Activity, PieChart, Info, Monitor, AlertTriangle, CheckCircle, Clock, Zap, Settings, Eye, Download, Upload, Filter, Search, Calendar, Target, Layers, BarChart, LineChart, Map, Globe, Shield, Star, Bookmark, Share2, Maximize2, Minimize2, RotateCcw, Play, Pause, Square, Brain, Lightbulb, TrendingDown, AlertCircle, BarChart2, GitBranch } from 'lucide-react';
 import { mlEngine, MLInsight } from '@/utils/machineLearningEngine';
+import { useProjectData } from '@/hooks/useProjectData';
 
 interface AnalyticsProps {
-  schema: DatabaseSchema | null;
+  schema?: DatabaseSchema | null; // Made optional since we now get it from project
 }
 
 interface TableStats {
@@ -37,7 +38,20 @@ interface QueryMetrics {
   mostUsedTables: string[];
 }
 
-export function Analytics({ schema }: AnalyticsProps) {
+export function Analytics({ schema: propSchema }: AnalyticsProps) {
+  // Use project data hook to get current project schema
+  const {
+    projectSchema,
+    executeProjectQuery,
+    getTableData,
+    getTableStats: getProjectTableStats,
+    isLoading: projectLoading,
+    error: projectError
+  } = useProjectData();
+
+  // Use project schema if available, otherwise fall back to prop
+  const schema = projectSchema || propSchema;
+
   const [tableStats, setTableStats] = useState<TableStats[]>([]);
   const [dataTypeDistribution, setDataTypeDistribution] = useState<DataTypeDistribution[]>([]);
   const [queryMetrics, setQueryMetrics] = useState<QueryMetrics | null>(null);
@@ -111,35 +125,30 @@ export function Analytics({ schema }: AnalyticsProps) {
       return;
     }
 
+    // If we have project data available, use it; otherwise show empty state
+    if (!projectSchema) {
+      setTableStats([]);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      // Initialize database
-      await dbManager.initialize();
-      await dbManager.createTablesFromSchema(schema);
-
       const stats: TableStats[] = [];
 
       for (const table of schema.tables) {
         try {
-          // Get record count
-          const countResult = await dbManager.executeQuery(`SELECT COUNT(*) as count FROM "${table.name}"`);
-          const recordCount = countResult.rows[0]?.[0] || 0;
-
-          // Calculate column statistics
-          const columnCount = table.columns.length;
-          const primaryKeys = table.columns.filter(col => col.primaryKey).length;
-          const foreignKeys = table.columns.filter(col => col.foreignKey).length;
-          const nullableColumns = table.columns.filter(col => col.nullable).length;
+          // Use project data hook to get table stats
+          const tableStatsData = await getProjectTableStats(table.name);
 
           stats.push({
             tableName: table.name,
-            recordCount: Number(recordCount),
-            columnCount,
-            primaryKeys,
-            foreignKeys,
-            nullableColumns
+            recordCount: tableStatsData.recordCount,
+            columnCount: tableStatsData.columnCount,
+            primaryKeys: tableStatsData.columns.filter((col: any) => col.primaryKey).length,
+            foreignKeys: 0, // Would need to be calculated from schema relationships
+            nullableColumns: tableStatsData.columns.filter((col: any) => col.nullable).length
           });
         } catch (err) {
           // Table might not exist or be empty
@@ -161,7 +170,7 @@ export function Analytics({ schema }: AnalyticsProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [schema]);
+  }, [schema, projectSchema, getProjectTableStats]);
 
   // Calculate data type distribution
   const calculateDataTypeDistribution = useCallback(() => {
@@ -203,36 +212,35 @@ export function Analytics({ schema }: AnalyticsProps) {
 
   // Advanced BI functions
   const generateDataInsights = useCallback(async () => {
-    if (!schema) return;
-    
+    if (!schema || !projectSchema) return;
+
     setIsLoading(true);
     try {
-      // Initialize database
-      await dbManager.initialize();
-      await dbManager.createTablesFromSchema(schema);
-      
       const insights: any[] = [];
-      
-      // Analyze each table for insights
+
+      // Analyze each table for insights using project data
       for (const table of schema.tables) {
         try {
-          const result = await dbManager.executeQuery(`SELECT * FROM "${table.name}"`);
-          
-          if (result.rows.length > 0) {
+          const tableData = await getTableData(table.name, 1000); // Get up to 1000 rows for analysis
+
+          if (tableData.length > 0) {
             // Check for data quality issues
-            const totalRows = result.rows.length;
+            const totalRows = tableData.length;
             const nullCounts: Record<string, number> = {};
-            
+
+            // Get column names from schema
+            const columns = table.columns.map(col => col.name);
+
             // Count nulls in each column
-            result.columns.forEach((col, colIndex) => {
-              const nullCount = result.rows.filter(row => row[colIndex] === null || row[colIndex] === undefined).length;
-              nullCounts[col] = nullCount;
+            columns.forEach((colName, colIndex) => {
+              const nullCount = tableData.filter((row: any) => row[colIndex] === null || row[colIndex] === undefined).length;
+              nullCounts[colName] = nullCount;
             });
-            
+
             // Generate insights based on data analysis
             Object.entries(nullCounts).forEach(([column, nullCount]) => {
               const nullPercentage = (nullCount / totalRows) * 100;
-              
+
               if (nullPercentage > 50) {
                 insights.push({
                   id: `insight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -247,9 +255,9 @@ export function Analytics({ schema }: AnalyticsProps) {
                 });
               }
             });
-            
+
             // Check for duplicate data
-            const uniqueRows = new Set(result.rows.map(row => JSON.stringify(row)));
+            const uniqueRows = new Set(tableData.map((row: any) => JSON.stringify(row)));
             if (uniqueRows.size < totalRows * 0.9) {
               insights.push({
                 id: `insight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -263,28 +271,28 @@ export function Analytics({ schema }: AnalyticsProps) {
                 createdAt: new Date()
               });
             }
-            
+
             // Check for data distribution
-            result.columns.forEach((col, colIndex) => {
-              const values = result.rows.map(row => row[colIndex]).filter(v => v !== null && v !== undefined);
+            columns.forEach((colName, colIndex) => {
+              const values = tableData.map((row: any) => row[colIndex]).filter((v: any) => v !== null && v !== undefined);
               if (values.length > 10) {
-                const numericValues = values.filter(v => typeof v === 'number' || !isNaN(Number(v))).map(v => Number(v));
+                const numericValues = values.filter((v: any) => typeof v === 'number' || !isNaN(Number(v))).map((v: any) => Number(v));
                 if (numericValues.length > 5) {
-                  const mean = numericValues.reduce((sum, val) => sum + val, 0) / numericValues.length;
-                  const variance = numericValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / numericValues.length;
+                  const mean = numericValues.reduce((sum: number, val: number) => sum + val, 0) / numericValues.length;
+                  const variance = numericValues.reduce((sum: number, val: number) => sum + Math.pow(val - mean, 2), 0) / numericValues.length;
                   const stdDev = Math.sqrt(variance);
-                  
+
                   // Check for outliers
-                  const outliers = numericValues.filter(val => Math.abs(val - mean) > 3 * stdDev);
+                  const outliers = numericValues.filter((val: number) => Math.abs(val - mean) > 3 * stdDev);
                   if (outliers.length > 0) {
                     insights.push({
                       id: `insight-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                      title: `Outliers detected in ${table.name}.${col}`,
+                      title: `Outliers detected in ${table.name}.${colName}`,
                       description: `${outliers.length} outliers found (${(outliers.length / numericValues.length * 100).toFixed(1)}%)`,
                       type: 'outlier',
                       severity: outliers.length > numericValues.length * 0.1 ? 'high' : 'medium',
                       confidence: 0.85,
-                      data: { table: table.name, column: col, outliers: outliers.length, total: numericValues.length, mean, stdDev },
+                      data: { table: table.name, column: colName, outliers: outliers.length, total: numericValues.length, mean, stdDev },
                       recommendations: ['Review outlier values for accuracy', 'Consider data cleaning'],
                       createdAt: new Date()
                     });
@@ -331,26 +339,25 @@ export function Analytics({ schema }: AnalyticsProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [schema]);
+  }, [schema, projectSchema, getTableData]);
+
+  // Create callback versions with proper dependencies
+  const generateDataInsightsCallback = useCallback(() => generateDataInsights(), [generateDataInsights]);
 
   const createKPI = useCallback(async (name: string, description: string, formula: string, target?: number) => {
-    if (!schema) return;
-    
+    if (!schema || !projectSchema) return;
+
     setIsLoading(true);
     try {
-      // Initialize database
-      await dbManager.initialize();
-      await dbManager.createTablesFromSchema(schema);
-      
-      // Calculate actual KPI value based on real data
+      // Calculate actual KPI value based on real project data
       let actualValue = 0;
       let data: any[] = [];
-      
-      // Collect data from all tables
+
+      // Collect data from all tables using project data
       for (const table of schema.tables) {
         try {
-          const result = await dbManager.executeQuery(`SELECT * FROM "${table.name}"`);
-          data.push(...result.rows.flat());
+          const tableData = await getTableData(table.name, 10000); // Get more data for KPI calculation
+          data.push(...tableData.flat());
         } catch (err) {
           // Table might be empty or not exist
           console.log(`Table ${table.name} not accessible for KPI calculation`);
@@ -399,7 +406,11 @@ export function Analytics({ schema }: AnalyticsProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [schema]);
+  }, [schema, projectSchema, getTableData]);
+
+  // Create callback version
+  const createKPICallback = useCallback((name: string, description: string, formula: string, target?: number) =>
+    createKPI(name, description, formula, target), [createKPI]);
 
   const analyzeTrends = useCallback(async (data: any[]) => {
     if (!schema) return;
@@ -1429,7 +1440,7 @@ export function Analytics({ schema }: AnalyticsProps) {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-white">Data Insights</h3>
           <button
-            onClick={generateDataInsights}
+            onClick={generateDataInsightsCallback}
             className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
           >
             <Zap className="w-4 h-4 mr-2 inline" />
@@ -2117,7 +2128,7 @@ export function Analytics({ schema }: AnalyticsProps) {
                   const target = (document.getElementById('kpi-target') as HTMLInputElement)?.value;
                   
                   if (name && description && formula) {
-                    createKPI(name, description, formula, target ? parseFloat(target) : undefined);
+                    createKPICallback(name, description, formula, target ? parseFloat(target) : undefined);
                   }
                 }}
                 className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"

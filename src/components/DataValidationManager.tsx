@@ -21,14 +21,27 @@ import {
   ValidationResult,
   AnomalyDetectionResult
 } from '@/services/dataValidationService';
+import { useProjectData } from '@/hooks/useProjectData';
 
 interface DataValidationManagerProps {
-  schema: DatabaseSchema | null;
-  records: DatabaseRecord[];
+  schema?: DatabaseSchema | null; // Made optional since we get it from project
+  records?: DatabaseRecord[]; // Made optional since we get it from project
   onSchemaChange?: (schema: DatabaseSchema) => void;
 }
 
-export function DataValidationManager({ schema, records, onSchemaChange }: DataValidationManagerProps) {
+export function DataValidationManager({ schema: propSchema, records: propRecords, onSchemaChange }: DataValidationManagerProps) {
+  // Use project data hook
+  const {
+    projectSchema,
+    executeProjectQuery,
+    getTableData,
+    getTableStats
+  } = useProjectData();
+
+  // Use project data if available, otherwise fall back to props
+  const schema = projectSchema || propSchema;
+  const records = propRecords || [];
+
   // State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'rules' | 'report' | 'anomalies' | 'profiles'>('dashboard');
   const [validationRules, setValidationRules] = useState<ValidationRule[]>([]);

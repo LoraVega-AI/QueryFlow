@@ -22,13 +22,23 @@ import {
   QueryRecommendation,
   PerformanceAlert
 } from '@/services/queryOptimizationService';
+import { useProjectData } from '@/hooks/useProjectData';
 
 interface QueryOptimizationManagerProps {
-  schema: DatabaseSchema | null;
+  schema?: DatabaseSchema | null; // Made optional since we get it from project
   onSchemaChange?: (schema: DatabaseSchema) => void;
 }
 
-export function QueryOptimizationManager({ schema, onSchemaChange }: QueryOptimizationManagerProps) {
+export function QueryOptimizationManager({ schema: propSchema, onSchemaChange }: QueryOptimizationManagerProps) {
+  // Use project data hook
+  const {
+    projectSchema,
+    executeProjectQuery,
+    getTableStats
+  } = useProjectData();
+
+  // Use project schema if available, otherwise fall back to prop
+  const schema = projectSchema || propSchema;
   // State
   const [activeTab, setActiveTab] = useState<'analyzer' | 'performance' | 'recommendations' | 'alerts' | 'reports'>('analyzer');
   const [query, setQuery] = useState('');

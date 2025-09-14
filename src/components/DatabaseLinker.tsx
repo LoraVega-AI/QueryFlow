@@ -44,8 +44,8 @@ import { Project, Database as ProjectDatabase } from '@/types/projects';
 
 interface DatabaseLinkerProps {
   projectId?: string;
-  databases?: DatabaseConnection[];
-  onDatabasesChange?: (databases: DatabaseConnection[]) => void;
+  databases?: ProjectDatabase[];
+  onDatabasesChange?: (databases: ProjectDatabase[]) => void;
   onSchemaLoaded?: (databaseId: string, schema: DatabaseSchema) => void;
   showAllProjects?: boolean;
 }
@@ -135,12 +135,18 @@ export function DatabaseLinker({
   }, [projects, selectedProject, showAllProjects]);
 
   // Test database connection
-  const testConnection = useCallback(async (database: DatabaseConnection) => {
+  const testConnection = useCallback(async (database: ProjectDatabase) => {
     const testId = `test_${database.id}_${Date.now()}`;
     setConnectionTests(prev => new Map(prev.set(database.id, { isTesting: true })));
 
     try {
-      const result = await DatabaseConnector.testConnection(database.type, database.config);
+      // Convert connectionString to DatabaseConfig format
+      const config: any = {
+        connectionString: database.connectionString,
+        filePath: database.type === 'sqlite' ? database.connectionString : undefined
+      };
+
+      const result = await DatabaseConnector.testConnection(database.type, config);
 
       setConnectionTests(prev => new Map(prev.set(database.id, {
         isTesting: false,
@@ -154,7 +160,7 @@ export function DatabaseLinker({
       // Update database status
       const updatedDatabases = databases.map(db =>
         db.id === database.id
-          ? { ...db, status: result.success ? 'connected' : 'error' as ConnectionStatus }
+          ? { ...db, isConnected: result.success, lastSync: result.success ? new Date().toISOString() : db.lastSync }
           : db
       );
       onDatabasesChange?.(updatedDatabases);
@@ -171,14 +177,20 @@ export function DatabaseLinker({
   }, [databases, onDatabasesChange]);
 
   // Load database schema
-  const loadSchema = useCallback(async (database: DatabaseConnection) => {
-    if (database.status !== 'connected') {
+  const loadSchema = useCallback(async (database: ProjectDatabase) => {
+    if (!database.isConnected) {
       console.warn('Cannot load schema for disconnected database');
       return;
     }
 
     try {
-      const schema = await DatabaseConnector.introspectSchema(database.type, database.config);
+      // Convert connectionString to DatabaseConfig format for introspection
+      const config: any = {
+        connectionString: database.connectionString,
+        filePath: database.type === 'sqlite' ? database.connectionString : undefined
+      };
+
+      const schema = await DatabaseConnector.introspectSchema(database.type, config);
       setSchemas(prev => new Map(prev.set(database.id, schema)));
       onSchemaLoaded?.(database.id, schema);
     } catch (error) {
@@ -307,11 +319,11 @@ export function DatabaseLinker({
   };
 
   // Toggle connection
-  const toggleConnection = useCallback(async (database: DatabaseConnection) => {
-    if (database.status === 'connected') {
+  const toggleConnection = useCallback(async (database: ProjectDatabase) => {
+    if (database.isConnected) {
       // Disconnect
       const updatedDatabases = databases.map(db =>
-        db.id === database.id ? { ...db, status: 'disconnected' as ConnectionStatus } : db
+        db.id === database.id ? { ...db, isConnected: false } : db
       );
       onDatabasesChange?.(updatedDatabases);
     } else {
@@ -321,29 +333,23 @@ export function DatabaseLinker({
   }, [databases, onDatabasesChange, testConnection]);
 
   // Update database configuration
-  const updateDatabaseConfig = useCallback((databaseId: string, config: Partial<DatabaseConfig>) => {
+  const updateDatabaseConfig = useCallback((databaseId: string, updates: any) => {
     const updatedDatabases = databases.map(db =>
-      db.id === databaseId ? { ...db, config: { ...db.config, ...config } } : db
+      db.id === databaseId ? { ...db, ...updates } : db
     );
     onDatabasesChange?.(updatedDatabases);
   }, [databases, onDatabasesChange]);
 
   // Add new database connection
   const addDatabaseConnection = useCallback(() => {
-    const newDatabase: DatabaseConnection = {
+    const newDatabase: ProjectDatabase = {
       id: `db_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      type: 'postgresql',
       name: 'New Database',
-      config: {
-        host: 'localhost',
-        port: 5432,
-        database: 'database',
-        username: 'user',
-        password: ''
-      },
-      status: 'disconnected',
-      syncEnabled: true,
-      syncDirection: 'bidirectional'
+      type: 'sqlite',
+      connectionString: '',
+      tables: [],
+      isConnected: false,
+      lastSync: null
     };
 
     onDatabasesChange?.([...databases, newDatabase]);
@@ -363,8 +369,10 @@ export function DatabaseLinker({
   }, [databases, onDatabasesChange]);
 
   // Render database connection card
-  const renderDatabaseCard = (database: DatabaseConnection) => {
-    const statusConfig = STATUS_CONFIG[database.status];
+  const renderDatabaseCard = (database: ProjectDatabase) => {
+    // Map isConnected to status for display
+    const statusKey = database.isConnected ? 'connected' : 'disconnected';
+    const statusConfig = STATUS_CONFIG[statusKey];
     const StatusIcon = statusConfig.icon;
     const testInfo = connectionTests.get(database.id);
     const schema = schemas.get(database.id);
@@ -384,7 +392,7 @@ export function DatabaseLinker({
 
           <div className="flex items-center space-x-2">
             <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusConfig.bg}`}>
-              <StatusIcon className={`w-3 h-3 mr-1 ${statusConfig.color} ${database.status === 'connecting' || database.status === 'syncing' ? 'animate-spin' : ''}`} />
+              <StatusIcon className={`w-3 h-3 mr-1 ${statusConfig.color}`} />
               <span className={statusConfig.color}>{statusConfig.label}</span>
             </div>
 
@@ -424,7 +432,7 @@ export function DatabaseLinker({
               </label>
               <input
                 type="text"
-                value={database.config.filePath || ''}
+                value={database.type === 'sqlite' ? database.connectionString : ''}
                 onChange={(e) => updateDatabaseConfig(database.id, { filePath: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                 placeholder="/path/to/database.db"
@@ -437,25 +445,27 @@ export function DatabaseLinker({
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Host
                   </label>
-                  <input
-                    type="text"
-                    value={database.config.host || ''}
-                    onChange={(e) => updateDatabaseConfig(database.id, { host: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    placeholder="localhost"
-                  />
+                    <input
+                      type="text"
+                      value=""
+                      onChange={() => {}}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 opacity-50"
+                      placeholder="Configure via connection string"
+                      disabled
+                    />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Port
                   </label>
-                  <input
-                    type="number"
-                    value={database.config.port || ''}
-                    onChange={(e) => updateDatabaseConfig(database.id, { port: parseInt(e.target.value) || undefined })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    placeholder="5432"
-                  />
+                    <input
+                      type="number"
+                      value=""
+                      onChange={() => {}}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 opacity-50"
+                      placeholder="Configure via connection string"
+                      disabled
+                    />
                 </div>
               </div>
 
@@ -466,10 +476,11 @@ export function DatabaseLinker({
                   </label>
                   <input
                     type="text"
-                    value={database.config.database || ''}
-                    onChange={(e) => updateDatabaseConfig(database.id, { database: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    placeholder="my_database"
+                    value=""
+                    onChange={() => {}}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 opacity-50"
+                    placeholder="Configure via connection string"
+                    disabled
                   />
                 </div>
                 <div>
@@ -478,10 +489,11 @@ export function DatabaseLinker({
                   </label>
                   <input
                     type="text"
-                    value={database.config.username || ''}
-                    onChange={(e) => updateDatabaseConfig(database.id, { username: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    placeholder="username"
+                    value=""
+                    onChange={() => {}}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 opacity-50"
+                    placeholder="Configure via connection string"
+                    disabled
                   />
                 </div>
               </div>
@@ -493,10 +505,11 @@ export function DatabaseLinker({
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    value={database.config.password || ''}
-                    onChange={(e) => updateDatabaseConfig(database.id, { password: e.target.value })}
-                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
-                    placeholder="password"
+                    value=""
+                    onChange={() => {}}
+                    className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 opacity-50"
+                    placeholder="Configure via connection string"
+                    disabled
                   />
                   <button
                     onClick={() => {
@@ -525,7 +538,7 @@ export function DatabaseLinker({
                     </label>
                     <input
                       type="text"
-                      value={database.config.connectionString || ''}
+                      value={database.connectionString || ''}
                       onChange={(e) => updateDatabaseConfig(database.id, { connectionString: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
                       placeholder="postgresql://user:pass@host:port/db"
@@ -547,7 +560,6 @@ export function DatabaseLinker({
             <div className="text-xs text-blue-700 space-y-1">
               <div>Tables: {schema.tables.length}</div>
               <div>Relationships: {schema.relationships.length}</div>
-              <div>Version: {schema.version}</div>
             </div>
           </div>
         )}
@@ -577,12 +589,12 @@ export function DatabaseLinker({
               onClick={() => toggleConnection(database)}
               disabled={testInfo?.isTesting}
               className={`inline-flex items-center px-3 py-1 text-sm rounded ${
-                database.status === 'connected'
+                database.isConnected
                   ? 'bg-red-600 text-white hover:bg-red-700'
                   : 'bg-green-600 text-white hover:bg-green-700'
               } disabled:opacity-50`}
             >
-              {database.status === 'connected' ? (
+              {database.isConnected ? (
                 <>
                   <Unlink className="w-3 h-3 mr-1" />
                   Disconnect
@@ -595,7 +607,7 @@ export function DatabaseLinker({
               )}
             </button>
 
-            {database.status === 'connected' && (
+            {database.isConnected && (
               <button
                 onClick={() => loadSchema(database)}
                 className="inline-flex items-center px-3 py-1 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"

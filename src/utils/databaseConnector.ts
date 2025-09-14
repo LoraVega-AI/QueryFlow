@@ -222,10 +222,7 @@ export class DatabaseConnector {
     return {
       tables: mockTables,
       relationships: [],
-      indexes: mockTables.flatMap(t => t.indexes),
-      constraints: mockTables.flatMap(t => t.constraints),
-      version: '1.0',
-      lastUpdated: new Date()
+      indexes: mockTables.flatMap(t => t.indexes)
     };
   }
 
@@ -238,9 +235,6 @@ export class DatabaseConnector {
       tables: [],
       relationships: [],
       indexes: [],
-      constraints: [],
-      version: '1.0',
-      lastUpdated: new Date()
     };
   }
 
@@ -253,9 +247,6 @@ export class DatabaseConnector {
       tables: [],
       relationships: [],
       indexes: [],
-      constraints: [],
-      version: '1.0',
-      lastUpdated: new Date()
     };
   }
 
@@ -268,9 +259,6 @@ export class DatabaseConnector {
       tables: [], // Collections in MongoDB terms
       relationships: [],
       indexes: [],
-      constraints: [],
-      version: '1.0',
-      lastUpdated: new Date()
     };
   }
 

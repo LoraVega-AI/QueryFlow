@@ -41,7 +41,7 @@ import {
 } from '@/types/sync';
 import { DatabaseSyncService } from '@/services/databaseSyncService';
 import { Project, DatabaseConnection } from '@/types/project';
-import { projectsManager } from '@/utils/projectsManager';
+import { getProjectsManager } from '@/utils/projectsManager';
 import { useDatabase } from '@/contexts/DatabaseContext';
 import { Project as ProjectsProject, Database as ProjectDatabase } from '@/types/projects';
 
@@ -102,7 +102,7 @@ export function SyncManager({
 
   // Load projects and set selected items
   useEffect(() => {
-    const allProjects = projectsManager.getAllProjects();
+    const allProjects = getProjectsManager().getAllProjects();
     setProjects(allProjects);
 
     if (projectId) {
@@ -221,10 +221,18 @@ export function SyncManager({
 
   // Start sync session
   const startSync = useCallback(async () => {
+    if (!selectedProject || !selectedDatabase) {
+      addAlert('error', 'No project or database selected');
+      return;
+    }
+
     try {
+      setActiveSession(null); // Clear any existing session
+      setConflicts([]); // Clear conflicts
+
       const session = await DatabaseSyncService.startSyncSession(
-        selectedProject!.id,
-        selectedDatabase!.id
+        selectedProject.id,
+        selectedDatabase.id
       );
 
       setActiveSession(session);
@@ -232,16 +240,19 @@ export function SyncManager({
       // Add change listener
       DatabaseSyncService.addChangeListener(session.id, (changes) => {
         console.log('Sync changes:', changes);
+        // Update UI with changes if needed
       });
 
       // Add alert
-      addAlert('info', `Sync session started for ${selectedDatabase!.name}`);
+      addAlert('info', `Sync session started for ${selectedDatabase.name}`);
+
+      // Events are handled by DatabaseSyncService
 
     } catch (error) {
       console.error('Failed to start sync:', error);
-      addAlert('error', 'Failed to start sync session');
+      addAlert('error', `Failed to start sync session: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [selectedProject?.id, selectedDatabase?.id, selectedDatabase?.name]);
+  }, [selectedProject, selectedDatabase]);
 
   // Stop sync session
   const stopSync = useCallback(async () => {

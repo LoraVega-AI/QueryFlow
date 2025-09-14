@@ -5,8 +5,6 @@ import {
   DatabaseType,
   DatabaseConfig,
   DatabaseSchema,
-  Table,
-  Column,
   Relationship,
   Index,
   Constraint,
@@ -14,7 +12,7 @@ import {
   Project,
   DatabaseConnection
 } from '@/types/project';
-import { DataType } from '@/types/database';
+import { DataType, Table, Column } from '@/types/database';
 import { DatabaseConnector } from '@/utils/databaseConnector';
 
 export class SchemaIntrospectionService {
@@ -155,62 +153,63 @@ export class SchemaIntrospectionService {
     // For now, return mock data
     const tables: Table[] = [
       {
+        id: 'users',
         name: 'users',
         columns: [
           {
+            id: 'id',
             name: 'id',
-            type: 'integer',
+            type: 'INTEGER',
             nullable: false,
             primaryKey: true,
             autoIncrement: true
           },
           {
+            id: 'email',
             name: 'email',
-            type: 'varchar',
+            type: 'VARCHAR',
             nullable: false,
+            primaryKey: false,
             unique: true,
-            length: 255
+            constraints: {
+              maxLength: 255
+            }
           },
           {
+            id: 'password',
             name: 'password',
-            type: 'varchar',
+            type: 'VARCHAR',
             nullable: false,
-            length: 255
+            primaryKey: false,
+            constraints: {
+              maxLength: 255
+            }
           },
           {
+            id: 'created_at',
             name: 'created_at',
-            type: 'datetime',
+            type: 'DATETIME',
             nullable: false,
+            primaryKey: false,
             defaultValue: "strftime('%Y-%m-%d %H:%M:%S', 'now')"
           }
         ],
         indexes: [
           {
+            id: 'sqlite_autoindex_users_1',
             name: 'sqlite_autoindex_users_1',
-            table: 'users',
             columns: ['email'],
             unique: true,
             type: 'btree'
-          }
-        ],
-        constraints: [
-          {
-            name: 'sqlite_autoindex_users_1',
-            type: 'unique',
-            table: 'users',
-            columns: ['email']
           }
         ]
       }
     ];
 
     return {
-      tables,
+      tables: tables as any, // Cast to avoid type mismatch between database and project Table types
       relationships: [],
-      indexes: tables.flatMap(t => t.indexes),
-      constraints: tables.flatMap(t => t.constraints),
-      version: '1.0',
-      lastUpdated: new Date()
+      indexes: tables.flatMap(t => t.indexes).filter(Boolean) as any // Cast to avoid type mismatch
     };
   }
 
@@ -221,41 +220,48 @@ export class SchemaIntrospectionService {
     // Mock PostgreSQL introspection - would use information_schema in real implementation
     const tables: Table[] = [
       {
+        id: 'users',
         name: 'users',
         columns: [
           {
+            id: 'id',
             name: 'id',
-            type: 'serial',
+            type: 'BIGINT',
             nullable: false,
             primaryKey: true,
             autoIncrement: true
           },
           {
+            id: 'email',
             name: 'email',
-            type: 'varchar',
+            type: 'VARCHAR',
             nullable: false,
+            primaryKey: false,
             unique: true,
-            length: 255
+            constraints: {
+              maxLength: 255
+            }
           },
           {
+            id: 'created_at',
             name: 'created_at',
-            type: 'timestamptz',
+            type: 'TIMESTAMP',
             nullable: false,
+            primaryKey: false,
             defaultValue: 'NOW()'
           }
         ],
         indexes: [],
-        constraints: []
+        position: { x: 0, y: 0 },
+        createdAt: new Date(),
+        updatedAt: new Date()
       }
     ];
 
     return {
-      tables,
+      tables: tables as any,
       relationships: [],
       indexes: [],
-      constraints: [],
-      version: '1.0',
-      lastUpdated: new Date()
     };
   }
 
@@ -266,41 +272,48 @@ export class SchemaIntrospectionService {
     // Mock MySQL introspection - would use information_schema in real implementation
     const tables: Table[] = [
       {
+        id: 'users',
         name: 'users',
         columns: [
           {
+            id: 'id',
             name: 'id',
-            type: 'int',
+            type: 'INTEGER',
             nullable: false,
             primaryKey: true,
             autoIncrement: true
           },
           {
+            id: 'email',
             name: 'email',
-            type: 'varchar',
+            type: 'VARCHAR',
             nullable: false,
+            primaryKey: false,
             unique: true,
-            length: 255
+            constraints: {
+              maxLength: 255
+            }
           },
           {
+            id: 'created_at',
             name: 'created_at',
-            type: 'datetime',
+            type: 'DATETIME',
             nullable: false,
+            primaryKey: false,
             defaultValue: 'CURRENT_TIMESTAMP'
           }
         ],
         indexes: [],
-        constraints: []
+        position: { x: 0, y: 0 },
+        createdAt: new Date(),
+        updatedAt: new Date()
       }
     ];
 
     return {
-      tables,
+      tables: tables as any,
       relationships: [],
       indexes: [],
-      constraints: [],
-      version: '1.0',
-      lastUpdated: new Date()
     };
   }
 
@@ -311,43 +324,50 @@ export class SchemaIntrospectionService {
     // Mock MongoDB introspection - would analyze document structure in real implementation
     const tables: Table[] = [
       {
+        id: 'users',
         name: 'users',
         columns: [
           {
+            id: '_id',
             name: '_id',
-            type: 'objectid',
+            type: 'VARCHAR',
             nullable: false,
             primaryKey: true
           },
           {
+            id: 'email',
             name: 'email',
-            type: 'string',
+            type: 'TEXT',
             nullable: false,
+            primaryKey: false,
             unique: true
           },
           {
+            id: 'profile',
             name: 'profile',
-            type: 'object',
-            nullable: true
+            type: 'JSON',
+            nullable: true,
+            primaryKey: false
           },
           {
+            id: 'created_at',
             name: 'created_at',
-            type: 'date',
-            nullable: false
+            type: 'DATE',
+            nullable: false,
+            primaryKey: false
           }
         ],
         indexes: [],
-        constraints: []
+        position: { x: 0, y: 0 },
+        createdAt: new Date(),
+        updatedAt: new Date()
       }
     ];
 
     return {
-      tables,
+      tables: tables as any,
       relationships: [],
       indexes: [],
-      constraints: [],
-      version: '1.0',
-      lastUpdated: new Date()
     };
   }
 
@@ -397,7 +417,7 @@ export class SchemaIntrospectionService {
     for (const [tableName, sourceTable] of sourceTables) {
       const targetTable = targetTables.get(tableName);
       if (targetTable) {
-        const tableChanges = this.compareTables(sourceTable, targetTable);
+        const tableChanges = this.compareTables(sourceTable as any, targetTable as any);
         changes.push(...tableChanges);
       }
     }
@@ -573,12 +593,12 @@ export class SchemaIntrospectionService {
   private static generateColumnSQL(column: Column, targetType: DatabaseType): string {
     let sql = `${column.name} ${column.type}`;
 
-    if (column.length) {
-      sql += `(${column.length})`;
+    if (column.constraints?.maxLength) {
+      sql += `(${column.constraints.maxLength})`;
     }
 
-    if (column.precision && column.scale) {
-      sql += `(${column.precision}, ${column.scale})`;
+    if (column.constraints?.precision && column.constraints?.scale) {
+      sql += `(${column.constraints.precision}, ${column.constraints.scale})`;
     }
 
     if (!column.nullable) {
@@ -642,7 +662,7 @@ export class SchemaIntrospectionService {
 
     // Create tables
     for (const table of schema.tables) {
-      scripts.push(this.generateCreateTableSQL(table, targetType));
+      scripts.push(this.generateCreateTableSQL(table as any, targetType));
     }
 
     // Create indexes
@@ -654,7 +674,7 @@ export class SchemaIntrospectionService {
     for (const table of schema.tables) {
       for (const column of table.columns) {
         if (column.foreignKey) {
-          scripts.push(this.generateForeignKeySQL(column, table.name, targetType));
+          scripts.push(this.generateForeignKeySQL(column as any, table.name, targetType));
         }
       }
     }
@@ -676,7 +696,7 @@ export class SchemaIntrospectionService {
    */
   private static generateForeignKeySQL(column: Column, tableName: string, targetType: DatabaseType): string {
     const fk = column.foreignKey!;
-    return `ALTER TABLE ${tableName} ADD CONSTRAINT fk_${tableName}_${column.name} FOREIGN KEY (${column.name}) REFERENCES ${fk.table} (${fk.column});`;
+    return `ALTER TABLE ${tableName} ADD CONSTRAINT fk_${tableName}_${column.name} FOREIGN KEY (${column.name}) REFERENCES ${fk.tableId} (${fk.columnId});`;
   }
 
   /**
@@ -709,9 +729,6 @@ export class SchemaIntrospectionService {
       tables: [],
       relationships: [],
       indexes: [],
-      constraints: [],
-      version: '1.0',
-      lastUpdated: new Date()
     };
   }
 }

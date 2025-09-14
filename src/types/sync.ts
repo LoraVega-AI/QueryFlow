@@ -13,6 +13,8 @@ export interface SyncSession {
   statistics: SyncStatistics;
   operations: SyncOperation[];
   conflicts: SyncConflict[];
+  sourceSchema?: any; // QueryFlow schema
+  targetSchema?: any; // Project schema
   error?: string;
 }
 

@@ -23,13 +23,23 @@ import {
   SyncConfiguration,
   CloudMetrics
 } from '@/services/cloudDatabaseService';
+import { useProjectData } from '@/hooks/useProjectData';
 
 interface CloudStorageManagerProps {
-  schema: DatabaseSchema | null;
+  schema?: DatabaseSchema | null; // Made optional since we get it from project
   onSchemaChange?: (schema: DatabaseSchema) => void;
 }
 
-export function CloudStorageManager({ schema, onSchemaChange }: CloudStorageManagerProps) {
+export function CloudStorageManager({ schema: propSchema, onSchemaChange }: CloudStorageManagerProps) {
+  // Use project data hook
+  const {
+    projectSchema,
+    executeProjectQuery,
+    getTableData
+  } = useProjectData();
+
+  // Use project schema if available, otherwise fall back to prop
+  const schema = projectSchema || propSchema;
   // State
   const [activeTab, setActiveTab] = useState<'connections' | 'backups' | 'sync' | 'monitoring' | 'security'>('connections');
   const [connections, setConnections] = useState<DatabaseConnection[]>([]);

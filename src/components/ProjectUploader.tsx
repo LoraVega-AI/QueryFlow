@@ -26,7 +26,7 @@ import { ProjectDetector } from '@/utils/projectDetector';
 import { DatabaseConnector } from '@/utils/databaseConnector';
 
 interface ProjectUploaderProps {
-  onProjectDetected: (result: ProjectDetectionResult) => void;
+  onProjectDetected?: (result: ProjectDetectionResult) => void;
   onClose: () => void;
 }
 
@@ -218,7 +218,7 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
 
       // Auto-close after success
       setTimeout(() => {
-        onProjectDetected(result);
+        onProjectDetected?.(result);
         onClose();
       }, 2000);
 
