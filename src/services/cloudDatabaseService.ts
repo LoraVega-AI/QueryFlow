@@ -471,11 +471,12 @@ export class CloudDatabaseService {
   /**
    * Execute backup
    */
-  static async executeBackup(backupId: string): Promise<{
+  static async executeBackup(backupId: string, projectId?: string): Promise<{
     success: boolean;
     backupSize?: number;
     location?: string;
     error?: string;
+    projectId?: string;
   }> {
     const backup = this.backupConfigs.get(backupId);
     if (!backup) {
@@ -493,12 +494,13 @@ export class CloudDatabaseService {
       
       backup.lastBackup = new Date();
       backup.nextBackup = this.calculateNextBackup(backup);
-      
-      return result;
+
+      return { ...result, projectId };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Backup failed'
+        error: error instanceof Error ? error.message : 'Backup failed',
+        projectId
       };
     }
   }
@@ -520,11 +522,12 @@ export class CloudDatabaseService {
   /**
    * Execute sync
    */
-  static async executeSync(syncId: string): Promise<{
+  static async executeSync(syncId: string, projectId?: string): Promise<{
     success: boolean;
     recordsProcessed?: number;
     conflicts?: number;
     error?: string;
+    projectId?: string;
   }> {
     const sync = this.syncConfigs.get(syncId);
     if (!sync) {
@@ -548,15 +551,16 @@ export class CloudDatabaseService {
       sync.lastSync = new Date();
       sync.nextSync = this.calculateNextSync(sync);
       sync.errorMessage = undefined;
-      
-      return result;
+
+      return { ...result, projectId };
     } catch (error) {
       sync.status = 'error';
       sync.errorMessage = error instanceof Error ? error.message : 'Sync failed';
       
       return {
         success: false,
-        error: sync.errorMessage
+        error: sync.errorMessage,
+        projectId
       };
     }
   }

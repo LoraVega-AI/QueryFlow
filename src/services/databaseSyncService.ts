@@ -340,61 +340,35 @@ export class DatabaseSyncService {
 
     // Try to load from storage first
     const storedSchema = StorageManager.loadSchema();
-    if (storedSchema) {
+    if (storedSchema && storedSchema.tables && storedSchema.tables.length > 0) {
+      console.log('Using stored QueryFlow schema with', storedSchema.tables.length, 'tables');
       return storedSchema;
     }
 
-    // If no schema exists, create a default QueryFlow schema with sample tables
-    // This ensures there's always something to sync
-    return {
-      id: 'queryflow_default_schema',
-      name: 'QueryFlow Default Schema',
-      tables: [
-        {
-          id: 'users',
-          name: 'users',
-          columns: [
-            { id: 'id', name: 'id', type: 'INTEGER', nullable: false, primaryKey: true, autoIncrement: true },
-            { id: 'email', name: 'email', type: 'VARCHAR', nullable: false, primaryKey: false, unique: true },
-            { id: 'name', name: 'name', type: 'VARCHAR', nullable: false, primaryKey: false },
-            { id: 'created_at', name: 'created_at', type: 'DATETIME', nullable: false, primaryKey: false, defaultValue: 'CURRENT_TIMESTAMP' }
-          ],
-          indexes: [],
-          position: { x: 100, y: 100 },
-          createdAt: new Date(),
-          updatedAt: new Date()
-        },
-        {
-          id: 'products',
-          name: 'products',
-          columns: [
-            { id: 'id', name: 'id', type: 'INTEGER', nullable: false, primaryKey: true, autoIncrement: true },
-            { id: 'name', name: 'name', type: 'VARCHAR', nullable: false, primaryKey: false },
-            { id: 'price', name: 'price', type: 'DECIMAL', nullable: false, primaryKey: false },
-            { id: 'category_id', name: 'category_id', type: 'INTEGER', nullable: true, primaryKey: false },
-            { id: 'created_at', name: 'created_at', type: 'DATETIME', nullable: false, primaryKey: false, defaultValue: 'CURRENT_TIMESTAMP' }
-          ],
-          indexes: [],
-          position: { x: 400, y: 100 },
-          createdAt: new Date(),
-          updatedAt: new Date()
-        },
-        {
-          id: 'orders',
-          name: 'orders',
-          columns: [
-            { id: 'id', name: 'id', type: 'INTEGER', nullable: false, primaryKey: true, autoIncrement: true },
-            { id: 'user_id', name: 'user_id', type: 'INTEGER', nullable: false, primaryKey: false },
-            { id: 'total', name: 'total', type: 'DECIMAL', nullable: false, primaryKey: false },
-            { id: 'status', name: 'status', type: 'VARCHAR', nullable: false, primaryKey: false, defaultValue: "'pending'" },
-            { id: 'created_at', name: 'created_at', type: 'DATETIME', nullable: false, primaryKey: false, defaultValue: 'CURRENT_TIMESTAMP' }
-          ],
-          indexes: [],
-          position: { x: 700, y: 100 },
-          createdAt: new Date(),
-          updatedAt: new Date()
+    // Check if there's an active database connection with a schema
+    try {
+      // Try to get schema from active database connection if available
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const activeConnection = localStorage.getItem('queryflow_active_connection');
+        if (activeConnection) {
+          const connection = JSON.parse(activeConnection);
+          if (connection.schema) {
+            console.log('Using active database connection schema');
+            return connection.schema;
+          }
         }
-      ],
+      }
+    } catch (error) {
+      console.warn('Could not load schema from active connection:', error);
+    }
+
+    // If no schema exists, create a minimal default schema
+    // This prevents syncing tables that don't exist
+    console.log('No schema found, using minimal default schema');
+    return {
+      id: 'queryflow_minimal_schema',
+      name: 'QueryFlow Minimal Schema',
+      tables: [],
       createdAt: new Date(),
       updatedAt: new Date(),
       version: 1
@@ -530,6 +504,13 @@ export class DatabaseSyncService {
         if (!this.shouldSyncTable(table.name, session)) continue;
 
         try {
+          // First check if the table exists in the target database
+          const tableExists = await this.checkTableExists(session.projectId, table.name);
+          if (!tableExists) {
+            console.warn(`Table ${table.name} does not exist in target database, skipping data comparison`);
+            continue;
+          }
+
           // Get record counts from both sources
           const sourceCount = await this.getTableRecordCount(table.name, 'queryflow');
           const targetCount = await projectsManager.executeProjectQuery(
@@ -565,6 +546,23 @@ export class DatabaseSyncService {
     }
 
     return changes;
+  }
+
+  // Check if table exists in target database
+  private static async checkTableExists(projectId: string, tableName: string): Promise<boolean> {
+    const { projectsManager } = await import('../utils/projectsManager');
+
+    try {
+      // Query sqlite_master to check if table exists
+      const result = await projectsManager.executeProjectQuery(
+        projectId,
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='${tableName}'`
+      );
+      return result.rows.length > 0;
+    } catch (error) {
+      console.error(`Error checking if table ${tableName} exists:`, error);
+      return false;
+    }
   }
 
   // Get table record count (mock for QueryFlow)
@@ -639,15 +637,27 @@ export class DatabaseSyncService {
   private static async syncTableData(session: SyncSession, tableName: string): Promise<void> {
     const { projectsManager } = await import('../utils/projectsManager');
 
+    // First check if the table exists
+    const tableExists = await this.checkTableExists(session.projectId, tableName);
+    if (!tableExists) {
+      console.warn(`Table ${tableName} does not exist in target database, cannot sync data`);
+      return;
+    }
+
     // Get source data (mock)
     const sourceData = await this.getSourceTableData(tableName);
 
-    // Clear target table
-    await projectsManager.executeProjectQuery(session.projectId, `DELETE FROM "${tableName}"`);
+    try {
+      // Clear target table
+      await projectsManager.executeProjectQuery(session.projectId, `DELETE FROM "${tableName}"`);
 
-    // Insert source data into target
-    if (sourceData.length > 0) {
-      await this.insertSampleData(session.projectId, tableName, sourceData);
+      // Insert source data into target
+      if (sourceData.length > 0) {
+        await this.insertSampleData(session.projectId, tableName, sourceData);
+      }
+    } catch (error) {
+      console.error(`Failed to sync data for table ${tableName}:`, error);
+      throw error;
     }
   }
 

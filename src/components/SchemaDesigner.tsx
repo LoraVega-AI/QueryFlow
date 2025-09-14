@@ -24,10 +24,12 @@ import { DatabaseSchema, Table, Column, DataType, FlowNode, FlowEdge, SchemaVali
 import { TableNode } from './nodes/TableNode';
 import { RelationshipEdge } from './edges/RelationshipEdge';
 import { TableEditor } from './TableEditor';
-import { 
-  Plus, Save, Trash2, AlertTriangle, CheckCircle, FileText, Search, Filter, Brain, Lightbulb, 
-  Zap, Target, TrendingUp, Users, Clock, RefreshCw, Download, Layout, Palette, ZoomIn, ZoomOut, 
-  RotateCcw, Grid, Circle, Layers, Activity, Maximize, Minimize, Camera, X, Type, Shield, Lock 
+import { useProjectData } from '@/hooks/useProjectData';
+import {
+  Plus, Save, Trash2, AlertTriangle, CheckCircle, FileText, Search, Filter, Brain, Lightbulb,
+  Zap, Target, TrendingUp, Users, Clock, RefreshCw, Download, Layout, Palette, ZoomIn, ZoomOut,
+  RotateCcw, Grid, Circle, Layers, Activity, Maximize, Minimize, Camera, X, Type, Shield, Lock,
+  Database
 } from 'lucide-react';
 import { SchemaValidator } from '@/utils/schemaValidation';
 import { SchemaTemplateManager } from '@/utils/schemaTemplates';
@@ -48,7 +50,18 @@ interface SchemaDesignerProps {
   onSchemaChange: (schema: DatabaseSchema) => void;
 }
 
-export function SchemaDesigner({ schema, onSchemaChange }: SchemaDesignerProps) {
+export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDesignerProps) {
+  // Use project data hook to get current project schema
+  const {
+    currentProject,
+    projectSchema,
+    hasProject,
+    executeProjectQuery
+  } = useProjectData();
+
+  // Use project schema if available, otherwise fall back to prop
+  const schema = projectSchema || propSchema;
+
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
@@ -692,8 +705,52 @@ export function SchemaDesigner({ schema, onSchemaChange }: SchemaDesignerProps) 
     onSchemaChange(updatedSchema);
   }, [schema, onSchemaChange]);
 
+  // If no project is selected, show project selection prompt
+  if (!hasProject) {
+    return (
+      <div className="flex flex-col h-full bg-gray-900">
+        <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Schema Designer</h2>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-red-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Database className="w-8 h-8 text-red-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">No Project Selected</h3>
+            <p className="text-gray-300 mb-4">Please select a project to design database schemas</p>
+            <button
+              onClick={() => window.location.hash = '#projects'}
+              className="px-6 py-3 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+            >
+              Select Project
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
+      {/* Project Header */}
+      <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Schema Designer</h2>
+            {currentProject && (
+              <div className="flex items-center space-x-2 bg-orange-600 text-white px-3 py-1 rounded-md text-sm">
+                <Database className="w-4 h-4" />
+                <span>{currentProject.name}</span>
+              </div>
+            )}
+          </div>
+          <span className="text-sm text-gray-300">Design database schemas for your project</span>
+        </div>
+      </div>
+
       {/* Enhanced ERD Toolbar */}
       <div className="bg-gray-800 border-b border-gray-700">
         {/* Main Toolbar */}

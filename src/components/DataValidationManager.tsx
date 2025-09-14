@@ -32,10 +32,15 @@ interface DataValidationManagerProps {
 export function DataValidationManager({ schema: propSchema, records: propRecords, onSchemaChange }: DataValidationManagerProps) {
   // Use project data hook
   const {
+    currentProject,
     projectSchema,
     executeProjectQuery,
-    getTableData,
-    getTableStats
+    hasProject,
+    getTableNames,
+    getColumnNames,
+    isTableExists,
+    isLoading: projectLoading,
+    error: projectError
   } = useProjectData();
 
   // Use project data if available, otherwise fall back to props
@@ -69,7 +74,7 @@ export function DataValidationManager({ schema: propSchema, records: propRecords
 
   // Run validation
   const runValidation = useCallback(async () => {
-    if (!schema || validationRules.length === 0) return;
+    if (!hasProject || !schema || validationRules.length === 0) return;
 
     setIsValidating(true);
     try {
@@ -80,7 +85,7 @@ export function DataValidationManager({ schema: propSchema, records: propRecords
     } finally {
       setIsValidating(false);
     }
-  }, [schema, records, validationRules]);
+  }, [hasProject, schema, records, validationRules]);
 
   // Add custom validation rule
   const addValidationRule = useCallback(() => {
@@ -675,7 +680,15 @@ export function DataValidationManager({ schema: propSchema, records: propRecords
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Data Validation</h1>
+            <div className="flex items-center space-x-3">
+              <h1 className="text-2xl font-bold text-gray-900">Data Validation</h1>
+              {currentProject && (
+                <div className="flex items-center space-x-2 bg-blue-600 text-white px-3 py-1 rounded-md text-sm">
+                  <Database className="w-4 h-4" />
+                  <span>{currentProject.name}</span>
+                </div>
+              )}
+            </div>
             <p className="text-sm text-gray-500 mt-1">
               Monitor data quality and ensure schema compliance
             </p>
@@ -745,11 +758,31 @@ export function DataValidationManager({ schema: propSchema, records: propRecords
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
-        {activeTab === 'dashboard' && renderDashboard()}
-        {activeTab === 'rules' && renderRules()}
-        {activeTab === 'report' && renderReport()}
-        {activeTab === 'anomalies' && renderAnomalies()}
-        {activeTab === 'profiles' && renderProfiles()}
+        {!hasProject ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Shield className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Project Selected</h3>
+              <p className="text-gray-600 mb-4">Please select a project to run data validation</p>
+              <button
+                onClick={() => window.location.hash = '#projects'}
+                className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Select Project
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {activeTab === 'dashboard' && renderDashboard()}
+            {activeTab === 'rules' && renderRules()}
+            {activeTab === 'report' && renderReport()}
+            {activeTab === 'anomalies' && renderAnomalies()}
+            {activeTab === 'profiles' && renderProfiles()}
+          </>
+        )}
       </div>
     </div>
   );

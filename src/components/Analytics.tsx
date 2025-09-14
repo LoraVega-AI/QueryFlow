@@ -41,10 +41,14 @@ interface QueryMetrics {
 export function Analytics({ schema: propSchema }: AnalyticsProps) {
   // Use project data hook to get current project schema
   const {
+    currentProject,
     projectSchema,
     executeProjectQuery,
+    hasProject,
+    getTableNames,
+    getColumnNames,
+    isTableExists,
     getTableData,
-    getTableStats: getProjectTableStats,
     isLoading: projectLoading,
     error: projectError
   } = useProjectData();
@@ -120,13 +124,7 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
 
   // Calculate table statistics
   const calculateTableStats = useCallback(async () => {
-    if (!schema || schema.tables.length === 0) {
-      setTableStats([]);
-      return;
-    }
-
-    // If we have project data available, use it; otherwise show empty state
-    if (!projectSchema) {
+    if (!hasProject || !schema || schema.tables.length === 0) {
       setTableStats([]);
       return;
     }
@@ -139,25 +137,40 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
 
       for (const table of schema.tables) {
         try {
-          // Use project data hook to get table stats
-          const tableStatsData = await getProjectTableStats(table.name);
+          // Check if table exists in project database
+          if (!isTableExists(table.name)) {
+            stats.push({
+              tableName: table.name,
+              recordCount: 0,
+              columnCount: table.columns.length,
+              primaryKeys: table.columns.filter(col => col.primaryKey).length,
+              foreignKeys: 0, // Would need to be calculated from schema relationships
+              nullableColumns: table.columns.filter(col => col.nullable).length
+            });
+            continue;
+          }
+
+          // Get record count from project database
+          const result = await executeProjectQuery(`SELECT COUNT(*) as count FROM "${table.name}"`);
+          const recordCount = result.rows[0]?.count || 0;
 
           stats.push({
             tableName: table.name,
-            recordCount: tableStatsData.recordCount,
-            columnCount: tableStatsData.columnCount,
-            primaryKeys: tableStatsData.columns.filter((col: any) => col.primaryKey).length,
+            recordCount: Number(recordCount),
+            columnCount: table.columns.length,
+            primaryKeys: table.columns.filter(col => col.primaryKey).length,
             foreignKeys: 0, // Would need to be calculated from schema relationships
-            nullableColumns: tableStatsData.columns.filter((col: any) => col.nullable).length
+            nullableColumns: table.columns.filter(col => col.nullable).length
           });
         } catch (err) {
+          console.warn(`Failed to get stats for table ${table.name}:`, err);
           // Table might not exist or be empty
           stats.push({
             tableName: table.name,
             recordCount: 0,
             columnCount: table.columns.length,
             primaryKeys: table.columns.filter(col => col.primaryKey).length,
-            foreignKeys: table.columns.filter(col => col.foreignKey).length,
+            foreignKeys: 0,
             nullableColumns: table.columns.filter(col => col.nullable).length
           });
         }
@@ -170,7 +183,7 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [schema, projectSchema, getProjectTableStats]);
+  }, [schema, hasProject, executeProjectQuery, isTableExists]);
 
   // Calculate data type distribution
   const calculateDataTypeDistribution = useCallback(() => {
@@ -419,12 +432,16 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
     try {
       // Initialize database
       await dbManager.initialize();
-      await dbManager.createTablesFromSchema(schema);
-      
+      // Only create tables if we have a valid schema
+      if (schema) {
+        await dbManager.createTablesFromSchema(schema);
+      }
+
       const trendData: any[] = [];
       
       // Analyze trends across all tables
-      for (const table of schema.tables) {
+      if (schema?.tables) {
+        for (const table of schema.tables) {
         try {
           const result = await dbManager.executeQuery(`SELECT * FROM "${table.name}"`);
           
@@ -496,7 +513,8 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
           console.log(`Error analyzing trends for table ${table.name}:`, err);
         }
       }
-      
+      }
+
       if (trendData.length > 0) {
         // Sort by timestamp
         trendData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
@@ -1050,7 +1068,7 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
 
   // Load analytics data
   useEffect(() => {
-    if (schema) {
+    if (hasProject && schema) {
       calculateTableStats();
       calculateDataTypeDistribution();
       calculateQueryMetrics();
@@ -1058,8 +1076,17 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
       setKpis(AnalyticsEngine.getKPIs());
       setTrendAnalyses(AnalyticsEngine.getTrendAnalyses());
       setStatisticalAnalyses(AnalyticsEngine.getStatisticalAnalyses());
+    } else {
+      // Clear data when no project is selected
+      setTableStats([]);
+      setDataTypeDistribution([]);
+      setQueryMetrics(null);
+      setDataInsights([]);
+      setKpis([]);
+      setTrendAnalyses([]);
+      setStatisticalAnalyses([]);
     }
-  }, [schema, calculateTableStats, calculateDataTypeDistribution, calculateQueryMetrics]);
+  }, [hasProject, schema, calculateTableStats, calculateDataTypeDistribution, calculateQueryMetrics]);
 
   // Get color for data type
   const getDataTypeColor = (type: string): string => {
@@ -1866,7 +1893,15 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center space-x-4">
-          <h2 className="text-xl font-semibold text-white">Analytics</h2>
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Analytics</h2>
+            {currentProject && (
+              <div className="flex items-center space-x-2 bg-orange-600 text-white px-3 py-1 rounded-md text-sm">
+                <Database className="w-4 h-4" />
+                <span>{currentProject.name}</span>
+              </div>
+            )}
+          </div>
           <span className="text-sm text-gray-300">Database insights and metrics</span>
         </div>
         <div className="flex items-center space-x-2">
@@ -2020,7 +2055,23 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
-        {!schema || schema.tables.length === 0 ? (
+        {!hasProject ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Database className="w-8 h-8 text-red-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-2">No Project Selected</h3>
+              <p className="text-gray-300 mb-4">Please select a project to view analytics and metrics</p>
+              <button
+                onClick={() => window.location.hash = '#projects'}
+                className="px-6 py-3 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+              >
+                Select Project
+              </button>
+            </div>
+          </div>
+        ) : !schema || schema.tables.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <div className="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">

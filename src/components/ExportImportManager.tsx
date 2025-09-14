@@ -7,6 +7,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { DatabaseSchema, DatabaseRecord } from '@/types/database';
 import { ExportService, ExportOptions, ExportFormat, ExportResult } from '@/services/exportService';
 import { ImportService, ImportOptions, ImportFormat, ImportResult } from '@/services/importService';
+import { useProjectData } from '@/hooks/useProjectData';
 import { 
   Download, Upload, FileText, Database, Globe, Code, 
   Settings, CheckCircle, AlertTriangle, X, ChevronDown,
@@ -46,7 +47,20 @@ const IMPORT_FORMATS: { value: ImportFormat; label: string; icon: React.ReactNod
   { value: 'api', label: 'API Endpoint', icon: <Globe className="w-4 h-4" />, description: 'Import from REST API' },
 ];
 
-export function ExportImportManager({ schema, records, onSchemaChange, onRecordsChange }: ExportImportManagerProps) {
+export function ExportImportManager({ schema: propSchema, records: propRecords, onSchemaChange, onRecordsChange }: ExportImportManagerProps) {
+  // Use project data hook to get current project
+  const {
+    currentProject,
+    projectSchema,
+    hasProject,
+    executeProjectQuery,
+    getTableNames
+  } = useProjectData();
+
+  // Use project schema and records if available, otherwise fall back to props
+  const schema = projectSchema || propSchema;
+  const records = propRecords; // Records would typically come from project data
+
   const [activeTab, setActiveTab] = useState<TabType>('export');
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<ExportResult | ImportResult | null>(null);
@@ -650,47 +664,96 @@ export function ExportImportManager({ schema, records, onSchemaChange, onRecords
     return extensions[format] || '';
   };
 
+  // If no project is selected, show project selection prompt
+  if (!hasProject) {
+    return (
+      <div className="flex flex-col h-full bg-gray-900">
+        <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Export & Import</h2>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-red-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Download className="w-8 h-8 text-red-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">No Project Selected</h3>
+            <p className="text-gray-300 mb-4">Please select a project to export or import data</p>
+            <button
+              onClick={() => window.location.hash = '#projects'}
+              className="px-6 py-3 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+            >
+              Select Project
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-gray-800 rounded-lg shadow-lg">
-      {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b border-gray-700">
-        <h2 className="text-xl font-semibold text-white">Export & Import</h2>
-        <div className="flex bg-gray-700 rounded-lg p-1">
-          <button
-            onClick={() => setActiveTab('export')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'export'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-300 hover:text-white'
-            }`}
-          >
-            <Download className="w-4 h-4 inline mr-2" />
-            Export
-          </button>
-          <button
-            onClick={() => setActiveTab('import')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              activeTab === 'import'
-                ? 'bg-green-600 text-white'
-                : 'text-gray-300 hover:text-white'
-            }`}
-          >
-            <Upload className="w-4 h-4 inline mr-2" />
-            Import
-          </button>
+    <div className="flex flex-col h-full bg-gray-900">
+      {/* Project Header */}
+      <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Export & Import</h2>
+            {currentProject && (
+              <div className="flex items-center space-x-2 bg-orange-600 text-white px-3 py-1 rounded-md text-sm">
+                <Download className="w-4 h-4" />
+                <span>{currentProject.name}</span>
+              </div>
+            )}
+          </div>
+          <span className="text-sm text-gray-300">Export and import data for your project</span>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-6">
-        {activeTab === 'export' ? renderExportTab() : renderImportTab()}
-        
-        {/* Result */}
-        {result && (
-          <div className="mt-6">
-            {renderResult()}
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="bg-gray-800 rounded-lg shadow-lg">
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-gray-700">
+            <h2 className="text-xl font-semibold text-white">Export & Import</h2>
+            <div className="flex bg-gray-700 rounded-lg p-1">
+              <button
+                onClick={() => setActiveTab('export')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'export'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                <Download className="w-4 h-4 inline mr-2" />
+                Export
+              </button>
+              <button
+                onClick={() => setActiveTab('import')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'import'
+                    ? 'bg-green-600 text-white'
+                    : 'text-gray-300 hover:text-white'
+                }`}
+              >
+                <Upload className="w-4 h-4 inline mr-2" />
+                Import
+              </button>
+            </div>
           </div>
-        )}
+
+          {/* Content */}
+          <div className="p-6">
+            {activeTab === 'export' ? renderExportTab() : renderImportTab()}
+
+            {/* Result */}
+            {result && (
+              <div className="mt-6">
+                {renderResult()}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

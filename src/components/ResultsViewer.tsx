@@ -33,8 +33,8 @@ export function ResultsViewer({
 
   // Prepare data for virtualized table
   const tableData = useMemo(() => {
-    if (!result) return [];
-    
+    if (!result || !result.rows) return [];
+
     return result.rows.map((row, index) => {
       const rowData: Record<string, any> = { _index: index };
       result.columns.forEach((column, colIndex) => {
@@ -46,8 +46,8 @@ export function ResultsViewer({
 
   // Prepare columns for virtualized table
   const tableColumns = useMemo(() => {
-    if (!result) return [];
-    
+    if (!result || !result.columns) return [];
+
     return result.columns.map(column => ({
       key: column,
       label: column,
@@ -80,11 +80,11 @@ export function ResultsViewer({
 
   // Export data as CSV
   const exportAsCSV = () => {
-    if (!result) return;
+    if (!result || !result.rows || !result.columns) return;
 
     const csvContent = [
       result.columns.join(','),
-      ...result.rows.map(row => 
+      ...result.rows.map(row =>
         row.map(cell => {
           const cellStr = String(cell || '');
           // Escape quotes and wrap in quotes if contains comma, quote, or newline
@@ -109,7 +109,7 @@ export function ResultsViewer({
 
   // Copy data to clipboard
   const copyToClipboard = async () => {
-    if (!result) return;
+    if (!result || !result.rows || !result.columns) return;
 
     const textContent = [
       result.columns.join('\t'),
@@ -162,7 +162,7 @@ export function ResultsViewer({
             </div>
           )}
         </div>
-        {result && !error && (
+        {result && !error && result.rows && result.columns && (
           <div className="flex items-center space-x-2">
             <button
               onClick={copyToClipboard}
@@ -208,7 +208,7 @@ export function ResultsViewer({
           </div>
         )}
 
-        {result && !error && (
+        {result && !error && result.rows && result.columns && (
           <div className="h-full flex flex-col">
             {/* Results Summary */}
             <div className="bg-gray-700 px-4 py-2 border-b border-gray-600">

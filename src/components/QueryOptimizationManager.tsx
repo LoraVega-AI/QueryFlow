@@ -32,9 +32,15 @@ interface QueryOptimizationManagerProps {
 export function QueryOptimizationManager({ schema: propSchema, onSchemaChange }: QueryOptimizationManagerProps) {
   // Use project data hook
   const {
+    currentProject,
     projectSchema,
     executeProjectQuery,
-    getTableStats
+    hasProject,
+    getTableNames,
+    getColumnNames,
+    isTableExists,
+    isLoading: projectLoading,
+    error: projectError
   } = useProjectData();
 
   // Use project schema if available, otherwise fall back to prop
@@ -86,7 +92,7 @@ export function QueryOptimizationManager({ schema: propSchema, onSchemaChange }:
 
   // Analyze current query
   const analyzeQuery = useCallback(async () => {
-    if (!query.trim() || !schema) return;
+    if (!query.trim() || !hasProject || !schema) return;
 
     setIsAnalyzing(true);
     try {
@@ -97,11 +103,11 @@ export function QueryOptimizationManager({ schema: propSchema, onSchemaChange }:
     } finally {
       setIsAnalyzing(false);
     }
-  }, [query, schema]);
+  }, [query, hasProject, schema]);
 
   // Generate performance report
   const generatePerformanceReport = useCallback(async () => {
-    if (!schema) return;
+    if (!hasProject || !schema) return;
 
     setIsGeneratingReport(true);
     try {
@@ -117,11 +123,11 @@ export function QueryOptimizationManager({ schema: propSchema, onSchemaChange }:
     } finally {
       setIsGeneratingReport(false);
     }
-  }, [schema, selectedTimeRange]);
+  }, [hasProject, schema, selectedTimeRange]);
 
   // Generate index recommendations
   const generateIndexRecommendations = useCallback(async () => {
-    if (!schema) return;
+    if (!hasProject || !schema) return;
 
     try {
       const queries = sampleQueries; // In production, would use actual query log
@@ -130,11 +136,11 @@ export function QueryOptimizationManager({ schema: propSchema, onSchemaChange }:
     } catch (error) {
       console.error('Index recommendation generation failed:', error);
     }
-  }, [schema]);
+  }, [hasProject, schema]);
 
   // Optimize current query
   const optimizeQuery = useCallback(async () => {
-    if (!query.trim() || !schema) return;
+    if (!query.trim() || !hasProject || !schema) return;
 
     try {
       const optimization = await QueryOptimizationService.optimizeQuery(query, schema);
@@ -142,7 +148,7 @@ export function QueryOptimizationManager({ schema: propSchema, onSchemaChange }:
     } catch (error) {
       console.error('Query optimization failed:', error);
     }
-  }, [query, schema]);
+  }, [query, hasProject, schema]);
 
   // Toggle execution plan step
   const toggleStep = useCallback((stepId: string) => {
@@ -854,7 +860,15 @@ export function QueryOptimizationManager({ schema: propSchema, onSchemaChange }:
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Query Optimization</h1>
+            <div className="flex items-center space-x-3">
+              <h1 className="text-2xl font-bold text-gray-900">Query Optimization</h1>
+              {currentProject && (
+                <div className="flex items-center space-x-2 bg-green-600 text-white px-3 py-1 rounded-md text-sm">
+                  <Database className="w-4 h-4" />
+                  <span>{currentProject.name}</span>
+                </div>
+              )}
+            </div>
             <p className="text-sm text-gray-500 mt-1">
               Analyze query performance and get optimization recommendations
             </p>
@@ -922,15 +936,35 @@ export function QueryOptimizationManager({ schema: propSchema, onSchemaChange }:
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
-        {activeTab === 'analyzer' && renderAnalyzer()}
-        {activeTab === 'performance' && renderPerformance()}
-        {activeTab === 'recommendations' && renderRecommendations()}
-        {activeTab === 'alerts' && renderAlerts()}
-        {activeTab === 'reports' && (
-          <div className="text-center py-8 text-gray-500">
-            <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-            <p>Performance reports will be available here.</p>
+        {!hasProject ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Zap className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Project Selected</h3>
+              <p className="text-gray-600 mb-4">Please select a project to analyze query performance</p>
+              <button
+                onClick={() => window.location.hash = '#projects'}
+                className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+              >
+                Select Project
+              </button>
+            </div>
           </div>
+        ) : (
+          <>
+            {activeTab === 'analyzer' && renderAnalyzer()}
+            {activeTab === 'performance' && renderPerformance()}
+            {activeTab === 'recommendations' && renderRecommendations()}
+            {activeTab === 'alerts' && renderAlerts()}
+            {activeTab === 'reports' && (
+              <div className="text-center py-8 text-gray-500">
+                <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>Performance reports will be available here.</p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

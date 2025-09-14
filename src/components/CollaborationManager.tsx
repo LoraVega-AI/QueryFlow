@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 
 import { DatabaseSchema } from '@/types/database';
+import { useProjectData } from '@/hooks/useProjectData';
 import {
   CollaborationService,
   User,
@@ -38,7 +39,17 @@ interface CollaborationManagerProps {
   onSchemaChange?: (schema: DatabaseSchema) => void;
 }
 
-export function CollaborationManager({ schema, workspaceId, currentUser, onSchemaChange }: CollaborationManagerProps) {
+export function CollaborationManager({ schema: propSchema, workspaceId, currentUser, onSchemaChange }: CollaborationManagerProps) {
+  // Use project data hook to get current project
+  const {
+    currentProject,
+    projectSchema,
+    hasProject
+  } = useProjectData();
+
+  // Use project schema if available, otherwise fall back to prop
+  const schema = projectSchema || propSchema;
+
   // State
   const [activeTab, setActiveTab] = useState<'participants' | 'comments' | 'history' | 'activity' | 'notifications'>('participants');
   const [collaborationState, setCollaborationState] = useState<CollaborationState | null>(null);
@@ -587,8 +598,53 @@ export function CollaborationManager({ schema, workspaceId, currentUser, onSchem
     </div>
   );
 
+  // If no project is selected, show project selection prompt
+  if (!hasProject) {
+    return (
+      <div className="flex flex-col h-full bg-gray-900">
+        <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Collaboration Manager</h2>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-red-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Users className="w-8 h-8 text-red-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">No Project Selected</h3>
+            <p className="text-gray-300 mb-4">Please select a project to collaborate on</p>
+            <button
+              onClick={() => window.location.hash = '#projects'}
+              className="px-6 py-3 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+            >
+              Select Project
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col h-full bg-gray-900">
+      {/* Project Header */}
+      <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Collaboration Manager</h2>
+            {currentProject && (
+              <div className="flex items-center space-x-2 bg-orange-600 text-white px-3 py-1 rounded-md text-sm">
+                <Users className="w-4 h-4" />
+                <span>{currentProject.name}</span>
+              </div>
+            )}
+          </div>
+          <span className="text-sm text-gray-300">Collaborate on your project in real-time</span>
+        </div>
+      </div>
+
+      <div className="flex h-full">
       {/* Main Content Area */}
       <div className="flex-1">
         {/* Presence indicators would be rendered here */}
@@ -686,6 +742,7 @@ export function CollaborationManager({ schema, workspaceId, currentUser, onSchem
           )}
         </button>
       )}
+      </div>
     </div>
   );
 }

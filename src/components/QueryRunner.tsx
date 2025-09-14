@@ -1,7 +1,7 @@
 'use client';
 
 // Query Runner component for executing SQL queries
-// This component provides a SQL editor and executes queries against the database schema
+// This component provides a SQL editor and executes queries against the project database
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { DatabaseSchema, QueryResult, QueryError, QueryHistoryItem, QueryTemplate, ExecutionPlan, PerformanceMetrics } from '@/types/database';
@@ -9,12 +9,13 @@ import { dbManager } from '@/utils/database';
 import { QueryManager } from '@/utils/queryManager';
 import { QueryOptimizationManager } from '@/utils/queryOptimization';
 import { SQLOptimizer } from '@/utils/sqlOptimizer';
-import { Play, History, Trash2, Copy, Download, FileText, Search, Bookmark, Star, Clock, AlertCircle, Zap, BarChart3, Settings, Eye, Code2, Database, TrendingUp, Layers, MousePointer, Move, Link, Plus, Minus, X, Check, ArrowRight, ArrowDown, Filter, SortAsc, SortDesc, Target, Grid, Table, Columns, Rows, Brain, Lightbulb, Timer, Activity, Users, Share2, MessageSquare, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Play, History, Trash2, Copy, Download, FileText, Search, Bookmark, Star, Clock, AlertCircle, Zap, BarChart3, Settings, Eye, Code2, Database, TrendingUp, Layers, MousePointer, Move, Link, Plus, Minus, X, Check, ArrowRight, ArrowDown, Filter, SortAsc, SortDesc, Target, Grid, Table, Columns, Rows, Brain, Lightbulb, Timer, Activity, Users, Share2, MessageSquare, ThumbsUp, ThumbsDown, Folder } from 'lucide-react';
+import { useProjectData } from '@/hooks/useProjectData';
 
 interface QueryRunnerProps {
-  schema: DatabaseSchema | null;
+  schema?: DatabaseSchema | null; // Now optional, will use project schema
   onQueryResult: (result: QueryResult | null, error: QueryError | null) => void;
-  executeQuery?: (sql: string) => Promise<QueryResult>;
+  executeQuery?: (sql: string) => Promise<QueryResult>; // Now optional, will use project query
 }
 
 const SAMPLE_QUERIES = [
@@ -25,7 +26,23 @@ const SAMPLE_QUERIES = [
   'PRAGMA table_list;',
 ];
 
-export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecuteQuery }: QueryRunnerProps) {
+export function QueryRunner({ schema: externalSchema, onQueryResult, executeQuery: externalExecuteQuery }: QueryRunnerProps) {
+  // Use project data hook
+  const {
+    currentProject,
+    projectSchema,
+    hasProject,
+    executeProjectQuery,
+    isLoading: projectLoading,
+    error: projectError,
+    getTableNames,
+    getColumnNames,
+    isTableExists
+  } = useProjectData();
+
+  // Use project schema if available, otherwise fall back to external schema
+  const effectiveSchema = projectSchema || externalSchema;
+
   const [query, setQuery] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
   const [queryHistory, setQueryHistory] = useState<QueryHistoryItem[]>([]);
@@ -35,7 +52,7 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
   const [selectedTemplate, setSelectedTemplate] = useState<QueryTemplate | null>(null);
   const [templateParams, setTemplateParams] = useState<Record<string, string>>({});
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  
+
   // Advanced features state
   const [showOptimization, setShowOptimization] = useState(false);
   const [showExecutionPlan, setShowExecutionPlan] = useState(false);
@@ -47,7 +64,7 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
   const [queryProfiles, setQueryProfiles] = useState<any[]>([]);
   const [slowQueries, setSlowQueries] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'editor' | 'builder' | 'profiler' | 'optimization'>('editor');
-  
+
   // AI and Collaboration features
   const [showAIOptimization, setShowAIOptimization] = useState(false);
   const [aiOptimizationResults, setAiOptimizationResults] = useState<any>(null);
@@ -62,7 +79,7 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
   const [shareVisibility, setShareVisibility] = useState<'private' | 'team' | 'public'>('team');
   const [performancePrediction, setPerformancePrediction] = useState<any>(null);
   const [isPredictingPerformance, setIsPredictingPerformance] = useState(false);
-  
+
   // Visual Query Builder state
   const [showVisualBuilder, setShowVisualBuilder] = useState(false);
   const [selectedTables, setSelectedTables] = useState<string[]>([]);
@@ -189,11 +206,11 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
     if (selectedTables.length === 0) return '';
     
     let sql = 'SELECT ';
-    
+
     // Add selected columns
     const allColumns: string[] = [];
     selectedTables.forEach(tableId => {
-      const table = schema?.tables.find(t => t.id === tableId);
+      const table = effectiveSchema?.tables.find(t => t.id === tableId);
       if (table) {
         const tableColumns = selectedColumns[tableId] || [];
         if (tableColumns.length === 0) {
@@ -208,10 +225,10 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
         }
       }
     });
-    
+
     sql += allColumns.join(', ') + '\nFROM ';
     sql += selectedTables.map(tableId => {
-      const table = schema?.tables.find(t => t.id === tableId);
+      const table = effectiveSchema?.tables.find(t => t.id === tableId);
       return table?.name || tableId;
     }).join(', ');
     
@@ -237,7 +254,7 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
     }
     
     return sql + ';';
-  }, [selectedTables, selectedColumns, queryJoins, queryFilters, querySorts, schema]);
+  }, [selectedTables, selectedColumns, queryJoins, queryFilters, querySorts, effectiveSchema]);
 
   const applyBuilderQuery = useCallback(() => {
     const generatedQuery = generateQueryFromBuilder();
@@ -250,6 +267,16 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
   // Execute SQL query
   const executeQuery = useCallback(async () => {
     if (!query.trim()) return;
+
+    // Check if project is selected
+    if (!hasProject) {
+      const error: QueryError = {
+        message: 'No project selected. Please select a project first.',
+        executionTime: 0,
+      };
+      onQueryResult(null, error);
+      return;
+    }
 
     // Validate query first
     if (!validateQuery()) {
@@ -270,13 +297,17 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
         if (!result.executionTime) {
           result.executionTime = Date.now() - startTime;
         }
+      } else if (executeProjectQuery) {
+        // Use project database
+        result = await executeProjectQuery(query);
+        result.executionTime = Date.now() - startTime;
       } else {
         // Use mock database (fallback)
-        if (!schema) return;
+        if (!effectiveSchema) return;
 
         // Ensure database is initialized and tables are created
         await dbManager.initialize();
-        await dbManager.createTablesFromSchema(schema);
+        await dbManager.createTablesFromSchema(effectiveSchema);
 
         // Execute the query
         result = await dbManager.executeQuery(query);
@@ -304,7 +335,7 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
       };
 
       onQueryResult(resultWithTime, null);
-      
+
       // Refresh history and profiles
       setQueryHistory(QueryManager.getHistory());
       setQueryProfiles(QueryOptimizationManager.getQueryProfiles());
@@ -316,7 +347,7 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
         stack: error instanceof Error ? error.stack : undefined,
         error: error
       });
-      
+
       const executionTime = Date.now() - startTime;
       const queryError: QueryError = {
         message: error instanceof Error ? error.message : (error.message || 'Unknown error occurred'),
@@ -328,7 +359,7 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
     } finally {
       setIsExecuting(false);
     }
-  }, [query, schema, onQueryResult, validateQuery]);
+  }, [query, hasProject, effectiveSchema, onQueryResult, validateQuery, executeProjectQuery, externalExecuteQuery]);
 
   // Handle keyboard shortcuts
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -408,8 +439,9 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
         version: '1.0',
         description: 'Query exported from QueryFlow',
         metadata: {
-          schema: schema?.name || 'Unknown',
-          tables: schema?.tables?.map(t => t.name) || [],
+          schema: effectiveSchema?.name || 'Unknown',
+          project: currentProject?.name || 'Unknown',
+          tables: effectiveSchema?.tables?.map(t => t.name) || [],
           exportedAt: new Date().toLocaleString()
         }
       };
@@ -452,13 +484,13 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
         URL.revokeObjectURL(jsonUrl);
         URL.revokeObjectURL(sqlUrl);
       }, 1000);
-      
+
       alert('✅ Query exported successfully!');
     } catch (error) {
       console.error('Failed to export query:', error);
       alert('❌ Failed to export query. Please try again.');
     }
-  }, [query, schema]);
+  }, [query, effectiveSchema, currentProject]);
 
   // Real SQL query optimization using parser
   const analyzeQueryWithOptimizer = useCallback(async () => {
@@ -467,7 +499,7 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
     setIsAnalyzingQuery(true);
     try {
       // Real optimization analysis using SQL parser with schema
-      const analysis = SQLOptimizer.analyzeQuery(query, schema);
+      const analysis = SQLOptimizer.analyzeQuery(query, effectiveSchema);
       
       // Validate query syntax
       const validation = SQLOptimizer.validateQuery(query);
@@ -491,7 +523,7 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
     } finally {
       setIsAnalyzingQuery(false);
     }
-  }, [query, schema]);
+  }, [query, effectiveSchema]);
 
   // Predict query performance
   const predictQueryPerformance = useCallback(async () => {
@@ -576,7 +608,7 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
                 onKeyDown={handleKeyDown}
                 placeholder="Enter your SQL query here... (Ctrl+Enter to execute)"
                 className="w-full h-full p-3 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm resize-none bg-gray-800 text-white"
-                disabled={!schema}
+                disabled={!projectSchema}
               />
             </div>
           </div>
@@ -661,9 +693,9 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
                     Database Schema
                   </h4>
                   
-                  {schema?.tables && schema.tables.length > 0 ? (
+                  {effectiveSchema?.tables && effectiveSchema.tables.length > 0 ? (
                     <div className="space-y-3 max-h-96 overflow-y-auto">
-                      {schema.tables.map((table) => (
+                      {effectiveSchema.tables.map((table) => (
                         <div key={table.id} className="bg-gray-600 rounded-lg p-3">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center space-x-2">
@@ -889,8 +921,22 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
       {/* Toolbar */}
       <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center space-x-4">
-          <h2 className="text-xl font-semibold text-white">Query Runner</h2>
-          
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Query Runner</h2>
+            {currentProject && (
+              <div className="flex items-center space-x-2 bg-orange-600 text-white px-3 py-1 rounded-md text-sm">
+                <Folder className="w-4 h-4" />
+                <span>{currentProject.name}</span>
+              </div>
+            )}
+            {!hasProject && (
+              <div className="flex items-center space-x-2 bg-red-600 text-white px-3 py-1 rounded-md text-sm">
+                <AlertCircle className="w-4 h-4" />
+                <span>No Project Selected</span>
+              </div>
+            )}
+          </div>
+
           {/* Tab Navigation */}
           <div className="flex items-center space-x-1 bg-gray-700 rounded-lg p-1">
             <button
@@ -941,7 +987,7 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
             </button>
             <button
               onClick={executeQuery}
-              disabled={!query.trim() || isExecuting || !schema}
+              disabled={!query.trim() || isExecuting || !hasProject || !effectiveSchema}
               className="flex items-center space-x-2 px-3 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
             >
               <Play className="w-4 h-4" />
@@ -1096,18 +1142,25 @@ export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecu
       {/* Status Bar */}
       <div className="flex items-center justify-between px-4 py-2 bg-gray-900 border-t border-gray-700 text-sm text-gray-400">
         <div>
-          {schema ? (
-            schema.tables.length > 0 ? (
-              <span>Ready to execute queries on {schema.tables.length} tables</span>
+          {!hasProject ? (
+            <span className="text-red-400">No project selected - please select a project to run queries</span>
+          ) : effectiveSchema ? (
+            effectiveSchema.tables && effectiveSchema.tables.length > 0 ? (
+              <span>Ready to execute queries on {effectiveSchema.tables.length} tables in {currentProject?.name}</span>
             ) : (
-              <span className="text-yellow-400">No tables in schema - create tables in Schema Designer first</span>
+              <span className="text-yellow-400">No tables in project - create tables in Schema Designer first</span>
             )
           ) : (
-            <span>No schema loaded</span>
+            <span className="text-yellow-400">Loading project schema...</span>
           )}
         </div>
-        <div>
+        <div className="flex items-center space-x-4">
           <span>Ctrl+Enter to execute</span>
+          {hasProject && (
+            <span className="text-orange-400">
+              Project: {currentProject?.name}
+            </span>
+          )}
         </div>
       </div>
 

@@ -21,6 +21,7 @@ import {
 import { memoryManager } from '../utils/memoryManager';
 import { enhancedCacheManager } from '../utils/enhancedCacheManager';
 import { workerManager } from '../utils/workerManager';
+import { useProjectData } from '@/hooks/useProjectData';
 
 interface PerformanceMetrics {
   memory: {
@@ -45,10 +46,44 @@ interface PerformanceMetrics {
 }
 
 export function PerformanceDashboard() {
+  // Use project data hook to get current project
+  const {
+    currentProject,
+    hasProject
+  } = useProjectData();
+
   const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null);
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(1000);
   const [showDetails, setShowDetails] = useState(false);
+
+  // If no project is selected, show project selection prompt
+  if (!hasProject) {
+    return (
+      <div className="flex flex-col h-full bg-gray-900">
+        <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Performance Dashboard</h2>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-red-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <BarChart3 className="w-8 h-8 text-red-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">No Project Selected</h3>
+            <p className="text-gray-300 mb-4">Please select a project to monitor performance metrics</p>
+            <button
+              onClick={() => window.location.hash = '#projects'}
+              className="px-6 py-3 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+            >
+              Select Project
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const updateMetrics = useCallback(() => {
     const memoryStats = memoryManager.getMemoryStats();
@@ -112,10 +147,31 @@ export function PerformanceDashboard() {
 
   if (!metrics) {
     return (
-      <div className="bg-gray-800 rounded-lg p-6">
-        <div className="flex items-center justify-center h-32">
-          <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
-          <span className="ml-2 text-gray-300">Loading performance metrics...</span>
+      <div className="flex flex-col h-full bg-gray-900">
+        {/* Project Header */}
+        <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
+              <h2 className="text-xl font-semibold text-white">Performance Dashboard</h2>
+              {currentProject && (
+                <div className="flex items-center space-x-2 bg-orange-600 text-white px-3 py-1 rounded-md text-sm">
+                  <BarChart3 className="w-4 h-4" />
+                  <span>{currentProject.name}</span>
+                </div>
+              )}
+            </div>
+            <span className="text-sm text-gray-300">Monitor application and database performance</span>
+          </div>
+        </div>
+
+        {/* Loading Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="bg-gray-800 rounded-lg p-6">
+            <div className="flex items-center justify-center h-32">
+              <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
+              <span className="ml-2 text-gray-300">Loading performance metrics...</span>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -125,12 +181,31 @@ export function PerformanceDashboard() {
   const cacheStatus = getCacheStatus(metrics.cache.hitRate);
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-3">
-          <BarChart3 className="w-6 h-6 text-orange-400" />
-          <h3 className="text-lg font-semibold text-white">Performance Dashboard</h3>
+    <div className="flex flex-col h-full bg-gray-900">
+      {/* Project Header */}
+      <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Performance Dashboard</h2>
+            {currentProject && (
+              <div className="flex items-center space-x-2 bg-orange-600 text-white px-3 py-1 rounded-md text-sm">
+                <BarChart3 className="w-4 h-4" />
+                <span>{currentProject.name}</span>
+              </div>
+            )}
+          </div>
+          <span className="text-sm text-gray-300">Monitor application and database performance</span>
+        </div>
+      </div>
+
+      {/* Performance Content */}
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="bg-gray-800 rounded-lg p-6">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-3">
+              <BarChart3 className="w-6 h-6 text-orange-400" />
+              <h3 className="text-lg font-semibold text-white">Performance Dashboard</h3>
           {isMonitoring && (
             <div className="flex items-center space-x-2 text-green-400">
               <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -325,6 +400,8 @@ export function PerformanceDashboard() {
           <RefreshCw className="w-4 h-4" />
           <span>Refresh</span>
         </button>
+          </div>
+        </div>
       </div>
     </div>
   );

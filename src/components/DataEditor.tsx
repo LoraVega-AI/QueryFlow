@@ -8,11 +8,12 @@ import { DatabaseSchema, Table, DatabaseRecord, QueryResult, QueryError, BulkOpe
 import { dbManager } from '@/utils/database';
 import { BulkOperationsManager } from '@/utils/bulkOperations';
 import { DataManagementManager } from '@/utils/dataManagement';
-import { Plus, Edit, Trash2, Save, X, RefreshCw, Upload, Download, FileText, AlertTriangle, CheckCircle, Filter, BarChart3, Settings, Eye, Database, TrendingUp, Shield, History, Zap, Wifi, WifiOff, Users, Activity, Clock } from 'lucide-react';
+import { Plus, Edit, Trash2, Save, X, RefreshCw, Upload, Download, FileText, AlertTriangle, CheckCircle, Filter, BarChart3, Settings, Eye, Database, TrendingUp, Shield, History, Zap, Wifi, WifiOff, Users, Activity, Clock, Folder } from 'lucide-react';
 import { realtimeDataStream, DataStreamEvent, UserActivity } from '@/utils/realtimeDataStream';
+import { useProjectData } from '@/hooks/useProjectData';
 
 interface DataEditorProps {
-  schema: DatabaseSchema | null;
+  schema?: DatabaseSchema | null; // Made optional since we get it from project
 }
 
 interface EditingRecord {
@@ -21,7 +22,23 @@ interface EditingRecord {
   isNew: boolean;
 }
 
-export function DataEditor({ schema }: DataEditorProps) {
+export function DataEditor({ schema: propSchema }: DataEditorProps) {
+  // Use project data hook
+  const {
+    currentProject,
+    projectSchema,
+    executeProjectQuery,
+    hasProject,
+    getTableNames,
+    getColumnNames,
+    isTableExists,
+    isLoading: projectLoading,
+    error: projectError
+  } = useProjectData();
+
+  // Use project schema if available, otherwise fall back to prop
+  const schema = projectSchema || propSchema;
+
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [records, setRecords] = useState<DatabaseRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -1128,7 +1145,15 @@ export function DataEditor({ schema }: DataEditorProps) {
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center space-x-4">
-          <h2 className="text-xl font-semibold text-white">Data Editor</h2>
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Data Editor</h2>
+            {currentProject && (
+              <div className="flex items-center space-x-2 bg-green-600 text-white px-3 py-1 rounded-md text-sm">
+                <Folder className="w-4 h-4" />
+                <span>{currentProject.name}</span>
+              </div>
+            )}
+          </div>
           {selectedTable && (
             <span className="text-sm text-gray-300">
               Editing: {selectedTable.name}

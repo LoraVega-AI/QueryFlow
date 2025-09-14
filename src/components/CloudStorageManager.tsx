@@ -33,9 +33,15 @@ interface CloudStorageManagerProps {
 export function CloudStorageManager({ schema: propSchema, onSchemaChange }: CloudStorageManagerProps) {
   // Use project data hook
   const {
+    currentProject,
     projectSchema,
     executeProjectQuery,
-    getTableData
+    hasProject,
+    getTableNames,
+    getColumnNames,
+    isTableExists,
+    isLoading: projectLoading,
+    error: projectError
   } = useProjectData();
 
   // Use project schema if available, otherwise fall back to prop
@@ -223,11 +229,17 @@ export function CloudStorageManager({ schema: propSchema, onSchemaChange }: Clou
 
   // Execute backup
   const executeBackup = useCallback(async (backupId: string) => {
+    if (!hasProject) {
+      alert('Please select a project first.');
+      return;
+    }
+
     try {
-      const result = await CloudDatabaseService.executeBackup(backupId);
-      
+      // For project-specific backup, we would pass the project context
+      const result = await CloudDatabaseService.executeBackup(backupId, currentProject?.id);
+
       if (result.success) {
-        alert(`Backup completed! Size: ${(result.backupSize! / 1024 / 1024).toFixed(2)}MB`);
+        alert(`Backup completed for ${currentProject?.name}! Size: ${(result.backupSize! / 1024 / 1024).toFixed(2)}MB`);
         loadBackups();
       } else {
         alert(`Backup failed: ${result.error}`);
@@ -235,15 +247,21 @@ export function CloudStorageManager({ schema: propSchema, onSchemaChange }: Clou
     } catch (error) {
       alert(`Backup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [loadBackups]);
+  }, [hasProject, currentProject, loadBackups]);
 
   // Execute sync
   const executeSync = useCallback(async (syncId: string) => {
+    if (!hasProject) {
+      alert('Please select a project first.');
+      return;
+    }
+
     try {
-      const result = await CloudDatabaseService.executeSync(syncId);
-      
+      // For project-specific sync, we would pass the project context
+      const result = await CloudDatabaseService.executeSync(syncId, currentProject?.id);
+
       if (result.success) {
-        alert(`Sync completed! Records: ${result.recordsProcessed}, Conflicts: ${result.conflicts}`);
+        alert(`Sync completed for ${currentProject?.name}! Records: ${result.recordsProcessed}, Conflicts: ${result.conflicts}`);
         loadSyncs();
       } else {
         alert(`Sync failed: ${result.error}`);
@@ -251,7 +269,7 @@ export function CloudStorageManager({ schema: propSchema, onSchemaChange }: Clou
     } catch (error) {
       alert(`Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [loadSyncs]);
+  }, [hasProject, currentProject, loadSyncs]);
 
   // Get provider icon
   const getProviderIcon = (provider: DatabaseProvider) => {
@@ -751,7 +769,15 @@ export function CloudStorageManager({ schema: propSchema, onSchemaChange }: Clou
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Cloud Storage</h1>
+            <div className="flex items-center space-x-3">
+              <h1 className="text-2xl font-bold text-gray-900">Cloud Storage</h1>
+              {currentProject && (
+                <div className="flex items-center space-x-2 bg-purple-600 text-white px-3 py-1 rounded-md text-sm">
+                  <Cloud className="w-4 h-4" />
+                  <span>{currentProject.name}</span>
+                </div>
+              )}
+            </div>
             <p className="text-sm text-gray-500 mt-1">
               Enterprise database connectivity and cloud platform management
             </p>
@@ -797,28 +823,48 @@ export function CloudStorageManager({ schema: propSchema, onSchemaChange }: Clou
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
-        {activeTab === 'connections' && renderConnections()}
-        {activeTab === 'monitoring' && renderMonitoring()}
-        {activeTab === 'backups' && (
-          <div className="text-center py-12">
-            <Archive className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Backup Management</h3>
-            <p className="text-gray-500">Configure automated backups and recovery for your databases.</p>
+        {!hasProject ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Cloud className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Project Selected</h3>
+              <p className="text-gray-600 mb-4">Please select a project to manage cloud storage and backups</p>
+              <button
+                onClick={() => window.location.hash = '#projects'}
+                className="px-6 py-3 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+              >
+                Select Project
+              </button>
+            </div>
           </div>
-        )}
-        {activeTab === 'sync' && (
-          <div className="text-center py-12">
-            <RotateCcw className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Data Synchronization</h3>
-            <p className="text-gray-500">Set up real-time or scheduled data sync between databases.</p>
-          </div>
-        )}
-        {activeTab === 'security' && (
-          <div className="text-center py-12">
-            <Shield className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Security Settings</h3>
-            <p className="text-gray-500">Configure SSL, IAM, VPC, and other security features.</p>
-          </div>
+        ) : (
+          <>
+            {activeTab === 'connections' && renderConnections()}
+            {activeTab === 'monitoring' && renderMonitoring()}
+            {activeTab === 'backups' && (
+              <div className="text-center py-12">
+                <Archive className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Backup Management</h3>
+                <p className="text-gray-500">Configure automated backups and recovery for your databases.</p>
+              </div>
+            )}
+            {activeTab === 'sync' && (
+              <div className="text-center py-12">
+                <RotateCcw className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Data Synchronization</h3>
+                <p className="text-gray-500">Set up real-time or scheduled data sync between databases.</p>
+              </div>
+            )}
+            {activeTab === 'security' && (
+              <div className="text-center py-12">
+                <Shield className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Security Settings</h3>
+                <p className="text-gray-500">Configure SSL, IAM, VPC, and other security features.</p>
+              </div>
+            )}
+          </>
         )}
       </div>
 

@@ -28,12 +28,24 @@ import { aiWorkflowIntelligence, WorkflowSuggestion, WorkflowAnalytics } from '@
 import { advancedOrchestrationEngine, ConditionalBranch, ParallelBranch, DynamicLoop, SubWorkflow, EventTrigger } from '@/utils/advancedOrchestrationEngine';
 import { enterpriseIntegrationHub, IntegrationConnector, IntegrationExecution } from '@/utils/enterpriseIntegrationHub';
 import { advancedWorkflowMonitoring, WorkflowMetrics, PerformanceAlert, WorkflowDashboard, ComplianceReport, AuditLog, CostAnalysis } from '@/utils/advancedWorkflowMonitoring';
+import { useProjectData } from '@/hooks/useProjectData';
 
 interface WorkflowManagerProps {
   schema: any;
 }
 
-export function WorkflowManager({ schema }: WorkflowManagerProps) {
+export function WorkflowManager({ schema: propSchema }: WorkflowManagerProps) {
+  // Use project data hook to get current project
+  const {
+    currentProject,
+    projectSchema,
+    hasProject,
+    executeProjectQuery
+  } = useProjectData();
+
+  // Use project schema if available, otherwise fall back to prop
+  const schema = projectSchema || propSchema;
+
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
@@ -981,9 +993,53 @@ export function WorkflowManager({ schema }: WorkflowManagerProps) {
     }
   }, []);
 
+  // If no project is selected, show project selection prompt
+  if (!hasProject) {
+    return (
+      <div className="flex flex-col h-full bg-gray-900">
+        <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Workflow Manager</h2>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-red-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Crown className="w-8 h-8 text-red-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">No Project Selected</h3>
+            <p className="text-gray-300 mb-4">Please select a project to manage workflows</p>
+            <button
+              onClick={() => window.location.hash = '#projects'}
+              className="px-6 py-3 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+            >
+              Select Project
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-gray-900">
-      {/* Header */}
+      {/* Project Header */}
+      <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            <h2 className="text-xl font-semibold text-white">Workflow Manager</h2>
+            {currentProject && (
+              <div className="flex items-center space-x-2 bg-orange-600 text-white px-3 py-1 rounded-md text-sm">
+                <Crown className="w-4 h-4" />
+                <span>{currentProject.name}</span>
+              </div>
+            )}
+          </div>
+          <span className="text-sm text-gray-300">AI-powered automation for your project</span>
+        </div>
+      </div>
+
+      {/* Main Header */}
       <div className="flex items-center justify-between p-4 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
