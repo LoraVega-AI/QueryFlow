@@ -394,8 +394,8 @@ export default function HomePage() {
       case 'sync':
         return currentProject && currentDatabase ? (
           <SyncManager
-            project={currentProject}
-            database={currentDatabase}
+            projectId={currentProject.id}
+            databaseId={currentDatabase?.id}
             onSyncComplete={(session) => {
               console.log('Sync completed:', session);
             }}

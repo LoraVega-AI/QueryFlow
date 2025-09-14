@@ -25,7 +25,10 @@ import {
   Zap,
   Database,
   GitBranch,
-  Timer
+  Timer,
+  FolderOpen,
+  Activity,
+  HardDrive
 } from 'lucide-react';
 import {
   SyncSession,
@@ -38,12 +41,16 @@ import {
 } from '@/types/sync';
 import { DatabaseSyncService } from '@/services/databaseSyncService';
 import { Project, DatabaseConnection } from '@/types/project';
+import { projectsManager } from '@/utils/projectsManager';
+import { useDatabase } from '@/contexts/DatabaseContext';
+import { Project as ProjectsProject, Database as ProjectDatabase } from '@/types/projects';
 
 interface SyncManagerProps {
-  project: Project;
-  database: DatabaseConnection;
+  projectId?: string;
+  databaseId?: string;
   onSyncComplete?: (session: SyncSession) => void;
   onConflictResolved?: (conflictId: string, resolution: ConflictResolution) => void;
+  showAllProjects?: boolean;
 }
 
 interface SyncAlert {
@@ -72,7 +79,14 @@ const CONFLICT_SEVERITY_CONFIG = {
   critical: { color: 'text-red-800', bg: 'bg-red-100', border: 'border-red-300' }
 };
 
-export function SyncManager({ project, database, onSyncComplete, onConflictResolved }: SyncManagerProps) {
+export function SyncManager({
+  projectId,
+  databaseId,
+  onSyncComplete,
+  onConflictResolved,
+  showAllProjects = true
+}: SyncManagerProps) {
+  const { activeConnection, isConnected } = useDatabase();
   const [activeSession, setActiveSession] = useState<SyncSession | null>(null);
   const [monitor, setMonitor] = useState<SyncMonitor | null>(null);
   const [conflicts, setConflicts] = useState<SyncConflict[]>([]);
@@ -82,11 +96,35 @@ export function SyncManager({ project, database, onSyncComplete, onConflictResol
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [syncHistory, setSyncHistory] = useState<SyncSession[]>([]);
   const [alerts, setAlerts] = useState<SyncAlert[]>([]);
+  const [projects, setProjects] = useState<ProjectsProject[]>([]);
+  const [selectedProject, setSelectedProject] = useState<ProjectsProject | null>(null);
+  const [selectedDatabase, setSelectedDatabase] = useState<ProjectDatabase | null>(null);
+
+  // Load projects and set selected items
+  useEffect(() => {
+    const allProjects = projectsManager.getAllProjects();
+    setProjects(allProjects);
+
+    if (projectId) {
+      const project = allProjects.find(p => p.id === projectId);
+      setSelectedProject(project || null);
+
+      if (project && databaseId) {
+        const database = project.databases.find(db => db.id === databaseId);
+        setSelectedDatabase(database || null);
+      }
+    } else if (allProjects.length > 0) {
+      setSelectedProject(allProjects[0]);
+      if (allProjects[0].databases.length > 0) {
+        setSelectedDatabase(allProjects[0].databases[0]);
+      }
+    }
+  }, [projectId, databaseId]);
 
   // Load sync history on mount
   useEffect(() => {
     loadSyncHistory();
-  }, [project.id, database.id]);
+  }, [selectedProject?.id, selectedDatabase?.id]);
 
   // Monitor active sync session
   useEffect(() => {
@@ -123,8 +161,8 @@ export function SyncManager({ project, database, onSyncComplete, onConflictResol
     const mockHistory: SyncSession[] = [
       {
         id: 'sync_001',
-        projectId: project.id,
-        databaseId: database.id,
+        projectId: selectedProject?.id || 'mock_project',
+        databaseId: selectedDatabase?.id || 'mock_database',
         status: 'completed',
         direction: 'bidirectional',
         startedAt: new Date(Date.now() - 3600000), // 1 hour ago
@@ -185,8 +223,8 @@ export function SyncManager({ project, database, onSyncComplete, onConflictResol
   const startSync = useCallback(async () => {
     try {
       const session = await DatabaseSyncService.startSyncSession(
-        project.id,
-        database.id
+        selectedProject!.id,
+        selectedDatabase!.id
       );
 
       setActiveSession(session);
@@ -197,13 +235,13 @@ export function SyncManager({ project, database, onSyncComplete, onConflictResol
       });
 
       // Add alert
-      addAlert('info', `Sync session started for ${database.name}`);
+      addAlert('info', `Sync session started for ${selectedDatabase!.name}`);
 
     } catch (error) {
       console.error('Failed to start sync:', error);
       addAlert('error', 'Failed to start sync session');
     }
-  }, [project.id, database.id, database.name]);
+  }, [selectedProject?.id, selectedDatabase?.id, selectedDatabase?.name]);
 
   // Stop sync session
   const stopSync = useCallback(async () => {
@@ -458,7 +496,7 @@ export function SyncManager({ project, database, onSyncComplete, onConflictResol
 
   // Render sync controls
   const renderSyncControls = () => {
-    const canStartSync = !activeSession && database.status === 'connected';
+    const canStartSync = !activeSession && selectedDatabase && selectedProject?.status === 'connected';
 
     return (
       <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
@@ -466,7 +504,7 @@ export function SyncManager({ project, database, onSyncComplete, onConflictResol
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Sync Controls</h3>
             <p className="text-sm text-gray-600">
-              Manage synchronization between QueryFlow and {database.name}
+              Manage synchronization between QueryFlow and {selectedDatabase?.name || 'selected database'}
             </p>
           </div>
 
@@ -667,18 +705,131 @@ export function SyncManager({ project, database, onSyncComplete, onConflictResol
               Sync Manager
             </h2>
             <p className="text-sm text-gray-600">
-              Manage synchronization for {database.name}
+              {showAllProjects
+                ? "Manage synchronization across all projects"
+                : selectedDatabase
+                  ? `Manage synchronization for ${selectedDatabase.name} in ${selectedProject?.name}`
+                  : "Select a database to manage synchronization"
+              }
             </p>
           </div>
         </div>
 
-        {activeSession && (
-          <div className="flex items-center text-sm text-gray-600">
-            <Timer className="w-4 h-4 mr-1" />
-            Session active
-          </div>
-        )}
+        <div className="flex items-center space-x-2">
+          {showAllProjects && (
+            <select
+              value={`${selectedProject?.id || ''}_${selectedDatabase?.id || ''}`}
+              onChange={(e) => {
+                const [projectId, databaseId] = e.target.value.split('_');
+                const project = projects.find(p => p.id === projectId);
+                setSelectedProject(project || null);
+                if (project) {
+                  const database = project.databases.find(db => db.id === databaseId);
+                  setSelectedDatabase(database || null);
+                }
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="">Select Database</option>
+              {projects.map(project =>
+                project.databases.map(database => (
+                  <option key={`${project.id}_${database.id}`} value={`${project.id}_${database.id}`}>
+                    {project.name} - {database.name}
+                  </option>
+                ))
+              )}
+            </select>
+          )}
+
+          {activeSession && (
+            <div className="flex items-center text-sm text-gray-600">
+              <Timer className="w-4 h-4 mr-1" />
+              Session active
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Sync Overview Dashboard */}
+      {showAllProjects && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="flex items-center">
+              <HardDrive className="w-8 h-8 text-blue-600 mr-3" />
+              <div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {projects.reduce((total, project) => total + project.databases.length, 0)}
+                </div>
+                <div className="text-sm text-gray-600">Total Databases</div>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="flex items-center">
+              <Activity className="w-8 h-8 text-green-600 mr-3" />
+              <div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {projects.filter(p => p.status === 'connected').length}
+                </div>
+                <div className="text-sm text-gray-600">Active Projects</div>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="flex items-center">
+              <Sync className="w-8 h-8 text-orange-600 mr-3" />
+              <div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {projects.filter(p => p.status === 'syncing').length}
+                </div>
+                <div className="text-sm text-gray-600">Syncing Now</div>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="flex items-center">
+              <AlertTriangle className="w-8 h-8 text-red-600 mr-3" />
+              <div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {projects.filter(p => p.status === 'error').length}
+                </div>
+                <div className="text-sm text-gray-600">With Errors</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Current Database Status */}
+      {selectedProject && selectedDatabase && (
+        <div className="bg-white p-4 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Database className="w-6 h-6 text-blue-600 mr-3" />
+              <div>
+                <h3 className="font-semibold text-gray-900">
+                  {selectedDatabase.name}
+                </h3>
+                <p className="text-sm text-gray-600">
+                  {selectedProject.name} • {selectedDatabase.type} • {selectedProject.status}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                isConnected && activeConnection?.id === `example_${selectedProject.id}_${selectedDatabase.id}`
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-gray-100 text-gray-800'
+              }`}>
+                {isConnected && activeConnection?.id === `example_${selectedProject.id}_${selectedDatabase.id}`
+                  ? 'Connected'
+                  : 'Disconnected'
+                }
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Alerts */}
       {renderAlerts()}
