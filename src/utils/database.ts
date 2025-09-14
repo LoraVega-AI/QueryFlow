@@ -20,8 +20,8 @@ export class DatabaseManager {
       console.log('SQL.js module loaded successfully');
       
       const SQL = await initSqlJs({
-        // Use CDN for WASM file to ensure it loads properly
-        locateFile: file => `https://sql.js.org/dist/${file}`
+        // Use local WASM file instead of CDN
+        locateFile: file => `/wasm/${file}`
       });
       console.log('SQL.js WASM initialized successfully');
       

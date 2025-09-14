@@ -195,22 +195,42 @@ export class DatabaseConnectionManager {
     try {
       const connection = this.connections.get(connectionId);
       if (!connection) {
-        throw new Error('Connection not found');
+        console.error('Connection not found for ID:', connectionId);
+        return null;
       }
+
+      let schema: DatabaseSchema | null = null;
 
       // Determine connection type and fetch schema accordingly
-      if (connection.constructor.name === 'Connection') {
-        // MySQL connection
-        return await this.fetchMySQLSchema(connection);
-      } else if (connection.constructor.name === 'Pool') {
-        // PostgreSQL pool
-        return await this.fetchPostgreSQLSchema(connection);
-      } else if (connection.constructor.name === 'Database') {
-        // SQLite database
-        return await this.fetchSQLiteSchema(connection);
+      try {
+        if (connection.constructor.name === 'Connection') {
+          // MySQL connection
+          console.log('Fetching MySQL schema...');
+          schema = await this.fetchMySQLSchema(connection);
+        } else if (connection.constructor.name === 'Pool') {
+          // PostgreSQL pool
+          console.log('Fetching PostgreSQL schema...');
+          schema = await this.fetchPostgreSQLSchema(connection);
+        } else if (connection.constructor.name === 'Database') {
+          // SQLite database
+          console.log('Fetching SQLite schema...');
+          schema = await this.fetchSQLiteSchema(connection);
+        } else {
+          console.error('Unknown connection type:', connection.constructor.name);
+          return null;
+        }
+      } catch (schemaError: any) {
+        console.error('Schema introspection failed:', schemaError);
+        return null;
       }
 
-      throw new Error('Unknown connection type');
+      if (!schema) {
+        console.error('Schema introspection returned null');
+        return null;
+      }
+
+      console.log('Schema fetched successfully:', schema.tables?.length || 0, 'tables');
+      return schema;
     } catch (error: any) {
       console.error('Schema fetch failed:', error);
       return null;
@@ -218,44 +238,64 @@ export class DatabaseConnectionManager {
   }
 
   private async fetchMySQLSchema(connection: any): Promise<DatabaseSchema> {
-    // Get all tables
-    const [tables] = await connection.execute(
-      'SHOW TABLES'
-    );
-
-    const tableNames = tables.map((row: any) => Object.values(row)[0]);
-
-    const schemaTables: TableInfo[] = [];
-
-    for (const tableName of tableNames) {
-      // Get table columns
-      const [columns] = await connection.execute(
-        'DESCRIBE ??',
-        [tableName]
+    try {
+      console.log('MySQL: Getting table list...');
+      // Get all tables
+      const [tables] = await connection.execute(
+        'SHOW TABLES'
       );
 
-      const tableColumns: ColumnInfo[] = columns.map((col: any) => ({
-        name: col.Field,
-        type: col.Type,
-        nullable: col.Null === 'YES',
-        primaryKey: col.Key === 'PRI',
-        defaultValue: col.Default
-      }));
+      if (!tables || tables.length === 0) {
+        console.log('MySQL: No tables found');
+        return { tables: [] };
+      }
 
-      // Get row count
-      const [countResult] = await connection.execute(
-        'SELECT COUNT(*) as count FROM ??',
-        [tableName]
-      );
+      const tableNames = tables.map((row: any) => Object.values(row)[0]);
+      console.log('MySQL: Found tables:', tableNames);
 
-      schemaTables.push({
-        name: tableName,
-        columns: tableColumns,
-        rowCount: countResult[0].count
-      });
+      const schemaTables: TableInfo[] = [];
+
+      for (const tableName of tableNames) {
+        try {
+          console.log('MySQL: Getting columns for table:', tableName);
+          // Get table columns
+          const [columns] = await connection.execute(
+            'DESCRIBE ??',
+            [tableName]
+          );
+
+          const tableColumns: ColumnInfo[] = columns.map((col: any) => ({
+            name: col.Field,
+            type: col.Type,
+            nullable: col.Null === 'YES',
+            primaryKey: col.Key === 'PRI',
+            defaultValue: col.Default
+          }));
+
+          console.log('MySQL: Getting row count for table:', tableName);
+          // Get row count
+          const [countResult] = await connection.execute(
+            'SELECT COUNT(*) as count FROM ??',
+            [tableName]
+          );
+
+          schemaTables.push({
+            name: tableName,
+            columns: tableColumns,
+            rowCount: countResult[0]?.count || 0
+          });
+        } catch (tableError: any) {
+          console.error('MySQL: Failed to process table', tableName, ':', tableError);
+          // Continue with other tables
+        }
+      }
+
+      console.log('MySQL: Schema fetch completed:', schemaTables.length, 'tables');
+      return { tables: schemaTables };
+    } catch (error: any) {
+      console.error('MySQL: Schema fetch failed:', error);
+      throw error;
     }
-
-    return { tables: schemaTables };
   }
 
   private async fetchPostgreSQLSchema(connection: any): Promise<DatabaseSchema> {

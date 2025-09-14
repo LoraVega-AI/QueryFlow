@@ -66,26 +66,26 @@ export const DATABASE_EXAMPLES: DatabaseExample[] = [
     type: 'mysql',
     description: 'Connect to a remote MySQL database',
     credentials: {
-      host: 'your-mysql-host.com',
+      host: '',
       port: 3306,
-      username: 'your_username',
-      password: 'your_password',
-      database: 'your_database'
+      username: '',
+      password: '',
+      database: ''
     },
-    notes: 'Replace with your actual remote database credentials'
+    notes: 'Fill in your actual remote database credentials'
   },
   {
     name: 'Remote PostgreSQL',
     type: 'postgresql',
     description: 'Connect to a remote PostgreSQL database',
     credentials: {
-      host: 'your-postgres-host.com',
+      host: '',
       port: 5432,
-      username: 'your_username',
-      password: 'your_password',
-      database: 'your_database'
+      username: '',
+      password: '',
+      database: ''
     },
-    notes: 'Replace with your actual remote database credentials'
+    notes: 'Fill in your actual remote database credentials'
   }
 ];
 

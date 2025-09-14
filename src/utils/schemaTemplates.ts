@@ -141,8 +141,8 @@ export class SchemaTemplateManager {
                   tableId: 'customers',
                   columnId: 'customer_id',
                   relationshipType: 'one-to-many' as const,
-                  cascadeDelete: false,
-                  cascadeUpdate: false,
+                  onDelete: 'RESTRICT',
+                  onUpdate: 'RESTRICT',
                 }
               },
               {
@@ -193,8 +193,8 @@ export class SchemaTemplateManager {
                   tableId: 'orders',
                   columnId: 'order_id',
                   relationshipType: 'one-to-many' as const,
-                  cascadeDelete: false,
-                  cascadeUpdate: false,
+                  onDelete: 'RESTRICT',
+                  onUpdate: 'RESTRICT',
                 }
               },
               {
@@ -207,8 +207,8 @@ export class SchemaTemplateManager {
                   tableId: 'products',
                   columnId: 'product_id',
                   relationshipType: 'one-to-many' as const,
-                  cascadeDelete: false,
-                  cascadeUpdate: false,
+                  onDelete: 'RESTRICT',
+                  onUpdate: 'RESTRICT',
                 }
               },
               {
@@ -384,8 +384,8 @@ export class SchemaTemplateManager {
                   tableId: 'users',
                   columnId: 'user_id',
                   relationshipType: 'one-to-many' as const,
-                  cascadeDelete: false,
-                  cascadeUpdate: false,
+                  onDelete: 'RESTRICT',
+                  onUpdate: 'RESTRICT',
                 }
               },
               {
@@ -398,8 +398,8 @@ export class SchemaTemplateManager {
                   tableId: 'categories',
                   columnId: 'category_id',
                   relationshipType: 'one-to-many' as const,
-                  cascadeDelete: false,
-                  cascadeUpdate: false,
+                  onDelete: 'RESTRICT',
+                  onUpdate: 'RESTRICT',
                 }
               },
               {
@@ -450,8 +450,8 @@ export class SchemaTemplateManager {
                   tableId: 'posts',
                   columnId: 'post_id',
                   relationshipType: 'one-to-many' as const,
-                  cascadeDelete: false,
-                  cascadeUpdate: false,
+                  onDelete: 'RESTRICT',
+                  onUpdate: 'RESTRICT',
                 }
               },
               {
@@ -680,8 +680,8 @@ export class SchemaTemplateManager {
                   tableId: 'users',
                   columnId: 'user_id',
                   relationshipType: 'one-to-many' as const,
-                  cascadeDelete: false,
-                  cascadeUpdate: false,
+                  onDelete: 'RESTRICT',
+                  onUpdate: 'RESTRICT',
                 }
               },
               {
@@ -694,8 +694,8 @@ export class SchemaTemplateManager {
                   tableId: 'roles',
                   columnId: 'role_id',
                   relationshipType: 'one-to-many' as const,
-                  cascadeDelete: false,
-                  cascadeUpdate: false,
+                  onDelete: 'RESTRICT',
+                  onUpdate: 'RESTRICT',
                 }
               },
               {
@@ -731,8 +731,8 @@ export class SchemaTemplateManager {
                   tableId: 'roles',
                   columnId: 'role_id',
                   relationshipType: 'one-to-many' as const,
-                  cascadeDelete: false,
-                  cascadeUpdate: false,
+                  onDelete: 'RESTRICT',
+                  onUpdate: 'RESTRICT',
                 }
               },
               {
@@ -745,8 +745,8 @@ export class SchemaTemplateManager {
                   tableId: 'permissions',
                   columnId: 'permission_id',
                   relationshipType: 'one-to-many' as const,
-                  cascadeDelete: false,
-                  cascadeUpdate: false,
+                  onDelete: 'RESTRICT',
+                  onUpdate: 'RESTRICT',
                 }
               }
             ]
@@ -868,8 +868,8 @@ export class SchemaTemplateManager {
                 tableId: referencedTable.id,
                 columnId: referencedColumn.id,
                 relationshipType: 'one-to-many' as const,
-                cascadeDelete: false,
-                cascadeUpdate: false,
+                onDelete: 'RESTRICT',
+                onUpdate: 'RESTRICT',
               };
             }
           }

@@ -30,8 +30,10 @@ import { ProjectService } from '@/services/projectService';
 import { DatabaseConnector } from '@/utils/databaseConnector';
 import { Projects } from '@/components/Projects';
 import { projectsManager } from '@/utils/projectsManager';
+import { useDatabase } from '@/contexts/DatabaseContext';
 
 export default function HomePage() {
+  const { activeConnection, connectDatabase, executeQuery, isConnected } = useDatabase();
   const [activeTab, setActiveTab] = useState('designer');
   const [schema, setSchema] = useState<DatabaseSchema | null>(null);
   const [records, setRecords] = useState<DatabaseRecord[]>([]);
@@ -158,12 +160,66 @@ export default function HomePage() {
     setIsLoading(false);
   }, []);
 
+  // Execute query on connected database
+  const executeDatabaseQuery = useCallback(async (sql: string): Promise<QueryResult> => {
+    if (!isConnected) {
+      throw new Error('No database connected. Please connect to a database first.');
+    }
+
+    try {
+      const result = await executeQuery(sql);
+      return result;
+    } catch (error: any) {
+      console.error('Database query execution failed:', error);
+      throw error;
+    }
+  }, [isConnected, executeQuery]);
+
   // Handle query execution start
   const handleQueryStart = useCallback(() => {
     setIsLoading(true);
     setQueryResult(null);
     setQueryError(null);
   }, []);
+
+  // Load schema from connected database
+  useEffect(() => {
+    try {
+      if (activeConnection?.schema) {
+        console.log('Loading schema from connected database:', activeConnection.schema.tables?.length || 0, 'tables');
+        setSchema(activeConnection.schema);
+      } else if (!isConnected) {
+        // Load from localStorage only if no database is connected
+        const savedSchema = StorageManager.loadSchema();
+        if (savedSchema) {
+          setSchema(savedSchema);
+        } else {
+          // Create a default schema if none exists
+          const defaultSchema: DatabaseSchema = {
+            id: 'default_schema',
+            name: 'My Database',
+            tables: [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            version: 1,
+          };
+          setSchema(defaultSchema);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading schema:', error);
+      // Fallback to default schema
+      const defaultSchema: DatabaseSchema = {
+        id: 'default_schema',
+        name: 'My Database',
+        tables: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 1,
+      };
+      setSchema(defaultSchema);
+    }
+  }, [activeConnection, isConnected]);
 
   // Project management handlers
   const handleProjectDetected = useCallback(async (result: ProjectDetectionResult) => {
@@ -388,6 +444,7 @@ export default function HomePage() {
               <QueryRunner
                 schema={schema}
                 onQueryResult={handleQueryResult}
+                executeQuery={isConnected ? executeDatabaseQuery : undefined}
               />
             </div>
             <div className="w-1/2 border-l border-gray-700">

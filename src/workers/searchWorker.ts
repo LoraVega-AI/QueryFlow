@@ -10,7 +10,7 @@ export interface SearchWorkerMessage {
 }
 
 export interface SearchWorkerResponse {
-  type: 'search_result' | 'embedding_result' | 'data_processed' | 'error' | 'progress';
+  type: 'search_result' | 'embedding_result' | 'data_processed' | 'error' | 'progress' | 'cleanup';
   id: string;
   data: any;
   progress?: number;
@@ -23,8 +23,7 @@ let transformersIntegration: TransformersIntegration | null = null;
 async function initializeWorker() {
   try {
     const { TransformersIntegration } = await import('../utils/transformersIntegration');
-    transformersIntegration = new TransformersIntegration();
-    await transformersIntegration.initialize();
+    transformersIntegration = TransformersIntegration.getInstance();
     console.log('Search worker initialized successfully');
   } catch (error) {
     console.error('Failed to initialize search worker:', error);
@@ -39,12 +38,13 @@ async function performSemanticSearch(query: string, documents: any[], options: a
 
   try {
     // Generate query embedding
-    const queryEmbedding = await transformersIntegration.generateEmbedding(query);
-    
+    const queryEmbeddingResult = await transformersIntegration.generateEmbedding(query);
+    const queryEmbedding = queryEmbeddingResult.embedding;
+
     // Calculate similarities for all documents
     const results = documents.map((doc, index) => {
-      const similarity = doc.embedding ? 
-        cosineSimilarity(queryEmbedding, doc.embedding) : 0;
+      const similarity = doc.embedding ?
+        cosineSimilarity(queryEmbedding, doc.embedding.embedding) : 0;
       
       return {
         ...doc,
@@ -246,7 +246,7 @@ self.onmessage = async (event: MessageEvent<SearchWorkerMessage>) => {
     self.postMessage({
       type: 'error',
       id,
-      data: { error: error.message, type }
+      data: { error: error instanceof Error ? error.message : String(error), type }
     } as SearchWorkerResponse);
   }
 };

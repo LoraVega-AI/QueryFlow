@@ -247,7 +247,7 @@ export class ProjectDetector {
         for (const pattern of patterns) {
           let matches = false;
 
-          if (pattern.file) {
+          if ('file' in pattern && pattern.file) {
             if (pattern.file.includes('*')) {
               // Handle wildcards
               const regex = new RegExp(pattern.file.replace(/\*/g, '.*'));
@@ -255,7 +255,7 @@ export class ProjectDetector {
             } else {
               matches = file.includes(pattern.file);
             }
-          } else if (pattern.pattern) {
+          } else if ('pattern' in pattern && pattern.pattern) {
             matches = pattern.pattern.test(file);
           }
 

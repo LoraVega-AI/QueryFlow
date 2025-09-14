@@ -14,6 +14,7 @@ import { Play, History, Trash2, Copy, Download, FileText, Search, Bookmark, Star
 interface QueryRunnerProps {
   schema: DatabaseSchema | null;
   onQueryResult: (result: QueryResult | null, error: QueryError | null) => void;
+  executeQuery?: (sql: string) => Promise<QueryResult>;
 }
 
 const SAMPLE_QUERIES = [
@@ -24,7 +25,7 @@ const SAMPLE_QUERIES = [
   'PRAGMA table_list;',
 ];
 
-export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
+export function QueryRunner({ schema, onQueryResult, executeQuery: externalExecuteQuery }: QueryRunnerProps) {
   const [query, setQuery] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
   const [queryHistory, setQueryHistory] = useState<QueryHistoryItem[]>([]);
@@ -248,7 +249,7 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
 
   // Execute SQL query
   const executeQuery = useCallback(async () => {
-    if (!query.trim() || !schema) return;
+    if (!query.trim()) return;
 
     // Validate query first
     if (!validateQuery()) {
@@ -260,27 +261,40 @@ export function QueryRunner({ schema, onQueryResult }: QueryRunnerProps) {
     const startTime = Date.now();
 
     try {
-      // Ensure database is initialized and tables are created
-      await dbManager.initialize();
-      await dbManager.createTablesFromSchema(schema);
+      let result: QueryResult;
 
-      // Execute the query
-      const result = await dbManager.executeQuery(query);
-      const executionTime = Date.now() - startTime;
+      if (externalExecuteQuery) {
+        // Use external database connection (real database)
+        result = await externalExecuteQuery(query);
+        // Ensure result has execution time
+        if (!result.executionTime) {
+          result.executionTime = Date.now() - startTime;
+        }
+      } else {
+        // Use mock database (fallback)
+        if (!schema) return;
+
+        // Ensure database is initialized and tables are created
+        await dbManager.initialize();
+        await dbManager.createTablesFromSchema(schema);
+
+        // Execute the query
+        result = await dbManager.executeQuery(query);
+        result.executionTime = Date.now() - startTime;
+      }
 
       // Save to history using QueryManager
-      QueryManager.saveToHistory(query, executionTime, result.rowCount);
+      QueryManager.saveToHistory(query, result.executionTime, result.rowCount);
 
       // Profile query performance
-      const profile = QueryOptimizationManager.profileQuery(query, executionTime);
+      const profile = QueryOptimizationManager.profileQuery(query, result.executionTime);
       setQueryProfiles(prev => [profile, ...prev]);
 
       // Update result with execution time and performance metrics
       const resultWithTime: QueryResult = {
         ...result,
-        executionTime,
         performanceMetrics: {
-          cpuTime: executionTime * 0.8,
+          cpuTime: result.executionTime * 0.8,
           memoryUsage: result.rowCount * 100,
           diskReads: result.rowCount * 2,
           diskWrites: 0,

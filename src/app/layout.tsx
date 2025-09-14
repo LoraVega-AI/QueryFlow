@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import { DatabaseProvider } from '@/contexts/DatabaseContext'
 
 // Initialize search data
 import '@/utils/searchDataInitializer'
@@ -19,7 +20,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        <DatabaseProvider>
+          {children}
+        </DatabaseProvider>
+      </body>
     </html>
   )
 }

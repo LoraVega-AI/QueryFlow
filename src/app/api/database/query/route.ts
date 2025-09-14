@@ -7,7 +7,7 @@ import { dbConnectionManager } from '@/utils/databaseConnection';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { connectionId, sql } = body;
+    const { connectionId, sql, params = [] } = body;
 
     if (!connectionId) {
       return NextResponse.json({
@@ -23,41 +23,20 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Validate SQL query (only allow SELECT)
-    const upperSQL = sql.trim().toUpperCase();
-    if (!upperSQL.startsWith('SELECT')) {
-      return NextResponse.json({
-        success: false,
-        message: 'Only SELECT queries are allowed for security reasons'
-      }, { status: 403 });
-    }
-
-    // Execute query
+    // Execute the query
     const result = await dbConnectionManager.executeQuery(connectionId, sql);
 
-    if (result.success) {
-      return NextResponse.json({
-        success: true,
-        message: 'Query executed successfully',
-        data: {
-          rows: result.data,
-          rowCount: result.rowCount,
-          executionTime: result.executionTime
-        }
-      });
-    } else {
-      return NextResponse.json({
-        success: false,
-        message: 'Query execution failed',
-        error: result.error
-      }, { status: 400 });
-    }
+    return NextResponse.json({
+      success: true,
+      message: 'Query executed successfully',
+      data: result
+    });
 
   } catch (error: any) {
     console.error('Database query API error:', error);
     return NextResponse.json({
       success: false,
-      message: 'Internal server error',
+      message: 'Query execution failed',
       error: error.message
     }, { status: 500 });
   }

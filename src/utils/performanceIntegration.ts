@@ -60,7 +60,7 @@ export class PerformanceIntegration {
 
       // Initialize Web Workers
       if (this.config.enableWebWorkers && WorkerManager.isSupported()) {
-        await workerManager.initialize();
+        // Web workers are initialized automatically in WorkerManager constructor
         console.log('Web Workers initialized');
       }
 
@@ -155,7 +155,7 @@ export class PerformanceIntegration {
       case 'cache':
         return this.config.enableCaching && typeof localStorage !== 'undefined';
       case 'workers':
-        return this.config.enableWebWorkers && workerManager.isSupported();
+        return this.config.enableWebWorkers && WorkerManager.isSupported();
       case 'virtualization':
         return this.config.enableVirtualization;
       default:

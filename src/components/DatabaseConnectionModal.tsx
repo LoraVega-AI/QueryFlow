@@ -20,7 +20,7 @@ interface DatabaseCredentials {
 interface DatabaseConnectionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConnect: (connectionId: string, credentials: DatabaseCredentials) => void;
+  onConnect: (connectionId: string, credentials: DatabaseCredentials, schema?: any) => void;
   projectName?: string;
 }
 
@@ -114,9 +114,44 @@ export function DatabaseConnectionModal({
     }
   };
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     if (testResult?.success && testResult.connectionId) {
-      onConnect(testResult.connectionId, credentials);
+      try {
+        // Load the schema for the connected database
+        const schemaResponse = await fetch('/api/database/schema', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            connectionId: testResult.connectionId,
+            credentials
+          }),
+        });
+
+        const schemaResult = await schemaResponse.json();
+
+        if (schemaResult.success) {
+          // Pass both connection ID and schema to parent
+          onConnect(testResult.connectionId, credentials, schemaResult.schema);
+        } else {
+          setTestResult({
+            success: false,
+            message: 'Failed to load database schema',
+            error: schemaResult.error
+          });
+          return;
+        }
+      } catch (error: any) {
+        console.error('Schema loading error:', error);
+        setTestResult({
+          success: false,
+          message: 'Failed to load database schema',
+          error: error instanceof Error ? error.message : 'Unknown error occurred'
+        });
+        return;
+      }
+
       onClose();
     }
   };

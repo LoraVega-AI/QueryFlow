@@ -19,8 +19,10 @@ import { projectsManager } from '../utils/projectsManager';
 import { Project } from '../types/projects';
 import { DatabaseConnectionModal } from './DatabaseConnectionModal';
 import { QueryEditor } from './QueryEditor';
+import { useDatabase } from '../contexts/DatabaseContext';
 
 export function Projects() {
+  const { connectDatabase } = useDatabase();
   const [projects, setProjects] = useState<Project[]>([]);
   const [syncingProject, setSyncingProject] = useState<string | null>(null);
   const [notification, setNotification] = useState<{
@@ -102,12 +104,15 @@ export function Projects() {
     setShowConnectionModal(true);
   };
 
-  const handleConnectionSuccess = async (connectionId: string, credentials: any) => {
+  const handleConnectionSuccess = async (connectionId: string, credentials: any, schema?: any) => {
     const project = projects.find(p => p.id === connectionProjectId);
     if (!project) return;
 
     try {
-      // Store connection
+      // Connect to global database context - this makes the entire site use this database
+      connectDatabase(connectionId, credentials, schema);
+
+      // Store connection locally for project management
       setConnections(prev => new Map(prev.set(connectionProjectId, {
         connectionId,
         credentials,
@@ -119,38 +124,25 @@ export function Projects() {
         p.id === connectionProjectId ? { ...p, status: 'connected' as const } : p
       ));
 
-      // Fetch schema
-      const schemaResponse = await fetch('/api/database/schema', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ connectionId }),
+      const tableCount = schema?.tables?.length || 0;
+      setNotification({
+        type: 'success',
+        message: `Database connected successfully! Found ${tableCount} tables. The entire site now uses this database.`
       });
 
-      const schemaResult = await schemaResponse.json();
+      // Update project with schema info
+      setProjects(prev => prev.map(p =>
+        p.id === connectionProjectId ? {
+          ...p,
+          status: 'connected' as const,
+          databaseCount: 1,
+          schema: schema
+        } : p
+      ));
 
-      if (schemaResult.success) {
-        setNotification({
-          type: 'success',
-          message: `Project "${project.name}" synced successfully! Found ${schemaResult.data.tables.length} tables.`
-        });
-
-        // Update project with schema info
-        setProjects(prev => prev.map(p =>
-          p.id === connectionProjectId ? {
-            ...p,
-            status: 'connected' as const,
-            databaseCount: 1,
-            schema: schemaResult.data
-          } : p
-        ));
-      } else {
-        setNotification({
-          type: 'error',
-          message: `Failed to fetch schema: ${schemaResult.message}`
-        });
-      }
+      // Close the modal
+      setShowConnectionModal(false);
+      setConnectionProjectId('');
     } catch (error: any) {
       setNotification({
         type: 'error',

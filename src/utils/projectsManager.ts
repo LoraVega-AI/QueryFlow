@@ -2,7 +2,8 @@
 // Handles project data, embedded databases, and synchronization
 
 import { Project, Database, Table, Column, DatabaseSchema } from '../types/projects';
-import { dbManager } from './database';
+import { DatabaseManager } from './database';
+import { DatabaseSchema as DBManagerSchema } from '../types/database';
 import { memoryManager } from './memoryManager';
 
 export class ProjectsManager {
@@ -10,19 +11,39 @@ export class ProjectsManager {
   private projects: Map<string, Project> = new Map();
   private currentProject: Project | null = null;
   private eventListeners: Map<string, Array<(data: any) => void>> = new Map();
+  private projectDatabases: Map<string, DatabaseManager> = new Map();
+  private initialized = false;
 
   private constructor() {
-    this.initializeDefaultProjects();
+    // Initialization is now handled in getInstance()
   }
 
   static getInstance(): ProjectsManager {
     if (!ProjectsManager.instance) {
       ProjectsManager.instance = new ProjectsManager();
+      // Trigger async initialization but don't wait for it
+      ProjectsManager.instance.initializeIfNeeded();
     }
     return ProjectsManager.instance;
   }
 
-  private initializeDefaultProjects(): void {
+  private async initializeIfNeeded(): Promise<void> {
+    if (!this.initialized) {
+      try {
+        await this.initializeDefaultProjectsAsync();
+        this.initialized = true;
+      } catch (error) {
+        console.error('Failed to initialize projects:', error);
+        // Don't rethrow - we don't want to break the app
+      }
+    }
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    await this.initializeIfNeeded();
+  }
+
+  private async initializeDefaultProjectsAsync(): Promise<void> {
     const defaultProjects: Project[] = [
       {
         id: 'ecommerce-api',
@@ -115,7 +136,7 @@ export class ProjectsManager {
     });
 
     // Initialize project databases
-    this.initializeProjectDatabases();
+    await this.initializeProjectDatabases();
   }
 
   private async initializeProjectDatabases(): Promise<void> {
@@ -131,7 +152,7 @@ export class ProjectsManager {
       // Create tables for each database in the project
       for (const database of project.databases) {
         // Initialize database with schema
-        await this.createDatabaseTables(database, project.schema);
+        await this.createDatabaseTables(project.id, database, project.schema);
       }
 
       // Populate with sample data
@@ -145,12 +166,32 @@ export class ProjectsManager {
     }
   }
 
-  private async createDatabaseTables(database: Database, schema: DatabaseSchema): Promise<void> {
+  private async createDatabaseTables(projectId: string, database: Database, schema: DatabaseSchema): Promise<void> {
+    // Get or create project-specific database instance
+    let projectDb = this.projectDatabases.get(projectId);
+    if (!projectDb) {
+      projectDb = new DatabaseManager();
+      this.projectDatabases.set(projectId, projectDb);
+    }
+
+    // Convert project schema to database manager schema format
+    const dbSchema: DBManagerSchema = {
+      id: `project_${projectId}_schema`,
+      name: `Project ${projectId} Schema`,
+      tables: schema.tables as any, // Cast to avoid type mismatch
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      version: 1
+    };
+
+    // Set schema on the project-specific database manager
+    projectDb.setSchema(dbSchema);
+
     // Create tables in the database
     for (const table of schema.tables) {
       const createTableSQL = this.generateCreateTableSQL(table);
       try {
-        await dbManager.executeQuery(createTableSQL);
+        await projectDb.executeQuery(createTableSQL);
       } catch (error) {
         console.error(`Failed to create table ${table.name}:`, error);
       }
@@ -234,7 +275,7 @@ export class ProjectsManager {
           toTable: 'users',
           fromColumn: 'user_id',
           toColumn: 'id',
-          type: 'many-to-one'
+          type: 'one-to-many'
         }
       ],
       indexes: []
@@ -298,10 +339,17 @@ export class ProjectsManager {
   private async populateSampleData(project: Project): Promise<void> {
     if (!project.schema) return;
 
+    // Get project-specific database instance
+    const projectDb = this.projectDatabases.get(project.id);
+    if (!projectDb) {
+      console.error(`No database instance found for project ${project.id}`);
+      return;
+    }
+
     for (const table of project.schema.tables) {
       const sampleData = this.generateSampleData(table, project.id);
       if (sampleData.length > 0) {
-        await this.insertSampleData(table.name, sampleData);
+        await this.insertSampleData(project.id, table.name, sampleData);
       }
     }
   }
@@ -354,13 +402,18 @@ export class ProjectsManager {
     return sampleData;
   }
 
-  private async insertSampleData(tableName: string, data: any[]): Promise<void> {
+  private async insertSampleData(projectId: string, tableName: string, data: any[]): Promise<void> {
+    const projectDb = this.projectDatabases.get(projectId);
+    if (!projectDb) {
+      console.error(`No database instance found for project ${projectId}`);
+      return;
+    }
+
     for (const record of data) {
       try {
-        await dbManager.insertRecord(tableName, record);
+        await projectDb.insertRecord(tableName, record);
       } catch (error) {
         console.error(`Failed to insert sample data into ${tableName}:`, error);
-        console.error('Record data:', record);
       }
     }
   }
@@ -411,9 +464,10 @@ export class ProjectsManager {
 
   async disconnectProject(): Promise<void> {
     if (this.currentProject) {
+      const projectId = this.currentProject.id;
       this.currentProject.status = 'disconnected';
       this.currentProject = null;
-      this.emitEvent('project_disconnected');
+      this.emitEvent('project_disconnected', { projectId });
     }
   }
 
@@ -447,9 +501,13 @@ export class ProjectsManager {
       throw new Error('Project not found');
     }
 
-    // For now, execute on the main database
-    // In a real implementation, you'd connect to the project's specific database
-    return await dbManager.executeQuery(sql, params);
+    // Get project-specific database instance
+    const projectDb = this.projectDatabases.get(projectId);
+    if (!projectDb) {
+      throw new Error(`No database instance found for project ${projectId}`);
+    }
+
+    return await projectDb.executeQuery(sql, params);
   }
 
   // Event system
