@@ -99,9 +99,78 @@ export function Projects() {
     const project = projects.find(p => p.id === projectId);
     if (!project) return;
 
-    // Open connection modal instead of auto-syncing
-    setConnectionProjectId(projectId);
-    setShowConnectionModal(true);
+    // Check if this is an example project - auto-connect if so
+    if (project.isExample) {
+      await handleExampleProjectSync(project);
+    } else {
+      // Open connection modal for real projects
+      setConnectionProjectId(projectId);
+      setShowConnectionModal(true);
+    }
+  };
+
+  const handleExampleProjectSync = async (project: Project) => {
+    try {
+      setSyncingProject(project.id);
+      setProjects(prev => prev.map(p =>
+        p.id === project.id ? { ...p, status: 'syncing' as const } : p
+      ));
+
+      // Auto-connect example project using the project manager
+      const success = await projectsManager.syncProject(project.id);
+
+      if (success) {
+        // Load the updated project with schema
+        const updatedProject = projectsManager.getProject(project.id);
+        if (updatedProject) {
+          setProjects(prev => prev.map(p =>
+            p.id === project.id ? updatedProject : p
+          ));
+
+          // Connect the first database to the global context for app-wide access
+          if (updatedProject.databases.length > 0) {
+            const firstDb = updatedProject.databases[0];
+            const connectionId = `example_${project.id}_${firstDb.id}`;
+
+            // Convert database config to credentials format
+            const credentials = {
+              type: firstDb.type,
+              filePath: firstDb.type === 'sqlite' ? firstDb.connectionString : undefined,
+              database: firstDb.name
+            };
+
+            // Connect to global database context
+            connectDatabase(connectionId, credentials, updatedProject.schema as any);
+          }
+
+          setNotification({
+            type: 'success',
+            message: `Example project "${project.name}" connected successfully! You can now query the database.`
+          });
+        }
+      } else {
+        setProjects(prev => prev.map(p =>
+          p.id === project.id ? { ...p, status: 'error' as const } : p
+        ));
+
+        setNotification({
+          type: 'error',
+          message: `Failed to connect example project "${project.name}"`
+        });
+      }
+    } catch (error: any) {
+      console.error('Example project sync failed:', error);
+      setProjects(prev => prev.map(p =>
+        p.id === project.id ? { ...p, status: 'error' as const } : p
+      ));
+
+      setNotification({
+        type: 'error',
+        message: `Failed to sync example project: ${error.message}`
+      });
+    } finally {
+      setSyncingProject(null);
+    }
   };
 
   const handleConnectionSuccess = async (connectionId: string, credentials: any, schema?: any) => {

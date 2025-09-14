@@ -1,9 +1,9 @@
 // Projects Manager for QueryFlow
 // Handles project data, embedded databases, and synchronization
 
-import { Project, Database, Table, Column, DatabaseSchema } from '../types/projects';
+import { Project, Database, Table, Column, DatabaseSchema as ProjectSchema } from '../types/projects';
 import { DatabaseManager } from './database';
-import { DatabaseSchema as DBManagerSchema } from '../types/database';
+import { DatabaseSchema } from '../types/database';
 import { memoryManager } from './memoryManager';
 
 export class ProjectsManager {
@@ -21,8 +21,10 @@ export class ProjectsManager {
   static getInstance(): ProjectsManager {
     if (!ProjectsManager.instance) {
       ProjectsManager.instance = new ProjectsManager();
-      // Trigger async initialization but don't wait for it
-      ProjectsManager.instance.initializeIfNeeded();
+      // Only trigger initialization in browser environment
+      if (typeof window !== 'undefined') {
+        ProjectsManager.instance.initializeIfNeeded();
+      }
     }
     return ProjectsManager.instance;
   }
@@ -50,28 +52,29 @@ export class ProjectsManager {
         name: 'E-commerce API',
         description: 'Node.js REST API for e-commerce platform',
         technology: 'Node.js',
-        status: 'connected',
-        lastSynced: '2024-01-20T10:30:00Z',
+        status: 'disconnected', // Start disconnected, will auto-connect
+        lastSynced: null,
         databaseCount: 2,
         icon: '📦',
         color: 'orange',
+        isExample: true,
         databases: [
           {
             id: 'ecommerce-main',
             name: 'ecommerce_main',
             type: 'sqlite',
-            connectionString: ':memory:',
-            isConnected: true,
-            lastSync: '2024-01-20T10:30:00Z',
+            connectionString: `demo_ecommerce_main_${Date.now()}.db`,
+            isConnected: false, // Will be auto-connected
+            lastSync: null,
             tables: []
           },
           {
             id: 'ecommerce-analytics',
             name: 'ecommerce_analytics',
             type: 'sqlite',
-            connectionString: ':memory:',
-            isConnected: true,
-            lastSync: '2024-01-20T10:30:00Z',
+            connectionString: `demo_ecommerce_analytics_${Date.now()}.db`,
+            isConnected: false, // Will be auto-connected
+            lastSync: null,
             tables: []
           }
         ],
@@ -84,19 +87,20 @@ export class ProjectsManager {
         name: 'Data Analytics Dashboard',
         description: 'Python Django application with PostgreSQL',
         technology: 'Django',
-        status: 'syncing',
-        lastSynced: '2024-01-19T15:45:00Z',
+        status: 'disconnected', // Start disconnected, will auto-connect
+        lastSynced: null,
         databaseCount: 1,
         icon: '🎸',
         color: 'blue',
+        isExample: true,
         databases: [
           {
             id: 'analytics-main',
             name: 'analytics_db',
             type: 'sqlite',
-            connectionString: ':memory:',
-            isConnected: true,
-            lastSync: '2024-01-19T15:45:00Z',
+            connectionString: `demo_analytics_${Date.now()}.db`,
+            isConnected: false, // Will be auto-connected
+            lastSync: null,
             tables: []
           }
         ],
@@ -109,18 +113,19 @@ export class ProjectsManager {
         name: 'Legacy PHP System',
         description: 'Old PHP application with MySQL database',
         technology: 'PHP',
-        status: 'error',
+        status: 'disconnected', // Start disconnected, will auto-connect
         lastSynced: null,
         databaseCount: 1,
         icon: '🐘',
         color: 'red',
+        isExample: true,
         databases: [
           {
             id: 'legacy-main',
             name: 'legacy_db',
             type: 'sqlite',
-            connectionString: ':memory:',
-            isConnected: false,
+            connectionString: `demo_legacy_${Date.now()}.db`,
+            isConnected: false, // Will be auto-connected
             lastSync: null,
             tables: []
           }
@@ -149,10 +154,35 @@ export class ProjectsManager {
     try {
       if (!project.schema) return;
 
+      console.log(`Initializing database for project ${project.id}`);
+
+      // Always create a fresh database instance for this project
+      // This ensures no leftover data from previous initializations
+      if (this.projectDatabases.has(project.id)) {
+        const existingDb = this.projectDatabases.get(project.id);
+        if (existingDb) {
+          console.log(`Closing existing database instance for project ${project.id}`);
+          existingDb.close();
+        }
+        this.projectDatabases.delete(project.id);
+      }
+
       // Create tables for each database in the project
       for (const database of project.databases) {
+        console.log(`Creating tables for database ${database.name} in project ${project.id}`);
+
+        // Convert project schema to database schema
+        const dbSchema: DatabaseSchema = {
+          id: `project_${project.id}_schema`,
+          name: `Project ${project.id} Schema`,
+          tables: project.schema.tables as any, // Cast to avoid type mismatch
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          version: 1
+        };
+
         // Initialize database with schema
-        await this.createDatabaseTables(project.id, database, project.schema);
+        await this.createDatabaseTables(project.id, database, dbSchema);
       }
 
       // Populate with sample data
@@ -160,9 +190,11 @@ export class ProjectsManager {
 
       project.status = 'connected';
       this.emitEvent('project_initialized', { projectId: project.id });
+      console.log(`Successfully initialized database for project ${project.id}`);
     } catch (error) {
       console.error(`Failed to initialize database for project ${project.id}:`, error);
       project.status = 'error';
+      throw error;
     }
   }
 
@@ -175,7 +207,7 @@ export class ProjectsManager {
     }
 
     // Convert project schema to database manager schema format
-    const dbSchema: DBManagerSchema = {
+    const dbSchema: DatabaseSchema = {
       id: `project_${projectId}_schema`,
       name: `Project ${projectId} Schema`,
       tables: schema.tables as any, // Cast to avoid type mismatch
@@ -189,7 +221,7 @@ export class ProjectsManager {
 
     // Create tables in the database
     for (const table of schema.tables) {
-      const createTableSQL = this.generateCreateTableSQL(table);
+      const createTableSQL = this.generateCreateTableSQL(table as any);
       try {
         await projectDb.executeQuery(createTableSQL);
       } catch (error) {
@@ -197,7 +229,7 @@ export class ProjectsManager {
       }
     }
 
-    database.tables = schema.tables;
+    database.tables = schema.tables as any;
   }
 
   private generateCreateTableSQL(table: Table): string {
@@ -229,7 +261,7 @@ export class ProjectsManager {
     return typeMap[type.toLowerCase()] || 'TEXT';
   }
 
-  private createEcommerceSchema(): DatabaseSchema {
+  private createEcommerceSchema(): ProjectSchema {
     return {
       tables: [
         {
@@ -237,10 +269,10 @@ export class ProjectsManager {
           name: 'users',
           rowCount: 0,
           columns: [
-            { id: 'id', name: 'id', type: 'integer', nullable: false, primaryKey: true },
-            { id: 'email', name: 'email', type: 'string', nullable: false, primaryKey: false },
-            { id: 'name', name: 'name', type: 'string', nullable: false, primaryKey: false },
-            { id: 'created_at', name: 'created_at', type: 'datetime', nullable: false, primaryKey: false }
+            { id: 'id', name: 'id', type: 'INTEGER', nullable: false, primaryKey: true },
+            { id: 'email', name: 'email', type: 'TEXT', nullable: false, primaryKey: false },
+            { id: 'name', name: 'name', type: 'TEXT', nullable: false, primaryKey: false },
+            { id: 'created_at', name: 'created_at', type: 'DATETIME', nullable: false, primaryKey: false }
           ]
         },
         {
@@ -248,11 +280,11 @@ export class ProjectsManager {
           name: 'products',
           rowCount: 0,
           columns: [
-            { id: 'id', name: 'id', type: 'integer', nullable: false, primaryKey: true },
-            { id: 'name', name: 'name', type: 'string', nullable: false, primaryKey: false },
-            { id: 'price', name: 'price', type: 'number', nullable: false, primaryKey: false },
-            { id: 'category', name: 'category', type: 'string', nullable: false, primaryKey: false },
-            { id: 'stock', name: 'stock', type: 'integer', nullable: false, primaryKey: false }
+            { id: 'id', name: 'id', type: 'INTEGER', nullable: false, primaryKey: true },
+            { id: 'name', name: 'name', type: 'TEXT', nullable: false, primaryKey: false },
+            { id: 'price', name: 'price', type: 'REAL', nullable: false, primaryKey: false },
+            { id: 'category', name: 'category', type: 'TEXT', nullable: false, primaryKey: false },
+            { id: 'stock', name: 'stock', type: 'INTEGER', nullable: false, primaryKey: false }
           ]
         },
         {
@@ -260,11 +292,11 @@ export class ProjectsManager {
           name: 'orders',
           rowCount: 0,
           columns: [
-            { id: 'id', name: 'id', type: 'integer', nullable: false, primaryKey: true },
-            { id: 'user_id', name: 'user_id', type: 'integer', nullable: false, primaryKey: false },
-            { id: 'total', name: 'total', type: 'number', nullable: false, primaryKey: false },
-            { id: 'status', name: 'status', type: 'string', nullable: false, primaryKey: false },
-            { id: 'created_at', name: 'created_at', type: 'datetime', nullable: false, primaryKey: false }
+            { id: 'id', name: 'id', type: 'INTEGER', nullable: false, primaryKey: true },
+            { id: 'user_id', name: 'user_id', type: 'INTEGER', nullable: false, primaryKey: false },
+            { id: 'total', name: 'total', type: 'REAL', nullable: false, primaryKey: false },
+            { id: 'status', name: 'status', type: 'TEXT', nullable: false, primaryKey: false },
+            { id: 'created_at', name: 'created_at', type: 'DATETIME', nullable: false, primaryKey: false }
           ]
         }
       ],
@@ -282,7 +314,7 @@ export class ProjectsManager {
     };
   }
 
-  private createAnalyticsSchema(): DatabaseSchema {
+  private createAnalyticsSchema(): ProjectSchema {
     return {
       tables: [
         {
@@ -290,11 +322,11 @@ export class ProjectsManager {
           name: 'page_views',
           rowCount: 0,
           columns: [
-            { id: 'id', name: 'id', type: 'integer', nullable: false, primaryKey: true },
-            { id: 'page', name: 'page', type: 'string', nullable: false, primaryKey: false },
-            { id: 'user_id', name: 'user_id', type: 'integer', nullable: true, primaryKey: false },
-            { id: 'timestamp', name: 'timestamp', type: 'datetime', nullable: false, primaryKey: false },
-            { id: 'duration', name: 'duration', type: 'integer', nullable: false, primaryKey: false }
+            { id: 'id', name: 'id', type: 'INTEGER', nullable: false, primaryKey: true },
+            { id: 'page', name: 'page', type: 'TEXT', nullable: false, primaryKey: false },
+            { id: 'user_id', name: 'user_id', type: 'INTEGER', nullable: true, primaryKey: false },
+            { id: 'timestamp', name: 'timestamp', type: 'DATETIME', nullable: false, primaryKey: false },
+            { id: 'duration', name: 'duration', type: 'INTEGER', nullable: false, primaryKey: false }
           ]
         },
         {
@@ -302,11 +334,11 @@ export class ProjectsManager {
           name: 'events',
           rowCount: 0,
           columns: [
-            { id: 'id', name: 'id', type: 'integer', nullable: false, primaryKey: true },
-            { id: 'event_type', name: 'event_type', type: 'string', nullable: false, primaryKey: false },
-            { id: 'user_id', name: 'user_id', type: 'integer', nullable: true, primaryKey: false },
-            { id: 'data', name: 'data', type: 'json', nullable: true, primaryKey: false },
-            { id: 'timestamp', name: 'timestamp', type: 'datetime', nullable: false, primaryKey: false }
+            { id: 'id', name: 'id', type: 'INTEGER', nullable: false, primaryKey: true },
+            { id: 'event_type', name: 'event_type', type: 'TEXT', nullable: false, primaryKey: false },
+            { id: 'user_id', name: 'user_id', type: 'INTEGER', nullable: true, primaryKey: false },
+            { id: 'data', name: 'data', type: 'JSON', nullable: true, primaryKey: false },
+            { id: 'timestamp', name: 'timestamp', type: 'DATETIME', nullable: false, primaryKey: false }
           ]
         }
       ],
@@ -315,7 +347,7 @@ export class ProjectsManager {
     };
   }
 
-  private createLegacySchema(): DatabaseSchema {
+  private createLegacySchema(): ProjectSchema {
     return {
       tables: [
         {
@@ -323,11 +355,11 @@ export class ProjectsManager {
           name: 'posts',
           rowCount: 0,
           columns: [
-            { id: 'id', name: 'id', type: 'integer', nullable: false, primaryKey: true },
-            { id: 'title', name: 'title', type: 'string', nullable: false, primaryKey: false },
-            { id: 'content', name: 'content', type: 'text', nullable: false, primaryKey: false },
-            { id: 'author', name: 'author', type: 'string', nullable: false, primaryKey: false },
-            { id: 'created_date', name: 'created_date', type: 'datetime', nullable: false, primaryKey: false }
+            { id: 'id', name: 'id', type: 'INTEGER', nullable: false, primaryKey: true },
+            { id: 'title', name: 'title', type: 'TEXT', nullable: false, primaryKey: false },
+            { id: 'content', name: 'content', type: 'TEXT', nullable: false, primaryKey: false },
+            { id: 'author', name: 'author', type: 'TEXT', nullable: false, primaryKey: false },
+            { id: 'created_date', name: 'created_date', type: 'DATETIME', nullable: false, primaryKey: false }
           ]
         }
       ],
@@ -346,12 +378,31 @@ export class ProjectsManager {
       return;
     }
 
+    console.log(`Populating sample data for project ${project.id} with ${project.schema.tables.length} tables`);
+
     for (const table of project.schema.tables) {
+      console.log(`Processing table ${table.name} for sample data...`);
+
+      try {
+        // Clear any existing data in the table to ensure clean state
+        await projectDb.executeQuery(`DELETE FROM "${table.name}"`);
+        console.log(`Cleared existing data from table ${table.name}`);
+      } catch (error) {
+        // Table might not exist or deletion failed, continue with insertion
+        console.log(`Could not clear data from ${table.name}, proceeding with sample data:`, error);
+      }
+
       const sampleData = this.generateSampleData(table, project.id);
+      console.log(`Generated ${sampleData.length} sample records for table ${table.name}`);
+
       if (sampleData.length > 0) {
         await this.insertSampleData(project.id, table.name, sampleData);
+      } else {
+        console.log(`No sample data generated for table ${table.name}`);
       }
     }
+
+    console.log(`Sample data population completed for project ${project.id}`);
   }
 
   private generateSampleData(table: Table, projectId: string): any[] {
@@ -409,13 +460,33 @@ export class ProjectsManager {
       return;
     }
 
+    console.log(`Inserting ${data.length} sample records into ${tableName} for project ${projectId}`);
+
     for (const record of data) {
+      if (!record || typeof record !== 'object' || Object.keys(record).length === 0) {
+        console.warn(`Skipping invalid record for table ${tableName}:`, record);
+        continue;
+      }
+
       try {
+        console.log(`Inserting record into ${tableName}:`, record);
         await projectDb.insertRecord(tableName, record);
+        console.log(`Successfully inserted record into ${tableName}`);
       } catch (error) {
         console.error(`Failed to insert sample data into ${tableName}:`, error);
+        console.error('Record data:', record);
+
+        // For UNIQUE constraint errors, try to continue with other records
+        if (error instanceof Error && error.message.includes('UNIQUE constraint failed')) {
+          console.warn(`UNIQUE constraint violation for table ${tableName}, continuing with other records`);
+        } else {
+          // For other errors, re-throw to stop the process
+          throw error;
+        }
       }
     }
+
+    console.log(`Completed sample data insertion for ${tableName}`);
   }
 
   // Public methods
@@ -439,8 +510,19 @@ export class ProjectsManager {
       project.status = 'syncing';
       this.emitEvent('project_sync_start', { projectId });
 
-      // Simulate sync process
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (project.isExample) {
+        // Handle example project - create actual database connection
+        await this.initializeProjectDatabase(project);
+
+        // Update database connection status
+        project.databases.forEach(db => {
+          db.isConnected = true;
+          db.lastSync = new Date().toISOString();
+        });
+      } else {
+        // Simulate sync process for real projects
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
 
       // Update sync timestamp
       project.lastSynced = new Date().toISOString();
@@ -472,7 +554,7 @@ export class ProjectsManager {
   }
 
   // Get project database schema
-  getProjectSchema(projectId: string): DatabaseSchema | null {
+  getProjectSchema(projectId: string): ProjectSchema | null {
     const project = this.projects.get(projectId);
     return project?.schema || null;
   }
@@ -540,12 +622,34 @@ export class ProjectsManager {
   }
 }
 
-// Export singleton instance
-export const projectsManager = ProjectsManager.getInstance();
+// Lazy initialization getter
+let _projectsManager: ProjectsManager | null = null;
+
+export function getProjectsManager(): ProjectsManager {
+  if (!_projectsManager) {
+    _projectsManager = ProjectsManager.getInstance();
+  }
+  return _projectsManager;
+}
+
+// For backward compatibility, also export as projectsManager
+export const projectsManager = {
+  getAllProjects: () => getProjectsManager().getAllProjects(),
+  getProject: (id: string) => getProjectsManager().getProject(id),
+  getCurrentProject: () => getProjectsManager().getCurrentProject(),
+  syncProject: (id: string) => getProjectsManager().syncProject(id),
+  disconnectProject: () => getProjectsManager().disconnectProject(),
+  getProjectSchema: (id: string) => getProjectsManager().getProjectSchema(id),
+  getProjectTables: (id: string) => getProjectsManager().getProjectTables(id),
+  executeProjectQuery: (id: string, sql: string, params?: any[]) => getProjectsManager().executeProjectQuery(id, sql, params),
+  addEventListener: (type: string, listener: (data: any) => void) => getProjectsManager().addEventListener(type, listener),
+  removeEventListener: (type: string, listener: (data: any) => void) => getProjectsManager().removeEventListener(type, listener),
+  cleanup: () => getProjectsManager().cleanup()
+};
 
 // Cleanup on page unload
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
-    projectsManager.cleanup();
+    getProjectsManager().cleanup();
   });
 }

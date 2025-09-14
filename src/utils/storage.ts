@@ -13,11 +13,20 @@ export class StorageManager {
   // Schema management
   static saveSchema(schema: DatabaseSchema): void {
     try {
+      if (!schema) {
+        console.warn('Cannot save null or undefined schema');
+        return;
+      }
+
+      const now = new Date();
       const schemaData = {
         ...schema,
-        createdAt: schema.createdAt.toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: (schema.createdAt && schema.createdAt instanceof Date && !isNaN(schema.createdAt.getTime()))
+          ? schema.createdAt.toISOString()
+          : now.toISOString(),
+        updatedAt: now.toISOString(),
       };
+
       localStorage.setItem(STORAGE_KEYS.SCHEMA, JSON.stringify(schemaData));
     } catch (error) {
       console.error('Failed to save schema:', error);

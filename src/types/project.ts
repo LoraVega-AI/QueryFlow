@@ -146,9 +146,6 @@ export interface DatabaseSchema {
   tables: Table[];
   relationships: Relationship[];
   indexes: Index[];
-  constraints: Constraint[];
-  version: string;
-  lastUpdated: Date;
 }
 
 export interface Table {

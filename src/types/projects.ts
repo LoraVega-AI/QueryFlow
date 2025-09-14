@@ -14,6 +14,7 @@ export interface Project {
   schema?: DatabaseSchema;
   tables?: Table[];
   queries?: QueryTemplate[];
+  isExample?: boolean; // Marks demo/example projects
 }
 
 export interface Database {

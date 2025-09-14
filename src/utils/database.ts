@@ -28,13 +28,21 @@ export class DatabaseManager {
       this.db = new SQL.Database();
       this.isInitialized = true;
       console.log('SQLite database initialized successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to initialize SQLite:', error);
       console.error('Error details:', {
         name: error instanceof Error ? error.name : 'Unknown',
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined
       });
+
+      // For server-side builds, don't throw - just log and continue
+      if (typeof window === 'undefined') {
+        console.warn('SQLite initialization failed during server-side build, this is expected');
+        this.isInitialized = true;
+        return;
+      }
+
       throw new Error(`Failed to initialize database: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -50,13 +58,35 @@ export class DatabaseManager {
       await this.initialize();
     }
 
+    // For server-side rendering, skip table creation
+    if (typeof window === 'undefined' || !this.db) {
+      console.warn('Skipping table creation during server-side rendering');
+      this.schema = schema; // Still store schema for later use
+      return;
+    }
+
     // Store schema for type conversion
     this.schema = schema;
 
     try {
-      // Clear existing tables
-      this.db.exec('DROP TABLE IF EXISTS sqlite_sequence');
-      
+      // Get all existing tables
+      const existingTables = this.db.exec(`
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name NOT LIKE 'sqlite_%'
+      `);
+
+      // Drop all existing tables
+      if (existingTables.length > 0 && existingTables[0].values) {
+        for (const [tableName] of existingTables[0].values) {
+          try {
+            this.db.exec(`DROP TABLE IF EXISTS "${tableName}"`);
+            console.log(`Dropped existing table: ${tableName}`);
+          } catch (dropError) {
+            console.warn(`Failed to drop table ${tableName}:`, dropError);
+          }
+        }
+      }
+
       // Create tables if any exist
       if (schema.tables && schema.tables.length > 0) {
         for (const table of schema.tables) {
@@ -172,6 +202,15 @@ export class DatabaseManager {
     }
 
     if (!this.db) {
+      if (typeof window === 'undefined') {
+        console.warn('Database not initialized during server-side rendering, returning empty result');
+        return {
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          executionTime: 0
+        };
+      }
       throw new Error('Database not initialized');
     }
 
@@ -251,6 +290,15 @@ export class DatabaseManager {
 
   // Insert record into table with proper type conversion
   async insertRecord(tableName: string, data: Record<string, any>): Promise<void> {
+    // Ensure database is initialized
+    if (!this.isInitialized || !this.db) {
+      if (typeof window === 'undefined') {
+        console.warn('Database not initialized during server-side rendering, skipping insertRecord');
+        return;
+      }
+      throw new Error('Database not initialized');
+    }
+
     // Get table schema to convert values properly
     const tableSchema = this.schema?.tables.find(t => t.name === tableName);
     if (!tableSchema) {
