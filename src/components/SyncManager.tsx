@@ -102,23 +102,31 @@ export function SyncManager({
 
   // Load projects and set selected items
   useEffect(() => {
-    const allProjects = getProjectsManager().getAllProjects();
-    setProjects(allProjects);
+    const loadProjects = async () => {
+      try {
+        const allProjects = await getProjectsManager().getAllProjects();
+        setProjects(allProjects);
 
-    if (projectId) {
-      const project = allProjects.find(p => p.id === projectId);
-      setSelectedProject(project || null);
+        if (projectId) {
+          const project = allProjects.find((p: ProjectsProject) => p.id === projectId);
+          setSelectedProject(project || null);
 
-      if (project && databaseId) {
-        const database = project.databases.find(db => db.id === databaseId);
-        setSelectedDatabase(database || null);
+          if (project && databaseId) {
+            const database = project.databases?.find((db: ProjectDatabase) => db.id === databaseId);
+            setSelectedDatabase(database || null);
+          }
+        } else if (allProjects.length > 0) {
+          setSelectedProject(allProjects[0]);
+          if (allProjects[0].databases && allProjects[0].databases.length > 0) {
+            setSelectedDatabase(allProjects[0].databases[0]);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load projects:', error);
       }
-    } else if (allProjects.length > 0) {
-      setSelectedProject(allProjects[0]);
-      if (allProjects[0].databases.length > 0) {
-        setSelectedDatabase(allProjects[0].databases[0]);
-      }
-    }
+    };
+
+    loadProjects();
   }, [projectId, databaseId]);
 
   // Load sync history on mount

@@ -5,6 +5,7 @@ import { Project, Database, Table, Column, DatabaseSchema as ProjectSchema } fro
 import { DatabaseManager } from './database';
 import { DatabaseSchema } from '../types/database';
 import { memoryManager } from './memoryManager';
+import { dbConnectionManager } from './databaseConnection';
 
 export class ProjectsManager {
   private static instance: ProjectsManager;
@@ -490,12 +491,94 @@ export class ProjectsManager {
   }
 
   // Public methods
-  getAllProjects(): Project[] {
-    return Array.from(this.projects.values());
+  async getAllProjects(): Promise<Project[]> {
+    try {
+      await dbConnectionManager.initializeAppData();
+      const persistedProjects = await dbConnectionManager.getAllProjects();
+
+      // Convert persisted projects to Project type
+      const projects: Project[] = persistedProjects.map(p => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        technology: p.technology,
+        status: p.status,
+        lastSynced: p.lastSynced,
+        databaseCount: p.databaseCount,
+        icon: p.icon,
+        color: p.color,
+        isExample: p.isExample,
+        databases: [], // Will be loaded separately
+        schema: p.schema,
+        tables: p.schema?.tables || [],
+        queries: []
+      }));
+
+      // Load databases for each project
+      for (const project of projects) {
+        try {
+          const databases = await dbConnectionManager.getProjectDatabases(project.id);
+          project.databases = databases.map(db => ({
+            id: db.id,
+            name: db.name,
+            type: db.type,
+            connectionString: db.connectionString,
+            isConnected: db.isConnected,
+            lastSync: db.lastSync,
+            tables: db.tables
+          }));
+          project.databaseCount = databases.length;
+        } catch (error) {
+          console.warn(`Failed to load databases for project ${project.id}:`, error);
+        }
+      }
+
+      return projects;
+    } catch (error) {
+      console.error('Failed to get projects from persistent storage:', error);
+      // Fallback to empty array
+      return [];
+    }
   }
 
-  getProject(projectId: string): Project | null {
-    return this.projects.get(projectId) || null;
+  async getProject(projectId: string): Promise<Project | null> {
+    try {
+      await dbConnectionManager.initializeAppData();
+      const persistedProject = await dbConnectionManager.getProject(projectId);
+
+      if (!persistedProject) return null;
+
+      // Load databases for the project
+      const databases = await dbConnectionManager.getProjectDatabases(projectId);
+
+      return {
+        id: persistedProject.id,
+        name: persistedProject.name,
+        description: persistedProject.description,
+        technology: persistedProject.technology,
+        status: persistedProject.status,
+        lastSynced: persistedProject.lastSynced,
+        databaseCount: databases.length,
+        icon: persistedProject.icon,
+        color: persistedProject.color,
+        isExample: persistedProject.isExample,
+        databases: databases.map(db => ({
+          id: db.id,
+          name: db.name,
+          type: db.type,
+          connectionString: db.connectionString,
+          isConnected: db.isConnected,
+          lastSync: db.lastSync,
+          tables: db.tables
+        })),
+        schema: persistedProject.schema,
+        tables: persistedProject.schema?.tables || [],
+        queries: []
+      };
+    } catch (error) {
+      console.error(`Failed to get project ${projectId}:`, error);
+      return null;
+    }
   }
 
   getCurrentProject(): Project | null {
@@ -503,7 +586,7 @@ export class ProjectsManager {
   }
 
   async syncProject(projectId: string): Promise<boolean> {
-    const project = this.projects.get(projectId);
+    const project = await this.getProject(projectId);
     if (!project) return false;
 
     try {
@@ -534,11 +617,17 @@ export class ProjectsManager {
       // Update database counts
       project.databaseCount = project.databases.filter(db => db.isConnected).length;
 
+      // Save updated project to persistent storage
+      await dbConnectionManager.saveProject(project);
+
       this.emitEvent('project_sync_complete', { projectId, project });
       return true;
     } catch (error) {
       console.error(`Failed to sync project ${projectId}:`, error);
-      project.status = 'error';
+      if (project) {
+        project.status = 'error';
+        await dbConnectionManager.saveProject(project);
+      }
       this.emitEvent('project_sync_error', { projectId, error });
       return false;
     }
@@ -634,14 +723,14 @@ export function getProjectsManager(): ProjectsManager {
 
 // For backward compatibility, also export as projectsManager
 export const projectsManager = {
-  getAllProjects: () => getProjectsManager().getAllProjects(),
-  getProject: (id: string) => getProjectsManager().getProject(id),
+  getAllProjects: async () => await getProjectsManager().getAllProjects(),
+  getProject: async (id: string) => await getProjectsManager().getProject(id),
   getCurrentProject: () => getProjectsManager().getCurrentProject(),
-  syncProject: (id: string) => getProjectsManager().syncProject(id),
-  disconnectProject: () => getProjectsManager().disconnectProject(),
+  syncProject: async (id: string) => await getProjectsManager().syncProject(id),
+  disconnectProject: async () => await getProjectsManager().disconnectProject(),
   getProjectSchema: (id: string) => getProjectsManager().getProjectSchema(id),
   getProjectTables: (id: string) => getProjectsManager().getProjectTables(id),
-  executeProjectQuery: (id: string, sql: string, params?: any[]) => getProjectsManager().executeProjectQuery(id, sql, params),
+  executeProjectQuery: async (id: string, sql: string, params?: any[]) => await getProjectsManager().executeProjectQuery(id, sql, params),
   addEventListener: (type: string, listener: (data: any) => void) => getProjectsManager().addEventListener(type, listener),
   removeEventListener: (type: string, listener: (data: any) => void) => getProjectsManager().removeEventListener(type, listener),
   cleanup: () => getProjectsManager().cleanup()

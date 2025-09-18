@@ -45,8 +45,16 @@ export function Projects() {
 
   useEffect(() => {
     // Load projects from the projects manager
-    const allProjects = projectsManager.getAllProjects();
-    setProjects(allProjects);
+    const loadProjects = async () => {
+      try {
+        const allProjects = await projectsManager.getAllProjects();
+        setProjects(allProjects);
+      } catch (error) {
+        console.error('Failed to load projects:', error);
+      }
+    };
+
+    loadProjects();
 
     // Listen for project sync events
     const handleSyncStart = (data: any) => {
@@ -90,9 +98,13 @@ export function Projects() {
     };
   }, []);
 
-  const loadProjects = () => {
-    const allProjects = projectsManager.getAllProjects();
-    setProjects(allProjects);
+  const loadProjects = async () => {
+    try {
+      const allProjects = await projectsManager.getAllProjects();
+      setProjects(allProjects);
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+    }
   };
 
   const handleSync = async (projectId: string) => {
@@ -121,14 +133,14 @@ export function Projects() {
 
       if (success) {
         // Load the updated project with schema
-        const updatedProject = projectsManager.getProject(project.id);
+        const updatedProject = await projectsManager.getProject(project.id);
         if (updatedProject) {
           setProjects(prev => prev.map(p =>
             p.id === project.id ? updatedProject : p
           ));
 
           // Connect the first database to the global context for app-wide access
-          if (updatedProject.databases.length > 0) {
+          if (updatedProject.databases && updatedProject.databases.length > 0) {
             const firstDb = updatedProject.databases[0];
             const connectionId = `example_${project.id}_${firstDb.id}`;
 

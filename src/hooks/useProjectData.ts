@@ -193,7 +193,7 @@ export function useProjectData(): UseProjectDataReturn {
 
     try {
       // Refresh project data from projectsManager
-      const updatedProject = projectsManager.getProject(currentProject.id);
+      const updatedProject = await projectsManager.getProject(currentProject.id);
       if (updatedProject) {
         await selectProject(updatedProject);
       } else {

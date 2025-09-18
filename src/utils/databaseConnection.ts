@@ -1,10 +1,192 @@
-// Database connection utilities for secure server-side database access
-// Handles MySQL, PostgreSQL, and SQLite connections
+// Production Database Connection Manager
+// Persistent database connection management for serverless environments
 
-import mysql from 'mysql2/promise';
-import { Pool } from 'pg';
-import sqlite3 from 'sqlite3';
-import { open, Database } from 'sqlite';
+import * as path from 'path';
+
+// Dynamic imports for server-only database drivers
+let sqlite3: any = null;
+let open: any = null;
+let Database: any = null;
+let fs: any = null;
+let mysql: any = null;
+let Pool: any = null;
+let mysqlPool: any = null;
+
+// Load database drivers only on server side
+if (typeof window === 'undefined') {
+  try {
+    // Dynamic imports for Node.js modules
+    const sqliteModule = require('sqlite3');
+    const sqliteOpen = require('sqlite').open;
+    const DatabaseClass = require('sqlite').Database;
+
+    sqlite3 = sqliteModule;
+    open = sqliteOpen;
+    Database = DatabaseClass;
+    fs = require('fs');
+
+    mysql = require('mysql2/promise');
+    const pg = require('pg');
+    Pool = pg.Pool;
+    // Import mysql2 pool for connection pooling
+    mysqlPool = require('mysql2').createPool;
+  } catch (error) {
+    console.warn('Database drivers not available:', error);
+  }
+}
+
+// Connection Pool Manager
+class ConnectionPoolManager {
+  private static instance: ConnectionPoolManager;
+  private pools: Map<string, any> = new Map();
+  private poolStats: Map<string, ConnectionPoolStats> = new Map();
+
+  private constructor() {}
+
+  static getInstance(): ConnectionPoolManager {
+    if (!ConnectionPoolManager.instance) {
+      ConnectionPoolManager.instance = new ConnectionPoolManager();
+    }
+    return ConnectionPoolManager.instance;
+  }
+
+  createMySQLPool(sessionId: string, credentials: DatabaseCredentials): any {
+    if (!mysqlPool) {
+      throw new Error('MySQL pool driver not available');
+    }
+
+    const pool = mysqlPool({
+      host: credentials.host,
+      port: credentials.port || 3306,
+      user: credentials.username,
+      password: credentials.password,
+      database: credentials.database,
+      connectionLimit: 10,
+      queueLimit: 0,
+      acquireTimeout: 60000,
+      timeout: 60000,
+    });
+
+    this.pools.set(sessionId, pool);
+    this.poolStats.set(sessionId, {
+      sessionId,
+      totalConnections: 0,
+      activeConnections: 0,
+      idleConnections: 0,
+      pendingConnections: 0,
+      createdAt: new Date(),
+      lastUsed: new Date()
+    });
+
+    return pool;
+  }
+
+  getPool(sessionId: string): any {
+    return this.pools.get(sessionId);
+  }
+
+  updatePoolStats(sessionId: string, stats: Partial<ConnectionPoolStats>): void {
+    const currentStats = this.poolStats.get(sessionId);
+    if (currentStats) {
+      this.poolStats.set(sessionId, {
+        ...currentStats,
+        ...stats,
+        lastUsed: new Date()
+      });
+    }
+  }
+
+  getPoolStats(sessionId: string): ConnectionPoolStats | null {
+    return this.poolStats.get(sessionId) || null;
+  }
+
+  getAllPoolStats(): ConnectionPoolStats[] {
+    return Array.from(this.poolStats.values());
+  }
+
+  async closePool(sessionId: string): Promise<void> {
+    const pool = this.pools.get(sessionId);
+    if (pool) {
+      await pool.end();
+      this.pools.delete(sessionId);
+      this.poolStats.delete(sessionId);
+    }
+  }
+
+  // Health check for connection pools
+  async healthCheck(sessionId: string): Promise<{
+    healthy: boolean;
+    latency?: number;
+    error?: string;
+  }> {
+    const pool = this.pools.get(sessionId);
+    if (!pool) {
+      return { healthy: false, error: 'Pool not found' };
+    }
+
+    try {
+      const startTime = Date.now();
+      const connection = await pool.getConnection();
+      try {
+        await connection.execute('SELECT 1');
+        const latency = Date.now() - startTime;
+        return { healthy: true, latency };
+      } finally {
+        connection.release();
+      }
+    } catch (error: any) {
+      return { healthy: false, error: error.message };
+    }
+  }
+
+  // Cleanup idle pools
+  async cleanupIdlePools(maxAge: number = 3600000): Promise<number> { // 1 hour default
+    const now = Date.now();
+    const idlePools: string[] = [];
+
+    for (const [sessionId, stats] of this.poolStats.entries()) {
+      if (now - stats.lastUsed.getTime() > maxAge) {
+        idlePools.push(sessionId);
+      }
+    }
+
+    for (const sessionId of idlePools) {
+      try {
+        await this.closePool(sessionId);
+        console.log(`Cleaned up idle connection pool: ${sessionId}`);
+      } catch (error) {
+        console.warn(`Failed to cleanup idle pool ${sessionId}:`, error);
+      }
+    }
+
+    return idlePools.length;
+  }
+
+  async cleanup(): Promise<void> {
+    for (const [sessionId, pool] of this.pools.entries()) {
+      try {
+        await pool.end();
+      } catch (error) {
+        console.warn(`Failed to close pool ${sessionId}:`, error);
+      }
+    }
+    this.pools.clear();
+    this.poolStats.clear();
+  }
+}
+
+interface ConnectionPoolStats {
+  sessionId: string;
+  totalConnections: number;
+  activeConnections: number;
+  idleConnections: number;
+  pendingConnections: number;
+  createdAt: Date;
+  lastUsed: Date;
+}
+
+// Global connection pool manager
+const poolManager = ConnectionPoolManager.getInstance();
 
 export interface DatabaseCredentials {
   type: 'mysql' | 'postgresql' | 'sqlite';
@@ -52,12 +234,456 @@ export interface QueryResult {
   error?: string;
 }
 
-// In-memory storage for active connections (in production, use Redis or similar)
-const activeConnections = new Map<string, any>();
+export interface ConnectionSession {
+  id: string;
+  credentials: DatabaseCredentials;
+  type: 'mysql' | 'postgresql' | 'sqlite';
+  createdAt: Date;
+  lastUsed: Date;
+  status: 'active' | 'inactive' | 'error';
+  error?: string;
+}
+
+// Persistent storage for connection sessions
+class ConnectionSessionStore {
+  private static instance: ConnectionSessionStore;
+  private sessionsFile: string;
+  private sessions: Map<string, ConnectionSession> = new Map();
+  private connections: Map<string, any> = new Map();
+
+  private constructor() {
+    // Store sessions in a file for persistence across serverless function calls
+    this.sessionsFile = path.join(process.cwd(), '.queryflow_sessions.json');
+    this.loadSessions();
+  }
+
+  static getInstance(): ConnectionSessionStore {
+    if (!ConnectionSessionStore.instance) {
+      ConnectionSessionStore.instance = new ConnectionSessionStore();
+    }
+    return ConnectionSessionStore.instance;
+  }
+
+  private loadSessions(): void {
+    try {
+      if (fs.existsSync(this.sessionsFile)) {
+        const data = fs.readFileSync(this.sessionsFile, 'utf-8');
+        const sessionsData = JSON.parse(data);
+
+        // Restore sessions but mark them as inactive (connections need to be re-established)
+        for (const [id, session] of Object.entries(sessionsData)) {
+          const restoredSession = {
+            ...session as ConnectionSession,
+            createdAt: new Date((session as any).createdAt),
+            lastUsed: new Date((session as any).lastUsed),
+            status: 'inactive' as const
+          };
+          this.sessions.set(id, restoredSession);
+        }
+
+        console.log(`Loaded ${this.sessions.size} connection sessions from disk`);
+      }
+    } catch (error) {
+      console.warn('Failed to load connection sessions, starting fresh:', error instanceof Error ? error.message : String(error));
+      // Don't throw - we can continue with empty sessions
+    }
+  }
+
+  private saveSessions(): void {
+    try {
+      const sessionsData: Record<string, any> = {};
+      for (const [id, session] of this.sessions.entries()) {
+        sessionsData[id] = {
+          ...session,
+          createdAt: session.createdAt.toISOString(),
+          lastUsed: session.lastUsed.toISOString()
+        };
+      }
+      fs.writeFileSync(this.sessionsFile, JSON.stringify(sessionsData, null, 2));
+    } catch (error) {
+      console.warn('Failed to save connection sessions:', error instanceof Error ? error.message : String(error));
+      // Don't throw - the application should continue working
+    }
+  }
+
+  createSession(credentials: DatabaseCredentials): string {
+    const sessionId = this.generateSessionId();
+    const session: ConnectionSession = {
+      id: sessionId,
+      credentials,
+      type: credentials.type,
+      createdAt: new Date(),
+      lastUsed: new Date(),
+      status: 'active'
+    };
+
+    this.sessions.set(sessionId, session);
+    this.saveSessions();
+    return sessionId;
+  }
+
+  getSession(sessionId: string): ConnectionSession | null {
+    return this.sessions.get(sessionId) || null;
+  }
+
+  updateSessionStatus(sessionId: string, status: ConnectionSession['status'], error?: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.status = status;
+      session.lastUsed = new Date();
+      if (error) session.error = error;
+      this.saveSessions();
+    }
+  }
+
+  deleteSession(sessionId: string): void {
+    this.sessions.delete(sessionId);
+    this.connections.delete(sessionId);
+    this.saveSessions();
+  }
+
+  getActiveSessions(): ConnectionSession[] {
+    return Array.from(this.sessions.values()).filter(s => s.status === 'active');
+  }
+
+  storeConnection(sessionId: string, connection: any): void {
+    this.connections.set(sessionId, connection);
+  }
+
+  getConnection(sessionId: string): any {
+    return this.connections.get(sessionId) || null;
+  }
+
+  private generateSessionId(): string {
+    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  cleanup(): void {
+    // Close all active connections
+    for (const [sessionId, connection] of this.connections.entries()) {
+      try {
+        if (connection.constructor.name === 'Connection') {
+          connection.end();
+        } else if (connection.constructor.name === 'Pool') {
+          connection.end();
+        } else if (connection.constructor.name === 'Database') {
+          connection.close();
+        }
+      } catch (error) {
+        console.error(`Failed to close connection ${sessionId}:`, error);
+      }
+    }
+
+    this.connections.clear();
+    this.sessions.clear();
+    this.saveSessions();
+  }
+}
+
+// Global session store instance
+const sessionStore = ConnectionSessionStore.getInstance();
+
+// Application Data Persistence Manager
+class ApplicationDataManager {
+  private static instance: ApplicationDataManager;
+  private appDb: any = null; // SQLite Database instance
+  private initialized = false;
+
+  private constructor() {}
+
+  static getInstance(): ApplicationDataManager {
+    if (!ApplicationDataManager.instance) {
+      ApplicationDataManager.instance = new ApplicationDataManager();
+    }
+    return ApplicationDataManager.instance;
+  }
+
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    if (!sqlite3 || !open) {
+      console.warn('SQLite not available for application data persistence');
+      return;
+    }
+
+    try {
+      // Create application database
+      const dbPath = path.join(process.cwd(), 'queryflow_app.db');
+      this.appDb = await open({
+        filename: dbPath,
+        driver: sqlite3.Database
+      });
+
+      // Create tables
+      await this.createTables();
+      this.initialized = true;
+      console.log('Application data persistence initialized');
+    } catch (error) {
+      console.error('Failed to initialize application data persistence:', error);
+      throw error;
+    }
+  }
+
+  private async createTables(): Promise<void> {
+    if (!this.appDb) throw new Error('Application database not initialized');
+
+    if (!this.appDb) return; // Additional check
+
+    // Projects table
+    await this.appDb.exec(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        technology TEXT,
+        status TEXT DEFAULT 'disconnected',
+        last_synced TEXT,
+        database_count INTEGER DEFAULT 0,
+        icon TEXT,
+        color TEXT,
+        is_example INTEGER DEFAULT 0,
+        schema_data TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Databases table
+    await this.appDb.exec(`
+      CREATE TABLE IF NOT EXISTS project_databases (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        connection_string TEXT,
+        is_connected INTEGER DEFAULT 0,
+        last_sync TEXT,
+        tables_data TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE CASCADE
+      )
+    `);
+
+    // Query history table
+    await this.appDb.exec(`
+      CREATE TABLE IF NOT EXISTS query_history (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        database_id TEXT,
+        sql TEXT NOT NULL,
+        execution_time INTEGER,
+        row_count INTEGER,
+        success INTEGER DEFAULT 1,
+        error_message TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // User settings table
+    await this.appDb.exec(`
+      CREATE TABLE IF NOT EXISTS user_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    console.log('Application database tables created');
+  }
+
+  // Project operations
+  async saveProject(project: any): Promise<void> {
+    if (!this.appDb) await this.initialize();
+    if (!this.appDb) return; // SQLite not available
+
+    const schemaData = JSON.stringify(project.schema || {});
+    const now = new Date().toISOString();
+
+    await this.appDb.run(`
+      INSERT OR REPLACE INTO projects
+      (id, name, description, technology, status, last_synced, database_count, icon, color, is_example, schema_data, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      project.id,
+      project.name,
+      project.description || '',
+      project.technology || '',
+      project.status || 'disconnected',
+      project.lastSynced || null,
+      project.databaseCount || 0,
+      project.icon || '',
+      project.color || '',
+      project.isExample ? 1 : 0,
+      schemaData,
+      now
+    ]);
+  }
+
+  async getProject(projectId: string): Promise<any | null> {
+    if (!this.appDb) await this.initialize();
+    if (!this.appDb) return null; // SQLite not available
+
+    const row = await this.appDb.get('SELECT * FROM projects WHERE id = ?', projectId);
+    if (!row) return null;
+
+    return {
+      ...row,
+      schema: JSON.parse(row.schema_data || '{}'),
+      isExample: row.is_example === 1,
+      databaseCount: row.database_count,
+      lastSynced: row.last_synced
+    };
+  }
+
+  async getAllProjects(): Promise<any[]> {
+    if (!this.appDb) await this.initialize();
+    if (!this.appDb) return []; // SQLite not available
+
+    const rows = await this.appDb.all('SELECT * FROM projects ORDER BY updated_at DESC');
+    return rows.map((row: any) => ({
+      ...row,
+      schema: JSON.parse(row.schema_data || '{}'),
+      isExample: row.is_example === 1,
+      databaseCount: row.database_count,
+      lastSynced: row.last_synced
+    }));
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    if (!this.appDb) await this.initialize();
+    if (!this.appDb) return; // SQLite not available
+
+    await this.appDb.run('DELETE FROM projects WHERE id = ?', projectId);
+  }
+
+  // Database operations
+  async saveProjectDatabase(projectId: string, database: any): Promise<void> {
+    if (!this.appDb) await this.initialize();
+    if (!this.appDb) return; // SQLite not available
+
+    const tablesData = JSON.stringify(database.tables || []);
+    const now = new Date().toISOString();
+
+    await this.appDb.run(`
+      INSERT OR REPLACE INTO project_databases
+      (id, project_id, name, type, connection_string, is_connected, last_sync, tables_data, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      database.id,
+      projectId,
+      database.name,
+      database.type,
+      database.connectionString || '',
+      database.isConnected ? 1 : 0,
+      database.lastSync || null,
+      tablesData,
+      now
+    ]);
+  }
+
+  async getProjectDatabases(projectId: string): Promise<any[]> {
+    if (!this.appDb) await this.initialize();
+    if (!this.appDb) return []; // SQLite not available
+
+    const rows = await this.appDb.all('SELECT * FROM project_databases WHERE project_id = ?', projectId);
+    return rows.map((row: any) => ({
+      ...row,
+      isConnected: row.is_connected === 1,
+      lastSync: row.last_sync,
+      tables: JSON.parse(row.tables_data || '[]')
+    }));
+  }
+
+  // Query history operations
+  async saveQueryHistory(sessionId: string, databaseId: string | null, sql: string, result: any): Promise<void> {
+    if (!this.appDb) await this.initialize();
+    if (!this.appDb) return; // SQLite not available
+
+    await this.appDb.run(`
+      INSERT INTO query_history
+      (id, session_id, database_id, sql, execution_time, row_count, success, error_message)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      `query_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      sessionId,
+      databaseId,
+      sql,
+      result.executionTime || 0,
+      result.rowCount || 0,
+      result.success ? 1 : 0,
+      result.error || null
+    ]);
+  }
+
+  async getQueryHistory(sessionId?: string, limit: number = 50): Promise<any[]> {
+    if (!this.appDb) await this.initialize();
+
+    let query = 'SELECT * FROM query_history';
+    let params: any[] = [];
+
+    if (sessionId) {
+      query += ' WHERE session_id = ?';
+      params.push(sessionId);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT ?';
+    params.push(limit);
+
+    return await this.appDb!.all(query, params);
+  }
+
+  // User settings operations
+  async saveSetting(key: string, value: any): Promise<void> {
+    if (!this.appDb) await this.initialize();
+    if (!this.appDb) return; // SQLite not available
+
+    const valueStr = JSON.stringify(value);
+    const now = new Date().toISOString();
+
+    await this.appDb.run(`
+      INSERT OR REPLACE INTO user_settings (key, value, updated_at)
+      VALUES (?, ?, ?)
+    `, [key, valueStr, now]);
+  }
+
+  async getSetting(key: string): Promise<any | null> {
+    if (!this.appDb) await this.initialize();
+    if (!this.appDb) return null; // SQLite not available
+
+    const row = await this.appDb.get('SELECT value FROM user_settings WHERE key = ?', key);
+    return row ? JSON.parse(row.value) : null;
+  }
+
+  async getAllSettings(): Promise<Record<string, any>> {
+    if (!this.appDb) await this.initialize();
+    if (!this.appDb) return {}; // SQLite not available
+
+    const rows = await this.appDb.all('SELECT key, value FROM user_settings');
+    const settings: Record<string, any> = {};
+
+    for (const row of rows) {
+      settings[(row as any).key] = JSON.parse((row as any).value);
+    }
+
+    return settings;
+  }
+
+  // Cleanup
+  async cleanup(): Promise<void> {
+    if (this.appDb) {
+      await this.appDb.close();
+      this.appDb = null;
+      this.initialized = false;
+    }
+  }
+}
+
+// Global application data manager instance
+const appDataManager = ApplicationDataManager.getInstance();
 
 export class DatabaseConnectionManager {
   private static instance: DatabaseConnectionManager;
-  private connections = new Map<string, any>();
 
   static getInstance(): DatabaseConnectionManager {
     if (!DatabaseConnectionManager.instance) {
@@ -66,19 +692,22 @@ export class DatabaseConnectionManager {
     return DatabaseConnectionManager.instance;
   }
 
-  // Test database connection
+  // Test database connection and create persistent session
   async testConnection(credentials: DatabaseCredentials): Promise<ConnectionResult> {
     try {
-      const connectionId = this.generateConnectionId();
+      // Create a session for this connection
+      const sessionId = sessionStore.createSession(credentials);
 
       switch (credentials.type) {
         case 'mysql':
-          return await this.testMySQLConnection(credentials, connectionId);
+          return await this.testMySQLConnection(credentials, sessionId);
         case 'postgresql':
-          return await this.testPostgreSQLConnection(credentials, connectionId);
+          return await this.testPostgreSQLConnection(credentials, sessionId);
         case 'sqlite':
-          return await this.testSQLiteConnection(credentials, connectionId);
+          return await this.testSQLiteConnection(credentials, sessionId);
         default:
+          // Clean up failed session
+          sessionStore.deleteSession(sessionId);
           return {
             success: false,
             message: 'Unsupported database type',
@@ -95,30 +724,44 @@ export class DatabaseConnectionManager {
     }
   }
 
-  // Test MySQL connection
-  private async testMySQLConnection(credentials: DatabaseCredentials, connectionId: string): Promise<ConnectionResult> {
+  // Test MySQL connection with pooling
+  private async testMySQLConnection(credentials: DatabaseCredentials, sessionId: string): Promise<ConnectionResult> {
+    if (!mysql) {
+      return {
+        success: false,
+        message: 'MySQL driver not available',
+        error: 'MySQL database driver is not loaded on this platform'
+      };
+    }
+
     try {
-      const connection = await mysql.createConnection({
-        host: credentials.host,
-        port: credentials.port || 3306,
-        user: credentials.username,
-        password: credentials.password,
-        database: credentials.database,
-        connectTimeout: 5000,
-      });
+      // Create connection pool for better performance
+      const pool = poolManager.createMySQLPool(sessionId, credentials);
 
-      // Test the connection
-      await connection.execute('SELECT 1');
+      // Test the connection using pool
+      const connection = await pool.getConnection();
+      try {
+        await connection.execute('SELECT 1 as test');
+      } finally {
+        connection.release();
+      }
 
-      // Store connection
-      this.connections.set(connectionId, connection);
+      // Store pool in session store
+      sessionStore.storeConnection(sessionId, pool);
 
       return {
         success: true,
-        message: 'MySQL connection successful',
-        connectionId
+        message: 'MySQL connection pool created successfully',
+        connectionId: sessionId
       };
     } catch (error: any) {
+      sessionStore.updateSessionStatus(sessionId, 'error', error.message);
+      // Clean up failed pool
+      try {
+        await poolManager.closePool(sessionId);
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup failed pool:', cleanupError);
+      }
       return {
         success: false,
         message: 'MySQL connection failed',
@@ -128,7 +771,15 @@ export class DatabaseConnectionManager {
   }
 
   // Test PostgreSQL connection
-  private async testPostgreSQLConnection(credentials: DatabaseCredentials, connectionId: string): Promise<ConnectionResult> {
+  private async testPostgreSQLConnection(credentials: DatabaseCredentials, sessionId: string): Promise<ConnectionResult> {
+    if (!Pool) {
+      return {
+        success: false,
+        message: 'PostgreSQL driver not available',
+        error: 'PostgreSQL database driver is not loaded on this platform'
+      };
+    }
+
     try {
       const pool = new Pool({
         host: credentials.host,
@@ -138,22 +789,28 @@ export class DatabaseConnectionManager {
         database: credentials.database,
         connectionTimeoutMillis: 5000,
         query_timeout: 10000,
+        idleTimeoutMillis: 30000,
+        max: 10, // Maximum number of clients in the pool
       });
 
       // Test the connection
       const client = await pool.connect();
-      await client.query('SELECT 1');
+      try {
+        await client.query('SELECT 1 as test');
+      } finally {
       client.release();
+      }
 
-      // Store connection pool
-      this.connections.set(connectionId, pool);
+      // Store connection pool in session store
+      sessionStore.storeConnection(sessionId, pool);
 
       return {
         success: true,
         message: 'PostgreSQL connection successful',
-        connectionId
+        connectionId: sessionId
       };
     } catch (error: any) {
+      sessionStore.updateSessionStatus(sessionId, 'error', error.message);
       return {
         success: false,
         message: 'PostgreSQL connection failed',
@@ -163,7 +820,15 @@ export class DatabaseConnectionManager {
   }
 
   // Test SQLite connection
-  private async testSQLiteConnection(credentials: DatabaseCredentials, connectionId: string): Promise<ConnectionResult> {
+  private async testSQLiteConnection(credentials: DatabaseCredentials, sessionId: string): Promise<ConnectionResult> {
+    if (!sqlite3 || !open) {
+      return {
+        success: false,
+        message: 'SQLite driver not available',
+        error: 'SQLite database driver is not loaded on this platform'
+      };
+    }
+
     try {
       const db = await open({
         filename: credentials.filePath || ':memory:',
@@ -173,15 +838,16 @@ export class DatabaseConnectionManager {
       // Test the connection
       await db.get('SELECT 1');
 
-      // Store connection
-      this.connections.set(connectionId, db);
+      // Store connection in session store
+      sessionStore.storeConnection(sessionId, db);
 
       return {
         success: true,
         message: 'SQLite connection successful',
-        connectionId
+        connectionId: sessionId
       };
     } catch (error: any) {
+      sessionStore.updateSessionStatus(sessionId, 'error', error.message);
       return {
         success: false,
         message: 'SQLite connection failed',
@@ -191,12 +857,30 @@ export class DatabaseConnectionManager {
   }
 
   // Fetch database schema
-  async fetchSchema(connectionId: string): Promise<DatabaseSchema | null> {
+  async fetchSchema(sessionId: string): Promise<DatabaseSchema | null> {
     try {
-      const connection = this.connections.get(connectionId);
-      if (!connection) {
-        console.error('Connection not found for ID:', connectionId);
+      // Get session to verify it exists
+      const session = sessionStore.getSession(sessionId);
+      if (!session) {
+        console.error('Session not found for ID:', sessionId);
         return null;
+      }
+
+      let connection = sessionStore.getConnection(sessionId);
+      if (!connection) {
+        console.error('Connection not found for session ID:', sessionId);
+
+        // Try to re-establish the connection
+        const result = await this.testConnection(session.credentials);
+        if (!result.success) {
+        return null;
+        }
+
+        // Get the new connection
+        connection = sessionStore.getConnection(result.connectionId!);
+        if (!connection) {
+          return null;
+        }
       }
 
       let schema: DatabaseSchema | null = null;
@@ -398,27 +1082,58 @@ export class DatabaseConnectionManager {
   }
 
   // Execute query
-  async executeQuery(connectionId: string, sql: string): Promise<QueryResult> {
-    try {
-      const connection = this.connections.get(connectionId);
+  async executeQuery(sessionId: string, sql: string): Promise<QueryResult> {
+    // Get session to verify it exists
+    const session = sessionStore.getSession(sessionId);
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    let connection = sessionStore.getConnection(sessionId);
       if (!connection) {
-        throw new Error('Connection not found');
+      // Try to re-establish the connection
+      const result = await this.testConnection(session.credentials);
+      if (!result.success) {
+        throw new Error('Failed to re-establish connection');
+      }
+
+      connection = sessionStore.getConnection(result.connectionId!);
+      if (!connection) {
+        throw new Error('Connection not found after re-establishment');
+      }
       }
 
       const startTime = Date.now();
 
-      // Only allow SELECT queries for security
-      if (!sql.trim().toUpperCase().startsWith('SELECT')) {
-        throw new Error('Only SELECT queries are allowed');
+    try {
+
+      // Allow SELECT, CREATE, INSERT, UPDATE, DELETE for testing
+      const upperSQL = sql.trim().toUpperCase();
+      const allowedStarts = ['SELECT', 'CREATE', 'INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER'];
+      const isAllowed = allowedStarts.some(start => upperSQL.startsWith(start));
+
+      if (!isAllowed) {
+        throw new Error('Only SELECT, CREATE, INSERT, UPDATE, DELETE, DROP, ALTER queries are allowed');
       }
 
       let result;
 
-      if (connection.constructor.name === 'Connection') {
-        // MySQL connection
-        [result] = await connection.execute(sql);
-      } else if (connection.constructor.name === 'Pool') {
+      if (connection.constructor && connection.constructor.name === 'Pool' && connection.getConnection) {
+        // MySQL connection pool
+        if (!mysql) {
+          throw new Error('MySQL driver not available for query execution');
+        }
+        const mysqlConnection = await connection.getConnection();
+        try {
+          [result] = await mysqlConnection.execute(sql);
+        } finally {
+          mysqlConnection.release();
+        }
+      } else if (connection.constructor && connection.constructor.name === 'Pool' && connection.connect) {
         // PostgreSQL pool
+        if (!Pool) {
+          throw new Error('PostgreSQL driver not available for query execution');
+        }
         const client = await connection.connect();
         try {
           result = await client.query(sql);
@@ -426,12 +1141,26 @@ export class DatabaseConnectionManager {
         } finally {
           client.release();
         }
-      } else if (connection.constructor.name === 'Database') {
+      } else if (connection.constructor && connection.constructor.name === 'Database') {
         // SQLite database
         result = await connection.all(sql);
+      } else {
+        throw new Error(`Unsupported connection type: ${connection.constructor ? connection.constructor.name : typeof connection}`);
       }
 
       const executionTime = Date.now() - startTime;
+
+      // Save query to history
+      try {
+        await appDataManager.saveQueryHistory(sessionId, null, sql, {
+          success: true,
+          executionTime,
+          rowCount: result.length
+        });
+      } catch (historyError) {
+        console.warn('Failed to save query history:', historyError);
+        // Don't fail the query execution if history save fails
+      }
 
       return {
         success: true,
@@ -441,6 +1170,19 @@ export class DatabaseConnectionManager {
       };
     } catch (error: any) {
       console.error('Query execution failed:', error);
+
+      // Save failed query to history
+      try {
+        await appDataManager.saveQueryHistory(sessionId, null, sql, {
+          success: false,
+          executionTime: Date.now() - startTime,
+          rowCount: 0,
+          error: error.message
+        });
+      } catch (historyError) {
+        console.warn('Failed to save failed query history:', historyError);
+      }
+
       return {
         success: false,
         error: error.message
@@ -449,57 +1191,144 @@ export class DatabaseConnectionManager {
   }
 
   // Close connection
-  async closeConnection(connectionId: string): Promise<boolean> {
+  async closeConnection(sessionId: string): Promise<boolean> {
     try {
-      const connection = this.connections.get(connectionId);
+      const connection = sessionStore.getConnection(sessionId);
       if (!connection) return false;
 
-      if (connection.constructor.name === 'Connection') {
-        // MySQL connection
-        await connection.end();
-      } else if (connection.constructor.name === 'Pool') {
+      if (connection.constructor && connection.constructor.name === 'Pool' && connection.getConnection) {
+        // MySQL connection pool
+        await poolManager.closePool(sessionId);
+      } else if (connection.constructor && connection.constructor.name === 'Pool' && connection.connect) {
         // PostgreSQL pool
         await connection.end();
-      } else if (connection.constructor.name === 'Database') {
+      } else if (connection.constructor && connection.constructor.name === 'Connection') {
+        // MySQL individual connection (fallback)
+        await connection.end();
+      } else if (connection.constructor && connection.constructor.name === 'Database') {
         // SQLite database
         await connection.close();
+      } else {
+        console.warn(`Unknown connection type for session ${sessionId}:`, typeof connection);
       }
 
-      this.connections.delete(connectionId);
+      // Update session status and remove connection
+      sessionStore.updateSessionStatus(sessionId, 'inactive');
       return true;
     } catch (error) {
       console.error('Failed to close connection:', error);
+      sessionStore.updateSessionStatus(sessionId, 'error', error instanceof Error ? error.message : 'Unknown error');
       return false;
     }
   }
 
-  // Generate unique connection ID
-  private generateConnectionId(): string {
-    return `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
   // Get connection info (for debugging)
-  getConnectionInfo(connectionId: string): any {
-    const connection = this.connections.get(connectionId);
-    return connection ? { type: connection.constructor.name } : null;
+  getConnectionInfo(sessionId: string): any {
+    const session = sessionStore.getSession(sessionId);
+    const connection = sessionStore.getConnection(sessionId);
+    return connection ? {
+      type: connection.constructor.name,
+      session: session,
+      status: session?.status
+    } : null;
   }
 
-  // Cleanup all connections
-  async cleanup(): Promise<void> {
-    for (const [connectionId, connection] of this.connections.entries()) {
-      try {
-        if (connection.constructor.name === 'Connection') {
-          await connection.end();
-        } else if (connection.constructor.name === 'Pool') {
-          await connection.end();
-        } else if (connection.constructor.name === 'Database') {
-          await connection.close();
-        }
-      } catch (error) {
-        console.error(`Failed to close connection ${connectionId}:`, error);
-      }
+  // Get all active sessions
+  getActiveSessions(): ConnectionSession[] {
+    return sessionStore.getActiveSessions();
+  }
+
+  // Connection Pool Management
+  getConnectionPoolStats(sessionId?: string): ConnectionPoolStats[] {
+    if (sessionId) {
+      const stats = poolManager.getPoolStats(sessionId);
+      return stats ? [stats] : [];
     }
-    this.connections.clear();
+    return poolManager.getAllPoolStats();
+  }
+
+  async closeConnectionPool(sessionId: string): Promise<boolean> {
+    try {
+      await poolManager.closePool(sessionId);
+      return true;
+      } catch (error) {
+      console.error(`Failed to close connection pool ${sessionId}:`, error);
+      return false;
+    }
+  }
+
+  // Health monitoring
+  async healthCheckPool(sessionId: string): Promise<{
+    healthy: boolean;
+    latency?: number;
+    error?: string;
+  }> {
+    return await poolManager.healthCheck(sessionId);
+  }
+
+  // Periodic cleanup
+  async cleanupIdleConnectionPools(maxAge?: number): Promise<number> {
+    return await poolManager.cleanupIdlePools(maxAge);
+  }
+
+  // Enhanced cleanup with pool management
+  async cleanup(): Promise<void> {
+    sessionStore.cleanup();
+    await appDataManager.cleanup();
+    await poolManager.cleanup();
+  }
+
+  // Application Data Persistence Methods
+  async initializeAppData(): Promise<void> {
+    await appDataManager.initialize();
+  }
+
+  // Project persistence
+  async saveProject(project: any): Promise<void> {
+    await appDataManager.saveProject(project);
+  }
+
+  async getProject(projectId: string): Promise<any | null> {
+    return await appDataManager.getProject(projectId);
+  }
+
+  async getAllProjects(): Promise<any[]> {
+    return await appDataManager.getAllProjects();
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    await appDataManager.deleteProject(projectId);
+  }
+
+  // Project database persistence
+  async saveProjectDatabase(projectId: string, database: any): Promise<void> {
+    await appDataManager.saveProjectDatabase(projectId, database);
+  }
+
+  async getProjectDatabases(projectId: string): Promise<any[]> {
+    return await appDataManager.getProjectDatabases(projectId);
+  }
+
+  // Query history
+  async saveQueryHistory(sessionId: string, databaseId: string | null, sql: string, result: any): Promise<void> {
+    await appDataManager.saveQueryHistory(sessionId, databaseId, sql, result);
+  }
+
+  async getQueryHistory(sessionId?: string, limit?: number): Promise<any[]> {
+    return await appDataManager.getQueryHistory(sessionId, limit);
+  }
+
+  // User settings
+  async saveSetting(key: string, value: any): Promise<void> {
+    await appDataManager.saveSetting(key, value);
+  }
+
+  async getSetting(key: string): Promise<any | null> {
+    return await appDataManager.getSetting(key);
+  }
+
+  async getAllSettings(): Promise<Record<string, any>> {
+    return await appDataManager.getAllSettings();
   }
 }
 

@@ -107,15 +107,23 @@ export function DatabaseLinker({
 
   // Load projects and set selected project
   useEffect(() => {
-    const allProjects = projectsManager.getAllProjects();
-    setProjects(allProjects);
+    const loadProjects = async () => {
+      try {
+        const allProjects = await projectsManager.getAllProjects();
+        setProjects(allProjects);
 
-    if (projectId) {
-      const project = allProjects.find(p => p.id === projectId);
-      setSelectedProject(project || null);
-    } else if (allProjects.length > 0) {
-      setSelectedProject(allProjects[0]);
-    }
+        if (projectId) {
+          const project = allProjects.find((p: Project) => p.id === projectId);
+          setSelectedProject(project || null);
+        } else if (allProjects.length > 0) {
+          setSelectedProject(allProjects[0]);
+        }
+      } catch (error) {
+        console.error('Failed to load projects:', error);
+      }
+    };
+
+    loadProjects();
   }, [projectId]);
 
   // Get all databases from all projects if showAllProjects is true

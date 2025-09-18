@@ -7,12 +7,12 @@ import { dbConnectionManager } from '@/utils/databaseConnection';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { connectionId, sql, params = [] } = body;
+    const { connectionId: sessionId, sql, params = [] } = body;
 
-    if (!connectionId) {
+    if (!sessionId) {
       return NextResponse.json({
         success: false,
-        message: 'Connection ID is required'
+        message: 'Session ID is required'
       }, { status: 400 });
     }
 
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Execute the query
-    const result = await dbConnectionManager.executeQuery(connectionId, sql);
+    const result = await dbConnectionManager.executeQuery(sessionId, sql);
 
     return NextResponse.json({
       success: true,

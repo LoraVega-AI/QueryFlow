@@ -7,20 +7,20 @@ import { dbConnectionManager } from '@/utils/databaseConnection';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { connectionId, credentials } = body;
+    const { connectionId: sessionId } = body;
 
-    if (!connectionId) {
+    if (!sessionId) {
       return NextResponse.json({
         success: false,
-        message: 'Connection ID is required'
+        message: 'Session ID is required'
       }, { status: 400 });
     }
 
-    // Fetch schema using the existing connection
-    const schema = await dbConnectionManager.fetchSchema(connectionId);
+    // Fetch schema using the session
+    const schema = await dbConnectionManager.fetchSchema(sessionId);
 
     if (!schema) {
-      console.error('Schema fetch returned null for connection:', connectionId);
+      console.error('Schema fetch returned null for session:', sessionId);
       return NextResponse.json({
         success: false,
         message: 'Failed to fetch database schema',
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Schema fetched successfully',
-      schema
+      data: schema
     });
 
   } catch (error: any) {

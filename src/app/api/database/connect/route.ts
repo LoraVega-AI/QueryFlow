@@ -4,6 +4,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbConnectionManager, DatabaseCredentials } from '@/utils/databaseConnection';
 
+// Initialize application data persistence on first use
+let appDataInitialized = false;
+const initializeAppData = async () => {
+  if (!appDataInitialized) {
+    try {
+      await dbConnectionManager.initializeAppData();
+      appDataInitialized = true;
+      console.log('Application data persistence initialized via API');
+    } catch (error) {
+      console.error('Failed to initialize application data:', error);
+    }
+  }
+};
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -74,19 +88,31 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/database/connect - List active connections (for debugging)
+// GET /api/database/connect - List active sessions (for debugging)
 export async function GET() {
   try {
-    // In production, you might want to store connections in a session or database
-    // For now, we'll just return a success response
+    const activeSessions = dbConnectionManager.getActiveSessions();
+
     return NextResponse.json({
       success: true,
-      message: 'Connection endpoint ready'
+      message: 'Active sessions retrieved',
+      data: {
+        sessions: activeSessions.map(session => ({
+          id: session.id,
+          type: session.type,
+          status: session.status,
+          createdAt: session.createdAt,
+          lastUsed: session.lastUsed,
+          host: session.credentials.host || 'localhost',
+          database: session.credentials.database || session.credentials.filePath
+        })),
+        count: activeSessions.length
+      }
     });
   } catch (error: any) {
     return NextResponse.json({
       success: false,
-      message: 'Failed to get connections',
+      message: 'Failed to get sessions',
       error: error.message
     }, { status: 500 });
   }

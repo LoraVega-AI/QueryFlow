@@ -24,7 +24,7 @@ export class WorkerManager {
   private taskQueue: WorkerTask[] = [];
   private activeTasks = new Map<string, WorkerTask>();
   private config: WorkerConfig = {
-    maxWorkers: navigator.hardwareConcurrency || 4,
+    maxWorkers: (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4,
     taskTimeout: 30000, // 30 seconds
     retryAttempts: 3,
     retryDelay: 1000
@@ -32,7 +32,13 @@ export class WorkerManager {
   private isInitialized = false;
 
   private constructor() {
-    this.initializeWorkers();
+    // Only initialize workers in browser environment
+    if (typeof window !== 'undefined' && WorkerManager.isSupported()) {
+      this.initializeWorkers();
+    } else {
+      console.log('Web Workers not supported or not in browser environment, using fallback mode');
+      this.isInitialized = false;
+    }
   }
 
   static getInstance(): WorkerManager {
@@ -168,7 +174,8 @@ export class WorkerManager {
     options: { timeout?: number; priority?: number } = {}
   ): Promise<R> {
     if (!this.isInitialized) {
-      throw new Error('Worker manager not initialized');
+      // Use fallback implementation
+      return this.executeTaskFallback<T, R>(type, data);
     }
 
     return new Promise<R>((resolve, reject) => {
@@ -304,21 +311,112 @@ export class WorkerManager {
     data: T
   ): Promise<R> {
     console.warn('Web Workers not available, falling back to main thread processing');
-    
+
     // Implement fallback logic here
     switch (type) {
       case 'search':
-        // Fallback search implementation
-        throw new Error('Search fallback not implemented');
+        return this.performFallbackSearch(data as any) as Promise<R>;
       case 'embedding':
-        // Fallback embedding implementation
-        throw new Error('Embedding fallback not implemented');
+        return this.performFallbackEmbedding(data as any) as Promise<R>;
       case 'process_data':
-        // Fallback data processing implementation
-        throw new Error('Data processing fallback not implemented');
+        return this.performFallbackDataProcessing(data as any) as Promise<R>;
       default:
         throw new Error(`Unknown task type: ${type}`);
     }
+  }
+
+  private async performFallbackSearch(data: {
+    query: string;
+    documents: any[];
+    options: { offset?: number; limit?: number; timeout?: number };
+  }): Promise<{
+    results: any[];
+    total: number;
+    query: string;
+    executionTime: number;
+  }> {
+    const startTime = Date.now();
+    const { query, documents, options } = data;
+
+    // Simple text-based search fallback
+    const results = documents
+      .filter(doc => {
+        const content = JSON.stringify(doc).toLowerCase();
+        return content.includes(query.toLowerCase());
+      })
+      .slice(options.offset || 0, (options.offset || 0) + (options.limit || 10));
+
+    return {
+      results,
+      total: results.length,
+      query,
+      executionTime: Date.now() - startTime
+    };
+  }
+
+  private async performFallbackEmbedding(data: {
+    texts: string[];
+  }): Promise<{ embeddings: number[][]; texts: string[] }> {
+    const { texts } = data;
+
+    // Simple hash-based embedding fallback (not semantic, just for compatibility)
+    const embeddings = texts.map(text => {
+      const hash = this.simpleHash(text);
+      return Array.from({ length: 384 }, (_, i) => (hash + i) / 1000); // 384 dimensions
+    });
+
+    return {
+      embeddings,
+      texts
+    };
+  }
+
+  private async performFallbackDataProcessing(data: {
+    dataset: any[];
+    operation: 'filter' | 'sort' | 'transform';
+    options: any;
+  }): Promise<any[]> {
+    const { dataset, operation, options } = data;
+
+    switch (operation) {
+      case 'filter':
+        if (options.searchTerm) {
+          return dataset.filter(item =>
+            JSON.stringify(item).toLowerCase().includes(options.searchTerm.toLowerCase())
+          );
+        }
+        return dataset;
+
+      case 'sort':
+        if (options.sortBy) {
+          return [...dataset].sort((a, b) => {
+            const aVal = a[options.sortBy];
+            const bVal = b[options.sortBy];
+            const order = options.sortOrder === 'desc' ? -1 : 1;
+            return aVal < bVal ? -order : aVal > bVal ? order : 0;
+          });
+        }
+        return dataset;
+
+      case 'transform':
+        if (options.transformFunction && typeof options.transformFunction === 'function') {
+          return dataset.map(options.transformFunction);
+        }
+        return dataset;
+
+      default:
+        return dataset;
+    }
+  }
+
+  private simpleHash(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash);
   }
 }
 

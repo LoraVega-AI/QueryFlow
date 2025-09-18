@@ -125,7 +125,7 @@ export default function HomePage() {
   // Load projects from projectsManager (which uses the projects.ts types)
   const loadProjects = async () => {
     try {
-      const loadedProjects = projectsManager.getAllProjects();
+      const loadedProjects = await projectsManager.getAllProjects();
       setProjects(loadedProjects);
     } catch (error) {
       console.error('Failed to load projects:', error);
