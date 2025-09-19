@@ -42,46 +42,58 @@ export function useProjectData(): UseProjectDataReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  
+  // Get database context for uploaded databases
+  const { activeConnection, getConnectionInfo } = useDatabase();
 
   // Convert project table to full database table
-  const convertTable = useCallback((projectTable: ProjectTable): FullTable => {
+  const convertTable = useCallback((projectTable: ProjectTable, index: number = 0): FullTable => {
     return {
-      id: projectTable.name,
+      id: projectTable.id || `table_${projectTable.name}_${index}`,
       name: projectTable.name,
-      columns: projectTable.columns?.map((col: ProjectColumn) => ({
-        id: col.name,
+      columns: projectTable.columns?.map((col: ProjectColumn, colIndex: number) => ({
+        id: col.id || `col_${col.name}_${colIndex}`,
         name: col.name,
         type: col.type as DataType,
         nullable: col.nullable,
         primaryKey: col.primaryKey || false,
         defaultValue: col.defaultValue,
-        unique: false,
-        autoIncrement: false,
-        foreignKey: undefined,
+        unique: col.unique || false,
+        autoIncrement: col.autoIncrement || false,
+        foreignKey: col.foreignKey ? {
+          tableId: col.foreignKey.tableId,
+          columnId: col.foreignKey.columnId,
+          relationshipType: col.foreignKey.relationshipType || 'one-to-many',
+          cascadeDelete: col.foreignKey.cascadeDelete || false,
+          cascadeUpdate: col.foreignKey.cascadeUpdate || false
+        } : undefined,
         indexed: false,
         constraints: {}
       })) || [],
-      position: { x: 0, y: 0 },
+      position: projectTable.position || { x: index * 200, y: index * 100 },
       documentation: undefined,
-      tags: []
+      tags: [],
+      createdAt: projectTable.createdAt || new Date(),
+      updatedAt: projectTable.updatedAt || new Date()
     };
   }, []);
 
   // Convert simple project schema to full database schema
-  const convertToFullSchema = useCallback((simpleSchema: DatabaseSchema | null): FullDatabaseSchema | null => {
+  const convertToFullSchema = useCallback((simpleSchema: DatabaseSchema | null, project?: Project): FullDatabaseSchema | null => {
     if (!simpleSchema) return null;
 
     // Ensure simpleSchema is treated as non-null after the check
     const schema = simpleSchema as DatabaseSchema;
+    const projectRef = project || currentProject;
 
     return {
-      id: `project-${currentProject?.id || 'unknown'}`,
-      name: currentProject?.name || 'Project Schema',
-      tables: schema.tables?.map(convertTable) || [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      version: 1,
-      description: currentProject?.description || undefined,
+      id: schema.id || `project-${projectRef?.id || 'unknown'}`,
+      name: schema.name || projectRef?.name || 'Project Schema',
+      tables: schema.tables?.map((table, index) => convertTable(table, index)) || [],
+      createdAt: schema.createdAt || new Date(),
+      updatedAt: schema.updatedAt || new Date(),
+      version: schema.version || 1,
+      description: projectRef?.description || undefined,
       tags: [],
       branches: [],
       currentBranch: undefined,
@@ -91,20 +103,117 @@ export function useProjectData(): UseProjectDataReturn {
         totalTables: (schema.tables?.length || 0),
         totalColumns: schema.tables?.reduce((sum, table) => sum + (table.columns?.length || 0), 0) || 0,
         totalRelationships: schema.relationships?.length || 0,
-        complexity: 'medium',
+        totalRows: schema.tables?.reduce((sum, table) => sum + (table.rowCount || 0), 0) || 0,
+        hasForeignKeys: schema.tables?.some(table => table.relationships?.length > 0) || false,
+        hasIndexes: schema.tables?.some(table => table.indexes?.length > 0) || false,
+        complexity: (schema.tables?.length || 0) > 10 ? 'high' : (schema.tables?.length || 0) > 5 ? 'medium' : 'low',
         lastValidated: new Date(),
         validationStatus: 'valid'
       }
     };
-  }, [currentProject, convertTable]);
+  }, [convertTable]);
 
-  // Initialize from existing project
+  const selectProject = useCallback(async (project: Project) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      console.log('useProjectData: Selecting project:', project.name);
+
+      // Update current project
+      setCurrentProject(project);
+
+      // Convert and set schema
+      if (project.schema) {
+        const fullSchema = convertToFullSchema(project.schema, project);
+        setProjectSchema(fullSchema);
+      } else {
+        setProjectSchema(null);
+      }
+
+      // Set databases
+      setProjectDatabases(project.databases || []);
+
+      // Update last updated timestamp
+      setLastUpdated(new Date());
+
+      console.log('useProjectData: Project selected successfully:', {
+        name: project.name,
+        tableCount: project.totalTables || 0,
+        hasSchema: !!project.schema
+      });
+    } catch (err) {
+      console.error('Failed to select project:', err);
+      setError('Failed to select project');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Initialize from existing project or uploaded database
   useEffect(() => {
     const initializeProject = async () => {
       try {
-        const existingProject = projectsManager.getCurrentProject();
-        if (existingProject) {
-          await selectProject(existingProject);
+        // First check if there's an active database connection (uploaded database)
+        if (activeConnection && activeConnection.schema) {
+          console.log('useProjectData: Found active database connection with schema');
+          console.log('useProjectData: Connection details:', {
+            id: activeConnection.id,
+            projectName: activeConnection.projectName,
+            tableCount: activeConnection.tableCount,
+            hasSchema: !!activeConnection.schema,
+            schemaTables: activeConnection.schema.tables?.length || 0
+          });
+          
+          // Create a virtual project for the uploaded database
+          const virtualProject: Project = {
+            id: activeConnection.projectId || `uploaded_${Date.now()}`,
+            name: activeConnection.projectName || 'Uploaded Database',
+            description: 'Database uploaded via QueryFlow',
+            technology: 'sqlite',
+            status: 'connected',
+            lastSynced: activeConnection.lastConnected || new Date(),
+            databaseCount: 1,
+            icon: '🗄️',
+            color: 'blue',
+            isExample: false,
+            databases: [{
+              id: activeConnection.id,
+              name: activeConnection.database || 'database',
+              type: activeConnection.type,
+              connectionString: activeConnection.credentials.filePath || '',
+              isConnected: true,
+              lastSync: activeConnection.lastConnected || new Date(),
+              tables: activeConnection.schema.tables || []
+            }],
+            schema: activeConnection.schema,
+            tables: activeConnection.schema.tables || [],
+            queries: [],
+            uploadPath: activeConnection.uploadPath,
+            totalTables: activeConnection.tableCount || 0,
+            totalRows: activeConnection.totalRows || 0,
+            hasForeignKeys: activeConnection.hasForeignKeys || false,
+            hasIndexes: activeConnection.hasIndexes || false,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          };
+          
+          console.log('useProjectData: Creating virtual project:', {
+            name: virtualProject.name,
+            tableCount: virtualProject.totalTables,
+            schemaTables: virtualProject.schema?.tables?.length || 0
+          });
+          
+          await selectProject(virtualProject);
+        } else {
+          // Fall back to projects manager
+          const existingProject = projectsManager.getCurrentProject();
+          if (existingProject) {
+            console.log('useProjectData: Using existing project from manager:', existingProject.name);
+            await selectProject(existingProject);
+          } else {
+            console.log('useProjectData: No active connection or existing project found');
+          }
         }
       } catch (err) {
         console.error('Failed to initialize project:', err);
@@ -113,7 +222,7 @@ export function useProjectData(): UseProjectDataReturn {
     };
 
     initializeProject();
-  }, []);
+  }, [activeConnection, selectProject]);
 
   // Listen for project sync events
   useEffect(() => {
@@ -153,37 +262,6 @@ export function useProjectData(): UseProjectDataReturn {
     setLastUpdated(null);
   }, []);
 
-  const selectProject = useCallback(async (project: Project) => {
-      setIsLoading(true);
-      setError(null);
-
-    try {
-      console.log('useProjectData: Selecting project:', project.name);
-
-      // Update current project
-      setCurrentProject(project);
-      setProjectDatabases(project.databases);
-
-      // Load project schema
-        const schema = projectsManager.getProjectSchema(project.id);
-      const fullSchema = convertToFullSchema(schema);
-      if (fullSchema) {
-        setProjectSchema(fullSchema);
-        console.log('useProjectData: Loaded schema with', fullSchema.tables?.length || 0, 'tables');
-      } else {
-        console.warn('useProjectData: No schema found for project');
-        setProjectSchema(null);
-      }
-
-      setLastUpdated(new Date());
-      setIsLoading(false);
-
-    } catch (err: any) {
-      console.error('useProjectData: Failed to select project:', err);
-      setError(err.message || 'Failed to select project');
-      setIsLoading(false);
-    }
-  }, []);
 
   const refreshProject = useCallback(async () => {
     if (!currentProject) return;

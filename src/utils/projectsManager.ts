@@ -493,8 +493,12 @@ export class ProjectsManager {
   // Public methods
   async getAllProjects(): Promise<Project[]> {
     try {
+      console.log('🔄 ProjectsManager: Initializing app data...');
       await dbConnectionManager.initializeAppData();
+      
+      console.log('📁 ProjectsManager: Getting persisted projects...');
       const persistedProjects = await dbConnectionManager.getAllProjects();
+      console.log('📊 ProjectsManager: Found persisted projects:', persistedProjects.length);
 
       // Convert persisted projects to Project type
       const projects: Project[] = persistedProjects.map(p => ({
@@ -514,10 +518,14 @@ export class ProjectsManager {
         queries: []
       }));
 
+      console.log('🔄 ProjectsManager: Loading databases for each project...');
       // Load databases for each project
       for (const project of projects) {
         try {
+          console.log(`📊 ProjectsManager: Loading databases for project ${project.id}...`);
           const databases = await dbConnectionManager.getProjectDatabases(project.id);
+          console.log(`📊 ProjectsManager: Found ${databases.length} databases for project ${project.id}`);
+          
           project.databases = databases.map(db => ({
             id: db.id,
             name: db.name,
@@ -529,13 +537,14 @@ export class ProjectsManager {
           }));
           project.databaseCount = databases.length;
         } catch (error) {
-          console.warn(`Failed to load databases for project ${project.id}:`, error);
+          console.warn(`❌ ProjectsManager: Failed to load databases for project ${project.id}:`, error);
         }
       }
 
+      console.log('✅ ProjectsManager: Returning projects:', projects.length);
       return projects;
     } catch (error) {
-      console.error('Failed to get projects from persistent storage:', error);
+      console.error('❌ ProjectsManager: Failed to get projects from persistent storage:', error);
       // Fallback to empty array
       return [];
     }

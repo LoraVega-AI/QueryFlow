@@ -1,17 +1,20 @@
-// API route for individual project management
+// API route for individual project operations
 // GET /api/projects/[id] - Get project by ID
-// PUT /api/projects/[id] - Update project
 // DELETE /api/projects/[id] - Delete project
 
 import { NextRequest, NextResponse } from 'next/server';
 import { dbConnectionManager } from '@/utils/databaseConnection';
+import { broadcastMessage } from '@/utils/realtimeBroadcast';
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = await params;
-
+    const { id: projectId } = await params;
+    
     await dbConnectionManager.initializeAppData();
-    const project = await dbConnectionManager.getProject(id);
+    const project = await dbConnectionManager.getProject(projectId);
 
     if (!project) {
       return NextResponse.json({
@@ -35,55 +38,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = await params;
-    const body = await request.json();
-
+    const { id: projectId } = await params;
+    
     await dbConnectionManager.initializeAppData();
-
-    // Get existing project
-    const existingProject = await dbConnectionManager.getProject(id);
-    if (!existingProject) {
-      return NextResponse.json({
-        success: false,
-        message: 'Project not found'
-      }, { status: 404 });
-    }
-
-    // Update project
-    const updatedProject = {
-      ...existingProject,
-      ...body,
-      id, // Ensure ID doesn't change
-      updatedAt: new Date().toISOString()
-    };
-
-    await dbConnectionManager.saveProject(updatedProject);
-
-    return NextResponse.json({
-      success: true,
-      message: 'Project updated successfully',
-      data: updatedProject
-    });
-  } catch (error: any) {
-    console.error('Failed to update project:', error);
-    return NextResponse.json({
-      success: false,
-      message: 'Failed to update project',
-      error: error.message
-    }, { status: 500 });
-  }
-}
-
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params;
-
-    await dbConnectionManager.initializeAppData();
-
+    
     // Check if project exists
-    const project = await dbConnectionManager.getProject(id);
+    const project = await dbConnectionManager.getProject(projectId);
     if (!project) {
       return NextResponse.json({
         success: false,
@@ -91,7 +56,23 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       }, { status: 404 });
     }
 
-    await dbConnectionManager.deleteProject(id);
+    // Delete project
+    await dbConnectionManager.deleteProject(projectId);
+
+    // Broadcast real-time update
+    try {
+      broadcastMessage({
+        type: 'project_deleted',
+        data: {
+          id: projectId,
+          name: project.name
+        },
+        timestamp: Date.now()
+      });
+      console.log('📡 Real-time update broadcasted');
+    } catch (error) {
+      console.warn('⚠️ Failed to broadcast real-time update:', error);
+    }
 
     return NextResponse.json({
       success: true,

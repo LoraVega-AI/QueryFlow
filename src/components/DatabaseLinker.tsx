@@ -30,7 +30,6 @@ import {
   HardDrive
 } from 'lucide-react';
 import {
-  DatabaseConnection,
   DatabaseType,
   DatabaseConfig,
   DatabaseSchema,

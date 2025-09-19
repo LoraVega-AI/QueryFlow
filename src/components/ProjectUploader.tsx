@@ -111,8 +111,12 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
     e.preventDefault();
     setIsDragOver(false);
 
+    console.log('📁 Drag and drop triggered');
     const items = Array.from(e.dataTransfer.items);
+    console.log('📁 DataTransfer items:', items.length);
     const files = await processFileItems(items);
+    console.log('📁 Processed files:', files.length, 'files');
+    console.log('📁 File details:', files.map(f => ({ name: f.name, size: f.size, type: f.type })));
 
     if (files.length > 0) {
       await processFiles(files);
@@ -120,124 +124,203 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
   }, []);
 
   // Process dropped file items
-  const processFileItems = async (items: DataTransferItem[]): Promise<string[]> => {
-    const files: string[] = [];
+  const processFileItems = async (items: DataTransferItem[]): Promise<File[]> => {
+    const files: File[] = [];
 
+    console.log('📁 Processing DataTransfer items:', items.length);
     for (const item of items) {
+      console.log('📁 Item kind:', item.kind, 'type:', item.type);
       if (item.kind === 'file') {
-        const entry = item.webkitGetAsEntry();
-        if (entry) {
-          const entryFiles = await getAllFilesFromEntry(entry);
-          files.push(...entryFiles);
+        const file = item.getAsFile();
+        if (file) {
+          console.log('📁 File extracted:', file.name, file.size, 'bytes');
+          files.push(file);
+        } else {
+          console.log('❌ Failed to extract file from DataTransfer item');
         }
       }
     }
 
-    return files;
-  };
-
-  // Recursively get all files from directory entry
-  const getAllFilesFromEntry = async (entry: any, path = ''): Promise<string[]> => {
-    const files: string[] = [];
-
-    if (entry.kind === 'file') {
-      files.push(path + entry.name);
-    } else if (entry.kind === 'directory') {
-      const dirReader = entry.createReader();
-      const entries = await new Promise<any[]>((resolve) => {
-        dirReader.readEntries(resolve);
-      });
-
-      for (const childEntry of entries) {
-        const childFiles = await getAllFilesFromEntry(
-          childEntry,
-          path + entry.name + '/'
-        );
-        files.push(...childFiles);
-      }
-    }
-
+    console.log('📁 Total files processed:', files.length);
     return files;
   };
 
   // Handle file input change
   const handleFileInputChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('📁 File input changed');
     const files = Array.from(e.target.files || []);
+    console.log('📁 Files selected:', files.length, 'files');
+    console.log('📁 File details:', files.map(f => ({ name: f.name, size: f.size, type: f.type })));
     if (files.length > 0) {
-      // For directory selection, we need to handle differently
-      if (files[0].webkitRelativePath) {
-        const filePaths = files.map(f => f.webkitRelativePath);
-        await processFiles(filePaths);
-      }
+      await processFiles(files);
     }
   }, []);
 
   // Process selected/uploaded files
-  const processFiles = async (files: string[]) => {
+  const processFiles = async (files: File[]) => {
+    console.log('🚀 Starting file upload process with files:', files.map(f => f.name));
+    
+    // Validate file types
+    const validExtensions = ['.db', '.sqlite', '.sqlite3', '.db3', '.s3db', '.sl3'];
+    const invalidFiles = files.filter(file => {
+      const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+      return !validExtensions.includes(ext);
+    });
+
+    if (invalidFiles.length > 0) {
+      setUploadState(prev => ({
+        ...prev,
+        status: 'error',
+        progress: 0,
+        message: 'Invalid file types detected',
+        error: `Please upload only database files (.db, .sqlite, .sqlite3, .db3, .s3db, .sl3). Invalid files: ${invalidFiles.map(f => f.name).join(', ')}`
+      }));
+      return;
+    }
+    
     setUploadState({
       status: 'uploading',
       progress: 10,
-      message: 'Scanning project files...',
-      files
+      message: 'Uploading database files...',
+      files: files.map(f => f.name)
     });
 
     try {
-      // Simulate file processing
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Upload files to server
+      console.log('📦 Creating FormData...');
+      const formData = new FormData();
+      files.forEach(file => {
+        console.log('📁 Adding file to FormData:', file.name, file.size, 'bytes', 'type:', file.type);
+        formData.append('files', file);
+      });
+      
+      // Generate project name from first file
+      const projectName = files[0]?.name.replace(/\.[^/.]+$/, '') || 'Database Project';
+      formData.append('projectName', projectName);
+      formData.append('projectDescription', `Database project with ${files.length} file(s) uploaded via QueryFlow`);
+      
+      console.log('📤 FormData created, sending request...');
+      console.log('📤 FormData entries:');
+      for (const [key, value] of formData.entries()) {
+        console.log(`  ${key}:`, value);
+      }
 
       setUploadState(prev => ({
         ...prev,
         status: 'detecting',
         progress: 30,
-        message: 'Detecting project type...'
+        message: 'Analyzing database structure...'
       }));
 
-      // Detect project
-      const result = await ProjectDetector.detectProject(files, uploadOptions);
+      console.log('🌐 Making fetch request to /api/projects/upload...');
+      console.log('🌐 Request URL:', window.location.origin + '/api/projects/upload');
+      console.log('🌐 Request method: POST');
+      console.log('🌐 FormData size:', formData.get('files') ? 'Files present' : 'No files');
+      
+      const uploadResponse = await fetch('/api/projects/upload', {
+        method: 'POST',
+        body: formData
+      });
+      console.log('🌐 Fetch request completed');
+
+      console.log('Upload response status:', uploadResponse.status);
+      console.log('Upload response ok:', uploadResponse.ok);
+
+      let uploadData;
+      try {
+        uploadData = await uploadResponse.json();
+        console.log('Upload response data:', uploadData);
+      } catch (jsonError) {
+        console.error('Failed to parse JSON response:', jsonError);
+        throw new Error('Invalid response from server');
+      }
+
+      if (!uploadResponse.ok) {
+        console.error('Upload failed with status:', uploadResponse.status);
+        throw new Error(`Upload failed with status ${uploadResponse.status}: ${uploadData.message || 'Unknown error'}`);
+      }
+
+      if (!uploadData.success) {
+        console.error('Upload failed:', uploadData);
+        throw new Error(uploadData.message || 'Failed to upload project');
+      }
 
       setUploadState(prev => ({
         ...prev,
         status: 'detecting',
         progress: 70,
-        message: 'Analyzing databases...'
+        message: 'Extracting database schema...'
       }));
 
-      // Test database connections
-      for (const db of result.databases) {
-        const testResult = await DatabaseConnector.testConnection(db.type, db.config);
-        db.status = testResult.success ? 'connected' : 'error';
-      }
+      // Process the uploaded project data
+      const result: ProjectDetectionResult = {
+        projectName: uploadData.data.name,
+        projectType: uploadData.data.technology as ProjectType,
+        confidence: 95,
+        configFiles: [],
+        databases: (uploadData.data.databases || []).map((db: any) => ({
+          name: db.name,
+          type: db.type,
+          config: {
+            filePath: db.connectionString || db.filePath,
+            database: db.name
+          },
+          status: db.status === 'ready' ? 'ready' : 'error'
+        })),
+        uploadPath: uploadData.data.uploadPath,
+        projectId: uploadData.data.id,
+        // Add the full project data for connection
+        projectData: uploadData.data
+      };
 
+      console.log('✅ Upload completed successfully, setting success state...');
+      console.log('📊 ProjectDetectionResult created:', {
+        projectName: result.projectName,
+        projectType: result.projectType,
+        databases: result.databases.length,
+        projectId: result.projectId
+      });
+      
       setUploadState(prev => ({
         ...prev,
         status: 'completed',
         progress: 100,
-        message: 'Project analysis complete!',
+        message: `Database uploaded successfully! Found ${result.databases.length} database(s) with schema information.`,
         result
       }));
 
       // Auto-close after success
       setTimeout(() => {
+        console.log('🎉 Calling onProjectDetected with result:', result);
         onProjectDetected?.(result);
+        console.log('🎉 Calling onClose');
         onClose();
       }, 2000);
 
     } catch (error) {
+      console.error('❌ Upload error:', error);
+      console.error('❌ Error type:', typeof error);
+      console.error('❌ Error message:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');
+      
       setUploadState(prev => ({
         ...prev,
         status: 'error',
         progress: 0,
-        message: 'Failed to process project',
+        message: 'Failed to upload database',
         error: error instanceof Error ? error.message : 'Unknown error'
       }));
     }
   };
 
-  // Open folder selection dialog
-  const openFolderDialog = useCallback(() => {
+  // Open file selection dialog
+  const openFileDialog = useCallback(() => {
+    console.log('📁 Opening file dialog...');
     if (fileInputRef.current) {
-      fileInputRef.current.setAttribute('webkitdirectory', '');
+      console.log('📁 File input ref found, clicking');
       fileInputRef.current.click();
+    } else {
+      console.log('❌ File input ref not found');
     }
   }, []);
 
@@ -248,27 +331,49 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
         <div className="text-center py-12">
           <div className="mb-6">
             <div className="w-16 h-16 mx-auto bg-orange-100 rounded-full flex items-center justify-center mb-4">
-              <Upload className="w-8 h-8 text-orange-600" />
+              <Database className="w-8 h-8 text-orange-600" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Upload Your Project
+              Upload Database Files
             </h3>
-            <p className="text-gray-600">
-              Drag and drop your project folder or click to select
+            <p className="text-gray-600 mb-4">
+              Drag and drop SQLite database files or click to select
             </p>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <div className="flex items-start space-x-2">
+                <div className="w-5 h-5 text-blue-500 mt-0.5">💡</div>
+                <div className="text-left text-sm text-blue-800">
+                  <p className="font-medium mb-1">What happens when you upload:</p>
+                  <ul className="list-disc list-inside space-y-1 text-blue-700">
+                    <li>Database schema is automatically extracted</li>
+                    <li>Tables and relationships are analyzed</li>
+                    <li>Project is created and saved to QueryFlow</li>
+                    <li>Database becomes available in Schema Designer</li>
+                    <li>You can query and edit data immediately</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-3">
             <button
-              onClick={openFolderDialog}
-              className="inline-flex items-center px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+              onClick={openFileDialog}
+              className="inline-flex items-center px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
             >
-              <FolderOpen className="w-4 h-4 mr-2" />
-              Select Folder
+              <Database className="w-5 h-5 mr-2" />
+              Select Database Files
             </button>
 
             <div className="text-sm text-gray-500">
-              Supports Node.js, Python, Django, Laravel, Rails, and more
+              <div className="font-medium mb-1">Supported formats:</div>
+              <div className="flex flex-wrap justify-center gap-2">
+                {['.db', '.sqlite', '.sqlite3', '.db3', '.s3db', '.sl3'].map(ext => (
+                  <span key={ext} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                    {ext}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -284,36 +389,56 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
           </div>
 
           <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Project Detected Successfully!
+            Database Uploaded Successfully!
           </h3>
 
           <div className="bg-gray-50 rounded-lg p-4 mb-4">
-            <div className="flex items-center justify-center mb-2">
-              <span className="text-2xl mr-2">
-                {PROJECT_TYPE_ICONS[result.projectType]}
-              </span>
-              <span className="font-medium">
-                {PROJECT_TYPE_NAMES[result.projectType]}
-              </span>
-              <span className="ml-2 text-sm text-gray-500">
-                ({result.confidence}% confidence)
+            <div className="flex items-center justify-center mb-3">
+              <Database className="w-6 h-6 mr-2 text-green-500" />
+              <span className="font-medium text-lg">
+                {result.projectName}
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="flex items-center">
-                <FileText className="w-4 h-4 mr-2 text-blue-500" />
-                {result.configFiles.length} config files
-              </div>
-              <div className="flex items-center">
+            <div className="grid grid-cols-1 gap-3 text-sm">
+              <div className="flex items-center justify-center">
                 <Database className="w-4 h-4 mr-2 text-green-500" />
-                {result.databases.length} databases
+                <span className="font-medium">{result.databases.length} database(s) found</span>
               </div>
+              
+              {result.databases.map((db, index) => (
+                <div key={index} className="bg-white rounded p-3 border">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <Database className="w-4 h-4 mr-2 text-blue-500" />
+                      <span className="font-medium">{db.name}</span>
+                    </div>
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      db.status === 'ready' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {db.status === 'ready' ? 'Ready' : 'Error'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Type: {db.type} • Path: {db.config.filePath}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+            <div className="flex items-center justify-center space-x-2 text-green-800">
+              <CheckCircle className="w-4 h-4" />
+              <span className="font-medium">Ready to use!</span>
+            </div>
+            <p className="text-sm text-green-700 mt-1">
+              Your database is now available in the Projects tab and Schema Designer
+            </p>
+          </div>
+
           <p className="text-sm text-gray-600">
-            Redirecting to project setup...
+            Connecting to QueryFlow...
           </p>
         </div>
       );
@@ -386,14 +511,14 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center">
             <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
-              <Upload className="w-5 h-5 text-orange-600" />
+              <Database className="w-5 h-5 text-orange-600" />
             </div>
             <div>
               <h2 className="text-xl font-semibold text-gray-900">
-                Link Project
+                Upload Database
               </h2>
               <p className="text-sm text-gray-600">
-                Connect your existing project to QueryFlow
+                Upload SQLite database files to QueryFlow
               </p>
             </div>
           </div>
@@ -492,13 +617,13 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
           <div className="flex items-center space-x-4 text-sm text-gray-600">
             <span className="flex items-center">
-              <Github className="w-4 h-4 mr-1" />
-              Also supports GitHub repos
+              <Database className="w-4 h-4 mr-1" />
+              Supports SQLite databases
             </span>
           </div>
 
           <div className="text-sm text-gray-500">
-            Need help? Check our documentation
+            Database files are stored securely in QueryFlow
           </div>
         </div>
       </div>
@@ -510,6 +635,7 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
         className="hidden"
         onChange={handleFileInputChange}
         multiple
+        accept=".db,.sqlite,.sqlite3,.db3,.s3db,.sl3"
       />
     </div>
   );

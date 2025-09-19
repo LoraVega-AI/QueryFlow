@@ -3,7 +3,7 @@
 // Projects Page Component
 // Displays available projects and handles synchronization
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   RefreshCw,
   CircleCheckBig,
@@ -13,21 +13,30 @@ import {
   Server,
   FolderOpen,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  Upload,
+  Download,
+  Trash2
 } from 'lucide-react';
 import { projectsManager } from '../utils/projectsManager';
 import { Project } from '../types/projects';
 import { DatabaseConnectionModal } from './DatabaseConnectionModal';
 import { QueryEditor } from './QueryEditor';
+import { ProjectUploader } from './ProjectUploader';
 import { useDatabase } from '../contexts/DatabaseContext';
+import { DatabaseConnector } from '../utils/databaseConnector';
+import { DatabaseSchema } from '../types/database';
+import { useRealtimeUpdates } from '../hooks/useRealtimeUpdates';
+import { useSessionManager } from '../hooks/useSessionManager';
 
 export function Projects() {
   const { connectDatabase } = useDatabase();
   const [projects, setProjects] = useState<Project[]>([]);
   const [syncingProject, setSyncingProject] = useState<string | null>(null);
   const [notification, setNotification] = useState<{
-    type: 'success' | 'error' | 'info';
+    type: 'success' | 'error' | 'info' | 'warning';
     message: string;
+    duration?: number;
   } | null>(null);
 
   // Database connection state
@@ -43,17 +52,134 @@ export function Projects() {
     databaseName?: string;
   } | null>(null);
 
-  useEffect(() => {
-    // Load projects from the projects manager
-    const loadProjects = async () => {
-      try {
-        const allProjects = await projectsManager.getAllProjects();
-        setProjects(allProjects);
-      } catch (error) {
-        console.error('Failed to load projects:', error);
-      }
-    };
+  // Project uploader state
+  const [showProjectUploader, setShowProjectUploader] = useState(false);
+  
+  // Auto-refresh state
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  
+  // Real-time updates state
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  
+  // Session management
+  const { addRecentProject, getRecentProjects, updateUserPreferences, getUserPreferences } = useSessionManager({
+    autoSave: true,
+    autoLoad: true
+  });
 
+  // Load projects function
+  const loadProjects = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setIsRefreshing(true);
+    }
+    
+    try {
+      console.log('🔄 Projects component: Loading projects...');
+      const allProjects = await projectsManager.getAllProjects();
+      console.log('📁 Projects component: Projects loaded:', allProjects.length, 'projects');
+      console.log('📁 Projects component: Project details:', allProjects.map(p => ({ 
+        id: p.id, 
+        name: p.name, 
+        databaseCount: p.databaseCount,
+        totalTables: p.totalTables || 0,
+        totalRows: p.totalRows || 0,
+        hasSchema: !!p.schema,
+        schemaTables: p.schema?.tables?.length || 0
+      })));
+      setProjects(allProjects);
+      setLastRefresh(new Date());
+    } catch (error) {
+      console.error('❌ Projects component: Failed to load projects:', error);
+      // Try direct API call as fallback
+      try {
+        console.log('🔄 Projects component: Trying direct API call as fallback...');
+        const response = await fetch('/api/projects');
+        const data = await response.json();
+        console.log('📡 Projects component: API response:', data);
+        if (data.success && data.data) {
+          setProjects(data.data);
+          setLastRefresh(new Date());
+          console.log('✅ Projects component: Projects loaded via API fallback');
+        }
+      } catch (apiError) {
+        console.error('❌ Projects component: API fallback failed:', apiError);
+      }
+    } finally {
+      if (showLoading) {
+        setIsRefreshing(false);
+      }
+    }
+  }, []);
+
+  // Helper function to show notifications
+  const showNotification = useCallback((type: 'success' | 'error' | 'info' | 'warning', message: string, duration: number = 5000) => {
+    setNotification({ type, message, duration });
+    
+    if (duration > 0) {
+      setTimeout(() => {
+        setNotification(null);
+      }, duration);
+    }
+  }, []);
+
+  // Real-time updates handlers
+  const handleProjectCreated = useCallback((data: any) => {
+    console.log('Real-time: Project created', data);
+    showNotification('success', `Project "${data.name}" created successfully!`);
+    loadProjects(true); // Refresh projects list
+  }, [loadProjects, showNotification]);
+
+  const handleProjectUpdated = useCallback((data: any) => {
+    console.log('Real-time: Project updated', data);
+    showNotification('info', `Project "${data.name}" updated`);
+    loadProjects(true); // Refresh projects list
+  }, [loadProjects, showNotification]);
+
+  const handleProjectDeleted = useCallback((data: any) => {
+    console.log('Real-time: Project deleted', data);
+    showNotification('warning', `Project "${data.name}" deleted`);
+    loadProjects(true); // Refresh projects list
+  }, [loadProjects, showNotification]);
+
+  const handleProjectSynced = useCallback((data: any) => {
+    console.log('Real-time: Project synced', data);
+    showNotification('success', `Project "${data.name}" synced successfully!`);
+    loadProjects(true); // Refresh projects list
+  }, [loadProjects, showNotification]);
+
+  const handleRealtimeError = useCallback((error: Event) => {
+    console.error('Real-time connection error:', error);
+    setRealtimeConnected(false);
+    showNotification('error', 'Real-time connection lost. Using fallback polling.');
+  }, [showNotification]);
+
+  // Set up real-time updates
+  const { connect: connectRealtime, disconnect: disconnectRealtime, isConnected } = useRealtimeUpdates({
+    onProjectCreated: handleProjectCreated,
+    onProjectUpdated: handleProjectUpdated,
+    onProjectDeleted: handleProjectDeleted,
+    onProjectSynced: handleProjectSynced,
+    onError: handleRealtimeError,
+    autoConnect: true
+  });
+
+  // Monitor real-time connection status
+  useEffect(() => {
+    const checkConnection = () => {
+      setRealtimeConnected(isConnected());
+    };
+    
+    checkConnection();
+    const interval = setInterval(checkConnection, 5000);
+    
+    return () => clearInterval(interval);
+  }, [isConnected]);
+
+
+
+  useEffect(() => {
+    // Initial load
     loadProjects();
 
     // Listen for project sync events
@@ -70,21 +196,12 @@ export function Projects() {
       setProjects(prev => prev.map(p =>
         p.id === data.projectId ? { ...data.project, status: 'connected' as const } : p
       ));
-      setNotification({
-        type: 'success',
-        message: `Project "${data.project.name}" synced successfully! The entire application now uses this project's databases.`
-      });
-
-      // Auto-hide notification after 5 seconds
-      setTimeout(() => setNotification(null), 5000);
+      showNotification('success', `Project "${data.project.name}" synced successfully! The entire application now uses this project's databases.`);
     };
 
     const handleSyncError = (data: any) => {
       setSyncingProject(null);
-      setNotification({
-        type: 'error',
-        message: `Failed to sync project: ${data.error.message}`
-      });
+      showNotification('error', `Failed to sync project: ${data.error.message}`);
     };
 
     projectsManager.addEventListener('project_sync_start', handleSyncStart);
@@ -96,20 +213,25 @@ export function Projects() {
       projectsManager.removeEventListener('project_sync_complete', handleSyncComplete);
       projectsManager.removeEventListener('project_sync_error', handleSyncError);
     };
-  }, []);
+  }, [loadProjects, showNotification]);
 
-  const loadProjects = async () => {
-    try {
-      const allProjects = await projectsManager.getAllProjects();
-      setProjects(allProjects);
-    } catch (error) {
-      console.error('Failed to load projects:', error);
+  // Auto-refresh every 30 seconds (fallback when real-time is not available)
+  useEffect(() => {
+    if (!realtimeConnected) {
+      const interval = setInterval(() => {
+        loadProjects();
+      }, 30000);
+
+      return () => clearInterval(interval);
     }
-  };
+  }, [loadProjects, realtimeConnected]);
 
   const handleSync = async (projectId: string) => {
     const project = projects.find(p => p.id === projectId);
     if (!project) return;
+
+    // Add to recent projects
+    addRecentProject(projectId);
 
     // Check if this is an example project - auto-connect if so
     if (project.isExample) {
@@ -255,6 +377,71 @@ export function Projects() {
     setShowQueryEditor(true);
   };
 
+  const handleDownloadProject = async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/projects/${projectId}/download`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to download project');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `project_${projectId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      setNotification({
+        type: 'success',
+        message: 'Project downloaded successfully with updated database information!'
+      });
+    } catch (error) {
+      setNotification({
+        type: 'error',
+        message: `Failed to download project: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    if (!confirm(`Are you sure you want to delete the project "${project.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete project');
+      }
+
+      // Remove from local state
+      setProjects(prev => prev.filter(p => p.id !== projectId));
+
+      setNotification({
+        type: 'success',
+        message: `Project "${project.name}" deleted successfully!`
+      });
+
+      // Auto-hide notification after 3 seconds
+      setTimeout(() => setNotification(null), 3000);
+    } catch (error) {
+      setNotification({
+        type: 'error',
+        message: `Failed to delete project: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
+    }
+  };
+
   const getStatusIcon = (status: Project['status']) => {
     switch (status) {
       case 'connected':
@@ -309,26 +496,63 @@ export function Projects() {
     <div className="p-6">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Projects</h1>
-        <p className="text-gray-600">
-          Manage and sync your database projects. Each project contains its own embedded database.
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Projects</h1>
+            <p className="text-gray-600">
+              Manage and sync your database projects. Each project contains its own embedded database.
+            </p>
+            <div className="flex items-center gap-4 mt-1">
+              {lastRefresh && (
+                <p className="text-xs text-gray-500">
+                  Last updated: {lastRefresh.toLocaleTimeString()}
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+                <span className="text-xs text-gray-500">
+                  {realtimeConnected ? 'Real-time connected' : 'Polling mode'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setShowProjectUploader(true)}
+              data-upload-trigger
+              className="inline-flex items-center px-4 py-2 bg-orange-600 text-white text-sm rounded hover:bg-orange-700 transition-colors"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Upload Project
+            </button>
+            <button
+              onClick={() => loadProjects(true)}
+              disabled={isRefreshing}
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Notification */}
       {notification && (
         <div className={`mb-4 p-4 rounded-lg flex items-center space-x-2 ${
-          notification.type === 'success' ? 'bg-green-50 text-green-800' :
-          notification.type === 'error' ? 'bg-red-50 text-red-800' :
-          'bg-blue-50 text-blue-800'
+          notification.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' :
+          notification.type === 'error' ? 'bg-red-50 text-red-800 border border-red-200' :
+          notification.type === 'warning' ? 'bg-yellow-50 text-yellow-800 border border-yellow-200' :
+          'bg-blue-50 text-blue-800 border border-blue-200'
         }`}>
-          {notification.type === 'success' && <CheckCircle className="w-5 h-5" />}
-          {notification.type === 'error' && <AlertTriangle className="w-5 h-5" />}
-          {notification.type === 'info' && <RefreshCw className="w-5 h-5 animate-spin" />}
-          <span>{notification.message}</span>
+          {notification.type === 'success' && <CheckCircle className="w-5 h-5 text-green-600" />}
+          {notification.type === 'error' && <AlertTriangle className="w-5 h-5 text-red-600" />}
+          {notification.type === 'warning' && <AlertTriangle className="w-5 h-5 text-yellow-600" />}
+          {notification.type === 'info' && <RefreshCw className="w-5 h-5 animate-spin text-blue-600" />}
+          <span className="flex-1">{notification.message}</span>
           <button
             onClick={() => setNotification(null)}
-            className="ml-auto text-gray-400 hover:text-gray-600"
+            className="ml-2 text-gray-400 hover:text-gray-600 transition-colors"
           >
             ×
           </button>
@@ -382,25 +606,55 @@ export function Projects() {
               {/* Stats */}
               <div className="flex items-center justify-between text-xs text-gray-500 mb-4">
                 <span>Last synced: {formatLastSynced(project.lastSynced)}</span>
-                <span>
-                  {project.schema ? `${project.schema.tables.length} tables` : `${project.databaseCount} database${project.databaseCount !== 1 ? 's' : ''}`}
-                </span>
+                <div className="flex items-center space-x-2">
+                  {project.totalTables && (
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                      {project.totalTables} tables
+                    </span>
+                  )}
+                  {project.totalRows && (
+                    <span className="px-2 py-1 bg-green-100 text-green-700 rounded">
+                      {project.totalRows.toLocaleString()} rows
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Schema/Tables Info */}
               {project.schema ? (
                 <div className="mb-4">
-                  <div className="text-xs text-gray-500 mb-2">Tables ({project.schema.tables.length}):</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs text-gray-500">Tables ({project.schema.tables.length}):</div>
+                    <div className="flex items-center space-x-1 text-xs">
+                      {project.hasForeignKeys && (
+                        <span className="px-1 py-0.5 bg-purple-100 text-purple-600 rounded" title="Has foreign keys">
+                          🔗
+                        </span>
+                      )}
+                      {project.hasIndexes && (
+                        <span className="px-1 py-0.5 bg-orange-100 text-orange-600 rounded" title="Has indexes">
+                          📇
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <div className="space-y-1">
                     {project.schema.tables.slice(0, 3).map((table) => (
-                      <div key={table.name} className="flex items-center space-x-2 text-xs text-gray-600">
-                        <Database className="w-3 h-3" />
-                        <span>{table.name}</span>
-                        <span className="text-gray-400">({table.rowCount || 0} rows)</span>
+                      <div key={table.name} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 rounded p-2">
+                        <div className="flex items-center space-x-2">
+                          <Database className="w-3 h-3" />
+                          <span className="font-medium">{table.name}</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-gray-400">({table.rowCount || 0} rows)</span>
+                          {table.columns && (
+                            <span className="text-gray-400">({table.columns.length} cols)</span>
+                          )}
+                        </div>
                       </div>
                     ))}
                     {project.schema.tables.length > 3 && (
-                      <div className="text-xs text-gray-400">
+                      <div className="text-xs text-gray-400 text-center py-1">
                         +{project.schema.tables.length - 3} more tables
                       </div>
                     )}
@@ -411,19 +665,24 @@ export function Projects() {
                   <div className="text-xs text-gray-500 mb-2">Databases:</div>
                   <div className="space-y-1">
                     {project.databases.slice(0, 2).map((db) => (
-                      <div key={db.id} className="flex items-center space-x-2 text-xs text-gray-600">
-                        <Database className="w-3 h-3" />
-                        <span>{db.name}</span>
-                        <span className={`px-1 py-0.5 rounded text-xs ${
-                          db.isConnected ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-                        }`}>
-                          {db.isConnected ? 'Connected' : 'Disconnected'}
-                        </span>
+                      <div key={db.id} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 rounded p-2">
+                        <div className="flex items-center space-x-2">
+                          <Database className="w-3 h-3" />
+                          <span className="font-medium">{db.name}</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-gray-400">({db.tableCount || 0} tables)</span>
+                          <span className={`px-1 py-0.5 rounded text-xs ${
+                            db.isConnected ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                          }`}>
+                            {db.isConnected ? 'Connected' : 'Disconnected'}
+                          </span>
+                        </div>
                       </div>
                     ))}
                     {project.databases.length > 2 && (
-                      <div className="text-xs text-gray-400">
-                        +{project.databases.length - 2} more
+                      <div className="text-xs text-gray-400 text-center py-1">
+                        +{project.databases.length - 2} more databases
                       </div>
                     )}
                   </div>
@@ -448,14 +707,21 @@ export function Projects() {
                     <RefreshCw className={`w-3 h-3 mr-1 ${syncingProject === project.id ? 'animate-spin' : ''}`} />
                     {syncingProject === project.id ? 'Syncing' : 'Sync'}
                   </button>
-                </div>
-                <div className="relative">
-                  <button className="p-1 text-gray-400 hover:text-gray-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-ellipsis-vertical w-4 h-4">
-                      <circle cx="12" cy="12" r="1"></circle>
-                      <circle cx="12" cy="5" r="1"></circle>
-                      <circle cx="12" cy="19" r="1"></circle>
-                    </svg>
+                  <button
+                    onClick={() => handleDownloadProject(project.id)}
+                    className="inline-flex items-center px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
+                    title="Download project with updated database"
+                  >
+                    <Download className="w-3 h-3 mr-1" />
+                    Download
+                  </button>
+                  <button
+                    onClick={() => handleDeleteProject(project.id)}
+                    className="inline-flex items-center px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors"
+                    title="Delete project"
+                  >
+                    <Trash2 className="w-3 h-3 mr-1" />
+                    Delete
                   </button>
                 </div>
               </div>
@@ -506,6 +772,89 @@ export function Projects() {
           connectionId={queryEditorConnection.connectionId}
           projectName={queryEditorConnection.projectName}
           databaseName={queryEditorConnection.databaseName}
+        />
+      )}
+
+      {/* Project Uploader Modal */}
+      {showProjectUploader && (
+        <ProjectUploader
+          onProjectDetected={async (result) => {
+            console.log('🎉 Project detected callback received:', result);
+            try {
+              // Add a small delay to ensure the project is saved
+              console.log('⏳ Waiting 1 second for project to be saved...');
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              // Reload projects to show the new uploaded project
+              console.log('🔄 Reloading projects...');
+              await loadProjects(true);
+              console.log('✅ Projects reloaded successfully');
+              
+              // Automatically connect the uploaded database to QueryFlow
+              if (result.projectData && result.projectData.databases && result.projectData.databases.length > 0) {
+                console.log('🔌 Auto-connecting uploaded database to QueryFlow...');
+                const database = result.projectData.databases[0]; // Use first database
+                
+                try {
+                  // Use the schema that was already extracted during upload
+                  const schema = result.projectData.schema;
+                  
+                  if (!schema) {
+                    throw new Error('No schema found in uploaded project data');
+                  }
+                  
+                  // Connect the database to the global QueryFlow system with schema
+                  const connectionId = `uploaded_${result.projectId}_${Date.now()}`;
+                  const credentials = {
+                    type: database.type,
+                    filePath: database.filePath || database.connectionString,
+                    database: database.name
+                  };
+                  
+                  // Prepare metadata for the connection
+                  const metadata = {
+                    projectId: result.projectId,
+                    projectName: result.projectName,
+                    uploadPath: result.uploadPath,
+                    tableCount: database.tableCount || 0,
+                    totalRows: database.totalRows || 0,
+                    hasForeignKeys: database.hasForeignKeys || false,
+                    hasIndexes: database.hasIndexes || false
+                  };
+                  
+                  // Connect to the database with schema and metadata
+                  connectDatabase(connectionId, credentials, schema, metadata);
+                  
+                  console.log('✅ Database connected to QueryFlow successfully with schema:', schema);
+                  
+                  setNotification({
+                    type: 'success',
+                    message: `Project "${result.projectName}" uploaded and connected! Found ${schema.tables.length} tables. The schema designer now shows your database tables.`
+                  });
+                } catch (connectionError) {
+                  console.error('❌ Failed to connect database to QueryFlow:', connectionError);
+                  setNotification({
+                    type: 'warning',
+                    message: `Project "${result.projectName}" uploaded successfully, but failed to connect to QueryFlow: ${connectionError instanceof Error ? connectionError.message : 'Unknown error'}`
+                  });
+                }
+              } else {
+                setNotification({
+                  type: 'success',
+                  message: `Project "${result.projectName}" uploaded successfully with ${result.databases.length} databases!`
+                });
+              }
+              
+              console.log('✅ Notification set successfully');
+            } catch (error) {
+              console.error('❌ Error in project detected callback:', error);
+              setNotification({
+                type: 'error',
+                message: `Project uploaded but failed to reload: ${error instanceof Error ? error.message : 'Unknown error'}`
+              });
+            }
+          }}
+          onClose={() => setShowProjectUploader(false)}
         />
       )}
     </div>

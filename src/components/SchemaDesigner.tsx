@@ -3,7 +3,7 @@
 // Schema Designer component for visual database design
 // This component provides a drag-and-drop interface for creating and editing database tables
 
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
 import {
   ReactFlow,
   Node,
@@ -62,8 +62,38 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
   // Use project schema if available, otherwise fall back to prop
   const schema = projectSchema || propSchema;
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  // Ref to prevent infinite loops
+  const isUpdatingRef = useRef(false);
+  
+  // Refs to store latest callback functions
+  const handleUpdateTableRef = useRef<(updatedTable: Table) => void>();
+  const handleDeleteTableRef = useRef<(updatedTable: Table) => void>();
+  
+  // Refs to store stable nodes and edges
+  const nodesRef = useRef<Node[]>([]);
+  const edgesRef = useRef<Edge[]>([]);
+  
+  // Handle node changes - update schema directly
+  const onNodesChange = useCallback((changes: any) => {
+    if (!schema || isUpdatingRef.current) return;
+    
+    // Update table positions in schema
+    changes.forEach((change: any) => {
+      if (change.type === 'position' && change.position) {
+        const table = schema.tables.find(t => t.id === change.id);
+        if (table) {
+          table.position = change.position;
+        }
+      }
+    });
+  }, [schema]);
+  
+  // Handle edge changes - currently no-op since edges are derived from schema
+  const onEdgesChange = useCallback((changes: any) => {
+    // Edges are derived from schema relationships, so we don't need to handle changes
+    // This is just to satisfy React Flow's requirements
+  }, []);
+  
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [isTableEditorOpen, setIsTableEditorOpen] = useState(false);
   const [validation, setValidation] = useState<SchemaValidation | null>(null);
@@ -77,6 +107,121 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
   const [showCollaborativePanel, setShowCollaborativePanel] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
   const [templateSearch, setTemplateSearch] = useState('');
+  const [showColumnTypes, setShowColumnTypes] = useState(true);
+  const [showConstraints, setShowConstraints] = useState(true);
+  const [compactMode, setCompactMode] = useState(false);
+  
+  // Handle updating a table
+  const handleUpdateTable = useCallback((updatedTable: Table) => {
+    if (!schema) return;
+
+    const updatedSchema: DatabaseSchema = {
+      ...schema,
+      tables: schema.tables.map((table) =>
+        table.id === updatedTable.id ? updatedTable : table
+      ),
+      updatedAt: new Date(),
+    };
+
+    onSchemaChange(updatedSchema);
+  }, [onSchemaChange, schema]);
+
+  // Handle deleting a table
+  const handleDeleteTable = useCallback((tableId: string) => {
+    if (!schema) return;
+
+    const updatedSchema: DatabaseSchema = {
+      ...schema,
+      tables: schema.tables.filter((table) => table.id !== tableId),
+      updatedAt: new Date(),
+    };
+
+    onSchemaChange(updatedSchema);
+  }, [onSchemaChange, schema]);
+
+  // Update refs with latest functions
+  handleUpdateTableRef.current = handleUpdateTable;
+  handleDeleteTableRef.current = handleDeleteTable;
+  
+  // Generate nodes and edges using refs to prevent re-renders
+  const generateNodesAndEdges = useCallback(() => {
+    if (!schema || !schema.tables) {
+      nodesRef.current = [];
+      edgesRef.current = [];
+      return;
+    }
+
+    const displayOptions = { showColumnTypes, showConstraints, compactMode };
+    
+    // Generate nodes
+    const nodes = schema.tables.map((table) => ({
+      id: table.id,
+      type: 'table',
+      position: table.position || { x: 0, y: 0 },
+      data: {
+        table,
+        onUpdateTable: (updatedTable: Table) => {
+          if (!schema) return;
+          const updatedSchema: DatabaseSchema = {
+            ...schema,
+            tables: schema.tables.map((t) =>
+              t.id === updatedTable.id ? updatedTable : t
+            ),
+            updatedAt: new Date(),
+          };
+          onSchemaChange(updatedSchema);
+        },
+        onDeleteTable: (tableId: string) => {
+          if (!schema) return;
+          const updatedSchema: DatabaseSchema = {
+            ...schema,
+            tables: schema.tables.filter((t) => t.id !== tableId),
+            updatedAt: new Date(),
+          };
+          onSchemaChange(updatedSchema);
+        },
+        theme: 'default',
+        showColumnTypes: displayOptions.showColumnTypes,
+        showConstraints: displayOptions.showConstraints,
+        compactMode: displayOptions.compactMode
+      },
+    }));
+
+    // Generate edges
+    const edges: Edge[] = [];
+    schema.tables.forEach((table) => {
+      table.columns?.forEach((column) => {
+        if (column.foreignKey) {
+          edges.push({
+            id: `${table.id}-${column.id}-${column.foreignKey.tableId}-${column.foreignKey.columnId}`,
+            source: table.id,
+            target: column.foreignKey.tableId,
+            sourceHandle: column.id,
+            targetHandle: column.foreignKey.columnId,
+            type: 'relationship',
+            data: {
+              relationship: column.foreignKey,
+              sourceColumn: column,
+              targetColumn: column.foreignKey
+            }
+          });
+        }
+      });
+    });
+
+    nodesRef.current = nodes;
+    edgesRef.current = edges;
+  }, [schema, showColumnTypes, showConstraints, compactMode, onSchemaChange]);
+
+  
+  // Generate nodes and edges when dependencies change
+  useEffect(() => {
+    generateNodesAndEdges();
+  }, [generateNodesAndEdges]);
+
+  // Use refs for stable nodes and edges
+  const memoizedNodes = nodesRef.current;
+  const memoizedEdges = edgesRef.current;
 
   // Enhanced ERD features state
   const [showERDToolbar, setShowERDToolbar] = useState(true);
@@ -84,9 +229,6 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
   const [showExportModal, setShowExportModal] = useState(false);
   const [showLayoutModal, setShowLayoutModal] = useState(false);
   const [layoutSuggestions, setLayoutSuggestions] = useState<any[]>([]);
-  const [showColumnTypes, setShowColumnTypes] = useState(true);
-  const [showConstraints, setShowConstraints] = useState(true);
-  const [compactMode, setCompactMode] = useState(false);
 
   // Validate schema
   const validateSchema = useCallback(() => {
@@ -385,89 +527,12 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
     return SchemaTemplateManager.searchTemplates(templateSearch);
   }, [templateSearch]);
 
-  // Handle updating a table
-  const handleUpdateTable = useCallback((updatedTable: Table) => {
-    if (!schema) return;
 
-    const updatedSchema: DatabaseSchema = {
-      ...schema,
-      tables: schema.tables.map((table) =>
-        table.id === updatedTable.id ? updatedTable : table
-      ),
-      updatedAt: new Date(),
-    };
 
-    onSchemaChange(updatedSchema);
-  }, [schema, onSchemaChange]);
+  // Track previous schema to detect changes
+  const prevSchemaRef = useRef<DatabaseSchema | null>(null);
+  const prevDisplayOptionsRef = useRef({ showColumnTypes, showConstraints, compactMode });
 
-  // Handle deleting a table
-  const handleDeleteTable = useCallback((tableId: string) => {
-    if (!schema) return;
-
-    const updatedSchema: DatabaseSchema = {
-      ...schema,
-      tables: schema.tables.filter((table) => table.id !== tableId),
-      updatedAt: new Date(),
-    };
-
-    onSchemaChange(updatedSchema);
-  }, [schema, onSchemaChange]);
-
-  // Convert schema tables to React Flow nodes
-  const schemaToNodes = useMemo(() => {
-    return (tables: Table[]): Node[] => {
-      return tables.map((table) => ({
-        id: table.id,
-        type: 'table',
-        position: table.position || { x: 0, y: 0 },
-        data: {
-          table,
-          onUpdateTable: handleUpdateTable,
-          onDeleteTable: handleDeleteTable,
-        },
-      }));
-    };
-  }, [handleUpdateTable, handleDeleteTable]);
-
-  // Force re-render of nodes when functions change
-  const nodeKey = useMemo(() => {
-    return `${handleUpdateTable.toString()}-${handleDeleteTable.toString()}`;
-  }, [handleUpdateTable, handleDeleteTable]);
-
-  // Convert schema relationships to React Flow edges
-  const schemaToEdges = useCallback((tables: Table[]): Edge[] => {
-    const edges: Edge[] = [];
-    
-    tables.forEach((table) => {
-      table.columns.forEach((column) => {
-        if (column.foreignKey) {
-          edges.push({
-            id: `${table.id}-${column.id}-${column.foreignKey.tableId}`,
-            source: table.id,
-            target: column.foreignKey.tableId,
-            sourceHandle: column.id,
-            targetHandle: column.foreignKey.columnId,
-            type: 'relationship',
-            data: {
-              foreignKey: column.foreignKey,
-            },
-          });
-        }
-      });
-    });
-    
-    return edges;
-  }, []);
-
-  // Initialize nodes and edges from schema
-  React.useEffect(() => {
-    if (schema) {
-      const flowNodes = schemaToNodes(schema.tables);
-      const flowEdges = schemaToEdges(schema.tables);
-      setNodes(flowNodes);
-      setEdges(flowEdges);
-    }
-  }, [schema, schemaToNodes, schemaToEdges, setNodes, setEdges]);
 
   // Handle adding a new table
   const handleAddTable = useCallback(() => {
@@ -512,14 +577,23 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
         spacing: { node: 100, rank: 150 }
       };
 
-      const result = await ERDLayoutService.applyLayout(nodes, edges, layoutOptions);
-      setNodes(result.nodes);
+      const result = await ERDLayoutService.applyLayout(memoizedNodes, memoizedEdges, layoutOptions);
+      // Update schema with new positions
+      if (schema) {
+        result.nodes.forEach((node: any) => {
+          const table = schema.tables.find(t => t.id === node.id);
+          if (table) {
+            table.position = node.position;
+          }
+        });
+        onSchemaChange({ ...schema, updatedAt: new Date() });
+      }
       setIsLayouting(false);
     } catch (error) {
       console.error('Layout failed:', error);
       setIsLayouting(false);
     }
-  }, [nodes, edges, schema, setNodes]);
+  }, [memoizedNodes, memoizedEdges, schema, onSchemaChange]);
 
   // Apply smart layout
   const applySmartLayout = useCallback(async () => {
@@ -527,14 +601,23 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
 
     setIsLayouting(true);
     try {
-      const result = await ERDLayoutService.applySmartLayout(nodes, edges, schema);
-      setNodes(result.nodes);
+      const result = await ERDLayoutService.applySmartLayout(memoizedNodes, memoizedEdges, schema);
+      // Update schema with new positions
+      if (schema) {
+        result.nodes.forEach((node: any) => {
+          const table = schema.tables.find(t => t.id === node.id);
+          if (table) {
+            table.position = node.position;
+          }
+        });
+        onSchemaChange({ ...schema, updatedAt: new Date() });
+      }
       setIsLayouting(false);
     } catch (error) {
       console.error('Smart layout failed:', error);
       setIsLayouting(false);
     }
-  }, [nodes, edges, schema, setNodes]);
+  }, [memoizedNodes, memoizedEdges, schema, onSchemaChange]);
 
   // Get layout suggestions
   const getLayoutSuggestions = useCallback(() => {
@@ -564,10 +647,12 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
     try {
       const result = await ERDExportService.exportDiagram(
         container,
-        nodes,
-        edges,
-        schema,
-        exportOptions
+        {
+          nodes: memoizedNodes,
+          edges: memoizedEdges,
+          schema,
+          exportOptions
+        }
       );
 
       if (result.success) {
@@ -578,43 +663,8 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
     } catch (error) {
       console.error('Export error:', error);
     }
-  }, [schema, nodes, edges]);
+  }, [schema, memoizedNodes, memoizedEdges]);
 
-  // Update node data with display options
-  const updateNodeData = useCallback(() => {
-    setNodes(currentNodes => 
-      currentNodes.map(node => ({
-        ...node,
-        data: {
-          ...node.data,
-          theme: 'default',
-          showColumnTypes,
-          showConstraints,
-          compactMode
-        }
-      }))
-    );
-  }, [showColumnTypes, showConstraints, compactMode, setNodes]);
-
-  // Update edge data
-  const updateEdgeData = useCallback(() => {
-    setEdges(currentEdges => 
-      currentEdges.map(edge => ({
-        ...edge,
-        data: {
-          ...edge.data,
-          theme: 'default',
-          relationshipType: edge.data?.relationshipType || 'one-to-many'
-        }
-      }))
-    );
-  }, [setEdges]);
-
-  // Apply display changes
-  React.useEffect(() => {
-    updateNodeData();
-    updateEdgeData();
-  }, [updateNodeData, updateEdgeData]);
 
   // Handle node position changes
   const handleNodePositionChange = useCallback((nodeId: string, position: { x: number; y: number }) => {
@@ -720,13 +770,31 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
               <Database className="w-8 h-8 text-red-400" />
             </div>
             <h3 className="text-lg font-semibold text-white mb-2">No Project Selected</h3>
-            <p className="text-gray-300 mb-4">Please select a project to design database schemas</p>
-            <button
-              onClick={() => window.location.hash = '#projects'}
-              className="px-6 py-3 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
-            >
-              Select Project
-            </button>
+            <p className="text-gray-300 mb-4">Please upload a database or select a project to design database schemas</p>
+            <div className="flex space-x-4 justify-center">
+              <button
+                onClick={() => window.location.hash = '#projects'}
+                className="px-6 py-3 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+              >
+                Select Project
+              </button>
+              <button
+                onClick={() => {
+                  // Trigger the upload modal from the projects page
+                  window.location.hash = '#projects';
+                  // Small delay to ensure the projects page is loaded
+                  setTimeout(() => {
+                    const uploadButton = document.querySelector('[data-upload-trigger]') as HTMLButtonElement;
+                    if (uploadButton) {
+                      uploadButton.click();
+                    }
+                  }, 100);
+                }}
+                className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              >
+                Upload Database
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -918,7 +986,7 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
             <div className="flex items-center space-x-2">
               <span>{schema?.tables.length || 0} tables</span>
               <span>•</span>
-              <span>{edges.length} relationships</span>
+              <span>{memoizedEdges.length} relationships</span>
             </div>
             <button
               onClick={handleClearAll}
@@ -949,9 +1017,8 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
       {/* React Flow Canvas */}
       <div className="flex-1 relative bg-gray-900">
         <ReactFlow
-          key={nodeKey}
-          nodes={nodes}
-          edges={edges}
+          nodes={memoizedNodes}
+          edges={memoizedEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -960,6 +1027,15 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
           edgeTypes={edgeTypes}
           fitView
           attributionPosition="bottom-left"
+          deleteKeyCode={null}
+          multiSelectionKeyCode={null}
+          nodesDraggable={true}
+          nodesConnectable={true}
+          elementsSelectable={true}
+          proOptions={{ hideAttribution: true }}
+          minZoom={0.1}
+          maxZoom={2}
+          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         >
           <Controls />
           <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#374151" />
