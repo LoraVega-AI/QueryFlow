@@ -78,27 +78,83 @@ export function Projects() {
       console.log('🔄 Projects component: Loading projects...');
       const allProjects = await projectsManager.getAllProjects();
       console.log('📁 Projects component: Projects loaded:', allProjects.length, 'projects');
-      console.log('📁 Projects component: Project details:', allProjects.map(p => ({ 
+      
+      if (allProjects.length === 0) {
+        console.log('⚠️ No projects found, checking if this is expected...');
+        // Try to get projects directly from the database
+        try {
+          const directResponse = await fetch(`/api/projects?t=${Date.now()}`, {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          });
+          const directData = await directResponse.json();
+          if (directData.success && directData.data && directData.data.length > 0) {
+            console.log('📡 Found projects via direct API call:', directData.data.length);
+            allProjects = directData.data;
+          }
+        } catch (directError) {
+          console.log('⚠️ Direct API call also failed:', directError);
+        }
+      }
+      
+      // Ensure all projects have the required fields with proper fallbacks
+      const normalizedProjects = allProjects.map(project => ({
+        ...project,
+        totalTables: project.totalTables || project.schema?.tables?.length || 0,
+        totalRows: project.totalRows || 0,
+        hasForeignKeys: project.hasForeignKeys || false,
+        hasIndexes: project.hasIndexes || false,
+        databaseCount: project.databaseCount || 0,
+        status: project.status || 'disconnected',
+        icon: project.icon || '🗄️',
+        color: project.color || 'blue'
+      }));
+      
+      console.log('📁 Projects component: Normalized project details:', normalizedProjects.map(p => ({ 
         id: p.id, 
         name: p.name, 
         databaseCount: p.databaseCount,
-        totalTables: p.totalTables || 0,
-        totalRows: p.totalRows || 0,
+        totalTables: p.totalTables,
+        totalRows: p.totalRows,
+        hasForeignKeys: p.hasForeignKeys,
+        hasIndexes: p.hasIndexes,
         hasSchema: !!p.schema,
         schemaTables: p.schema?.tables?.length || 0
       })));
-      setProjects(allProjects);
+      
+      setProjects(normalizedProjects);
       setLastRefresh(new Date());
     } catch (error) {
       console.error('❌ Projects component: Failed to load projects:', error);
       // Try direct API call as fallback
       try {
         console.log('🔄 Projects component: Trying direct API call as fallback...');
-        const response = await fetch('/api/projects');
+        const response = await fetch(`/api/projects?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
         const data = await response.json();
         console.log('📡 Projects component: API response:', data);
         if (data.success && data.data) {
-          setProjects(data.data);
+          // Normalize the API data as well
+          const normalizedApiProjects = data.data.map((project: any) => ({
+            ...project,
+            totalTables: project.totalTables || project.schema?.tables?.length || 0,
+            totalRows: project.totalRows || 0,
+            hasForeignKeys: project.hasForeignKeys || false,
+            hasIndexes: project.hasIndexes || false,
+            databaseCount: project.databaseCount || 0,
+            status: project.status || 'disconnected',
+            icon: project.icon || '🗄️',
+            color: project.color || 'blue'
+          }));
+          setProjects(normalizedApiProjects);
           setLastRefresh(new Date());
           console.log('✅ Projects component: Projects loaded via API fallback');
         }
@@ -150,8 +206,18 @@ export function Projects() {
 
   const handleRealtimeError = useCallback((error: Event) => {
     console.error('Real-time connection error:', error);
+    console.error('Error type:', error.type);
+    console.error('Error target:', error.target);
+    
     setRealtimeConnected(false);
-    showNotification('error', 'Real-time connection lost. Using fallback polling.');
+    
+    // Only show notification for actual connection errors, not during reconnection
+    if (error.type === 'error' && error.target instanceof EventSource) {
+      const eventSource = error.target as EventSource;
+      if (eventSource.readyState === EventSource.CLOSED) {
+        showNotification('warning', 'Real-time connection lost. Using fallback polling.');
+      }
+    }
   }, [showNotification]);
 
   // Set up real-time updates
@@ -215,10 +281,22 @@ export function Projects() {
     };
   }, [loadProjects, showNotification]);
 
+  // Force refresh on component mount to clear stale state
+  useEffect(() => {
+    console.log('🔄 Component mounted, forcing fresh data load...');
+    // Add a small delay to ensure the server is ready
+    const timer = setTimeout(() => {
+      loadProjects(true);
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, []);
+
   // Auto-refresh every 30 seconds (fallback when real-time is not available)
   useEffect(() => {
     if (!realtimeConnected) {
       const interval = setInterval(() => {
+        console.log('🔄 Auto-refresh triggered (polling mode)');
         loadProjects();
       }, 30000);
 
@@ -513,6 +591,18 @@ export function Projects() {
                 <span className="text-xs text-gray-500">
                   {realtimeConnected ? 'Real-time connected' : 'Polling mode'}
                 </span>
+                {!realtimeConnected && (
+                  <button
+                    onClick={() => {
+                      console.log('Manual reconnection attempt...');
+                      connectRealtime();
+                    }}
+                    className="text-xs text-blue-500 hover:text-blue-700 underline"
+                    title="Click to retry real-time connection"
+                  >
+                    Retry
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -526,7 +616,10 @@ export function Projects() {
               Upload Project
             </button>
             <button
-              onClick={() => loadProjects(true)}
+              onClick={() => {
+                console.log('🔄 Manual refresh triggered');
+                loadProjects(true);
+              }}
               disabled={isRefreshing}
               className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >

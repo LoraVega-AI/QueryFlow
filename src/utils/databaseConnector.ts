@@ -5,19 +5,25 @@ import { SchemaIntrospectionService } from '@/services/schemaIntrospectionServic
 import { DatabaseSchema } from '@/types/database';
 
 export class DatabaseConnector {
-  static async testConnection(type: string, config: any): Promise<{ success: boolean; error?: string }> {
+  static async testConnection(type: string, config: any): Promise<{ success: boolean; error?: string; latency?: number }> {
+    const startTime = Date.now();
+    
     try {
       // For now, we'll assume all SQLite files are valid
       // In a real implementation, this would test the actual connection
       if (type === 'sqlite') {
-        return { success: true };
+        const latency = Date.now() - startTime;
+        return { success: true, latency };
       }
       
-      return { success: false, error: 'Unsupported database type' };
+      const latency = Date.now() - startTime;
+      return { success: false, error: 'Unsupported database type', latency };
     } catch (error) {
+      const latency = Date.now() - startTime;
       return { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        latency
       };
     }
   }

@@ -18,6 +18,7 @@ import {
   TestTube,
   Zap,
   Shield,
+  Search,
   Clock,
   Server,
   FileText,
@@ -66,7 +67,8 @@ const DATABASE_ICONS: Record<DatabaseType, string> = {
   redis: '🔴',
   dynamodb: '⚡',
   oracle: '🔶',
-  sqlserver: '🔷'
+  sqlserver: '🔷',
+  unknown: '❓'
 };
 
 const DATABASE_NAMES: Record<DatabaseType, string> = {
@@ -77,7 +79,8 @@ const DATABASE_NAMES: Record<DatabaseType, string> = {
   redis: 'Redis',
   dynamodb: 'DynamoDB',
   oracle: 'Oracle',
-  sqlserver: 'SQL Server'
+  sqlserver: 'SQL Server',
+  unknown: 'Unknown'
 };
 
 const STATUS_CONFIG = {
@@ -392,8 +395,20 @@ export function DatabaseLinker({
           <div className="flex items-center">
             <div className="text-2xl mr-3">{DATABASE_ICONS[database.type]}</div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">{database.name}</h3>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-lg font-semibold text-gray-900">{database.name}</h3>
+                {database.name.includes('_schema') || database.name.includes('extracted') ? (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    Auto-Created
+                  </span>
+                ) : null}
+              </div>
               <p className="text-sm text-gray-600">{DATABASE_NAMES[database.type]}</p>
+              {database.tableCount && (
+                <p className="text-xs text-gray-500">
+                  {database.tableCount} tables, {database.totalRows || 0} rows
+                </p>
+              )}
             </div>
           </div>
 
@@ -566,7 +581,7 @@ export function DatabaseLinker({
             </div>
             <div className="text-xs text-blue-700 space-y-1">
               <div>Tables: {schema.tables.length}</div>
-              <div>Relationships: {schema.relationships.length}</div>
+              <div>Columns: {schema.tables.reduce((sum, table) => sum + table.columns.length, 0)}</div>
             </div>
           </div>
         )}
@@ -621,6 +636,19 @@ export function DatabaseLinker({
               >
                 <Database className="w-3 h-3 mr-1" />
                 Load Schema
+              </button>
+            )}
+
+            {(database.name.includes('_schema') || database.name.includes('extracted')) && database.isConnected && (
+              <button
+                onClick={() => {
+                  // Navigate to query interface with this database pre-selected
+                  window.location.href = `/?tab=query&database=${database.id}`;
+                }}
+                className="inline-flex items-center px-3 py-1 bg-orange-600 text-white text-sm rounded hover:bg-orange-700"
+              >
+                <Search className="w-3 h-3 mr-1" />
+                Query Now
               </button>
             )}
           </div>

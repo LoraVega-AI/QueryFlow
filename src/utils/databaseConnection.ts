@@ -439,6 +439,10 @@ class ApplicationDataManager {
         status TEXT DEFAULT 'disconnected',
         last_synced TEXT,
         database_count INTEGER DEFAULT 0,
+        total_tables INTEGER DEFAULT 0,
+        total_rows INTEGER DEFAULT 0,
+        has_foreign_keys INTEGER DEFAULT 0,
+        has_indexes INTEGER DEFAULT 0,
         icon TEXT,
         color TEXT,
         is_example INTEGER DEFAULT 0,
@@ -447,6 +451,9 @@ class ApplicationDataManager {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Add new columns to existing projects table if they don't exist
+    await this.migrateProjectsTable();
 
     // Databases table
     await this.appDb.exec(`
@@ -492,6 +499,69 @@ class ApplicationDataManager {
     console.log('Application database tables created');
   }
 
+  private async migrateProjectsTable(): Promise<void> {
+    if (!this.appDb) return;
+
+    try {
+      console.log('🔄 Starting database migration...');
+      
+      // Check if new columns exist, if not add them
+      const tableInfo = await this.appDb.all("PRAGMA table_info(projects)");
+      const columnNames = tableInfo.map((col: any) => col.name);
+
+      const newColumns = [
+        { name: 'total_tables', type: 'INTEGER DEFAULT 0' },
+        { name: 'total_rows', type: 'INTEGER DEFAULT 0' },
+        { name: 'has_foreign_keys', type: 'INTEGER DEFAULT 0' },
+        { name: 'has_indexes', type: 'INTEGER DEFAULT 0' }
+      ];
+
+      let migrationNeeded = false;
+      for (const column of newColumns) {
+        if (!columnNames.includes(column.name)) {
+          console.log(`➕ Adding column ${column.name} to projects table`);
+          await this.appDb.exec(`ALTER TABLE projects ADD COLUMN ${column.name} ${column.type}`);
+          migrationNeeded = true;
+        }
+      }
+
+      if (migrationNeeded) {
+        console.log('✅ Database schema updated with new columns');
+      }
+
+      // Update ALL existing projects with calculated values from schema_data
+      console.log('🔄 Updating existing projects with calculated values...');
+      const projects = await this.appDb.all('SELECT id, schema_data FROM projects');
+      let updatedCount = 0;
+      
+      for (const project of projects) {
+        try {
+          const schema = JSON.parse(project.schema_data || '{}');
+          const totalTables = schema?.tables?.length || 0;
+          const totalRows = schema?.tables?.reduce((sum: number, table: any) => sum + (table.rowCount || 0), 0) || 0;
+          const hasForeignKeys = (schema?.relationships?.length || 0) > 0;
+          const hasIndexes = (schema?.indexes?.length || 0) > 0;
+
+          await this.appDb.run(
+            'UPDATE projects SET total_tables = ?, total_rows = ?, has_foreign_keys = ?, has_indexes = ? WHERE id = ?',
+            [totalTables, totalRows, hasForeignKeys ? 1 : 0, hasIndexes ? 1 : 0, project.id]
+          );
+
+          if (totalTables > 0) {
+            console.log(`✅ Updated project ${project.id}: ${totalTables} tables, ${totalRows} rows`);
+            updatedCount++;
+          }
+        } catch (error) {
+          console.warn(`⚠️ Failed to update project ${project.id}:`, error);
+        }
+      }
+      
+      console.log(`🎯 Migration completed: Updated ${updatedCount} projects with table data`);
+    } catch (error) {
+      console.error('❌ Migration failed:', error);
+    }
+  }
+
   // Project operations
   async saveProject(project: any): Promise<void> {
     if (!this.appDb) await this.initialize();
@@ -500,10 +570,19 @@ class ApplicationDataManager {
     const schemaData = JSON.stringify(project.schema || {});
     const now = new Date().toISOString();
 
+    console.log('💾 Saving project to database:', {
+      id: project.id,
+      name: project.name,
+      totalTables: project.totalTables,
+      schemaTablesCount: project.schema?.tables?.length || 0,
+      schemaExists: !!project.schema,
+      schemaDataLength: schemaData.length
+    });
+
     await this.appDb.run(`
       INSERT OR REPLACE INTO projects
-      (id, name, description, technology, status, last_synced, database_count, icon, color, is_example, schema_data, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, description, technology, status, last_synced, database_count, total_tables, total_rows, has_foreign_keys, has_indexes, icon, color, is_example, schema_data, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       project.id,
       project.name,
@@ -512,6 +591,10 @@ class ApplicationDataManager {
       project.status || 'disconnected',
       project.lastSynced || null,
       project.databaseCount || 0,
+      project.totalTables || 0,
+      project.totalRows || 0,
+      project.hasForeignKeys ? 1 : 0,
+      project.hasIndexes ? 1 : 0,
       project.icon || '',
       project.color || '',
       project.isExample ? 1 : 0,
@@ -532,6 +615,10 @@ class ApplicationDataManager {
       schema: JSON.parse(row.schema_data || '{}'),
       isExample: row.is_example === 1,
       databaseCount: row.database_count,
+      totalTables: row.total_tables || 0,
+      totalRows: row.total_rows || 0,
+      hasForeignKeys: row.has_foreign_keys === 1,
+      hasIndexes: row.has_indexes === 1,
       lastSynced: row.last_synced
     };
   }
@@ -541,13 +628,54 @@ class ApplicationDataManager {
     if (!this.appDb) return []; // SQLite not available
 
     const rows = await this.appDb.all('SELECT * FROM projects ORDER BY updated_at DESC');
-    return rows.map((row: any) => ({
-      ...row,
-      schema: JSON.parse(row.schema_data || '{}'),
-      isExample: row.is_example === 1,
-      databaseCount: row.database_count,
-      lastSynced: row.last_synced
-    }));
+    const projects = rows.map((row: any) => {
+      const schema = JSON.parse(row.schema_data || '{}');
+      
+      // Calculate table count from schema if not stored in database
+      const schemaTableCount = schema?.tables?.length || 0;
+      const dbTableCount = row.total_tables || 0;
+      const finalTableCount = dbTableCount > 0 ? dbTableCount : schemaTableCount;
+      
+      // Calculate total rows from schema if not stored in database
+      const schemaTotalRows = schema?.tables?.reduce((sum: number, table: any) => sum + (table.rowCount || 0), 0) || 0;
+      const dbTotalRows = row.total_rows || 0;
+      const finalTotalRows = dbTotalRows > 0 ? dbTotalRows : schemaTotalRows;
+      
+      // Calculate foreign keys and indexes from schema if not stored in database
+      const schemaHasForeignKeys = (schema?.relationships?.length || 0) > 0;
+      const schemaHasIndexes = (schema?.indexes?.length || 0) > 0;
+      const dbHasForeignKeys = row.has_foreign_keys === 1;
+      const dbHasIndexes = row.has_indexes === 1;
+      
+      return {
+        ...row,
+        schema: schema,
+        isExample: row.is_example === 1,
+        databaseCount: row.database_count || 0,
+        totalTables: finalTableCount,
+        totalRows: finalTotalRows,
+        hasForeignKeys: dbHasForeignKeys || schemaHasForeignKeys,
+        hasIndexes: dbHasIndexes || schemaHasIndexes,
+        lastSynced: row.last_synced,
+        // Ensure these fields are always present
+        icon: row.icon || '🗄️',
+        color: row.color || 'blue',
+        status: row.status || 'disconnected'
+      };
+    });
+
+    console.log('📋 Retrieved projects from database:', projects.map(p => ({
+      id: p.id,
+      name: p.name,
+      totalTables: p.totalTables,
+      totalRows: p.totalRows,
+      schemaTablesCount: p.schema?.tables?.length || 0,
+      schemaExists: !!p.schema,
+      hasForeignKeys: p.hasForeignKeys,
+      hasIndexes: p.hasIndexes
+    })));
+
+    return projects;
   }
 
   async deleteProject(projectId: string): Promise<void> {
@@ -1334,3 +1462,4 @@ export class DatabaseConnectionManager {
 
 // Export singleton instance
 export const dbConnectionManager = DatabaseConnectionManager.getInstance();
+

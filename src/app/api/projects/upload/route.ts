@@ -10,6 +10,9 @@ import { pipeline } from 'stream/promises';
 import { createGunzip } from 'zlib';
 import { createUnzip } from 'zlib';
 import { broadcastMessage } from '@/utils/realtimeBroadcast';
+import { AdvancedProjectScanner } from '@/services/advancedProjectScanner';
+import { SchemaToDatabaseService } from '@/services/schemaToDatabaseService';
+import { AutoConnectionService } from '@/services/autoConnectionService';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,11 +21,31 @@ export async function POST(request: NextRequest) {
     const files = formData.getAll('files') as File[];
     const projectName = formData.get('projectName') as string;
     const projectDescription = formData.get('projectDescription') as string;
+    const advancedScanning = formData.get('advancedScanning') === 'true';
+    const scanOptionsStr = formData.get('scanOptions') as string;
 
     console.log('📁 Files received:', files.length);
     console.log('📁 File details:', files.map(f => ({ name: f.name, size: f.size, type: f.type })));
     console.log('📝 Project name:', projectName);
     console.log('📝 Project description:', projectDescription);
+    console.log('🔍 Advanced scanning:', advancedScanning);
+    
+    // Parse scan options
+    let scanOptions = {
+      includeHidden: false,
+      maxDepth: 5,
+      ignorePatterns: ['node_modules', '.git', 'dist', 'build', '__pycache__'],
+      scanTimeout: 30000
+    };
+    
+    if (scanOptionsStr) {
+      try {
+        scanOptions = { ...scanOptions, ...JSON.parse(scanOptionsStr) };
+        console.log('🔍 Scan options:', scanOptions);
+      } catch (error) {
+        console.warn('⚠️ Failed to parse scan options:', error);
+      }
+    }
     
     // Log all form data entries
     console.log('📋 All form data entries:');
@@ -61,58 +84,257 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Detect project type and databases
-    console.log('🔍 Detecting project type...');
-    const detectionResult = detectProjectType(filePaths);
-    console.log('📋 Project type detected:', detectionResult);
+    let projectData: any;
+    let databaseFiles: any[] = [];
+    let extractedSchemas: any[] = [];
+    let detectionResult: any = { projectName: 'Unknown', projectType: 'unknown' };
+
+    if (advancedScanning) {
+      // Use advanced project scanner
+      console.log('🔍 Starting advanced project scanning...');
+      const scanner = new AdvancedProjectScanner();
+      const scanResult = await scanner.scanProject(uploadDir, scanOptions);
+      
+      console.log('📊 Advanced scan results:', {
+        projectName: scanResult.projectName,
+        projectType: scanResult.projectType,
+        confidence: scanResult.confidence,
+        extractedSchemas: scanResult.extractedSchemas.length,
+        databaseFiles: scanResult.databaseFiles.length,
+        configFiles: scanResult.configFiles.length,
+        totalFiles: scanResult.totalFiles,
+        processedFiles: scanResult.processedFiles,
+        errors: scanResult.errors.length
+      });
+
+      detectionResult = {
+        projectName: scanResult.projectName,
+        projectType: scanResult.projectType
+      };
+
+      databaseFiles = scanResult.databaseFiles;
+      extractedSchemas = scanResult.extractedSchemas;
+
+      // Convert extracted schemas to actual SQLite database files
+      if (extractedSchemas.length > 0) {
+        console.log('🔄 Converting extracted schemas to actual databases...');
+        const schemaToDbService = SchemaToDatabaseService.getInstance();
+        
+        try {
+          const dbCreationResults = await schemaToDbService.convertSchemasToDatabases(
+            extractedSchemas,
+            `project_${Date.now()}`,
+            projectName || scanResult.projectName,
+            uploadDir
+          );
+          
+          console.log(`✅ Created ${dbCreationResults.length} database files from schemas`);
+          
+          // Add the created databases to databaseFiles
+          const createdDatabases = [];
+          for (const result of dbCreationResults) {
+            if (result.success) {
+              const dbConnection = schemaToDbService.createDatabaseConnection(
+                result.databasePath,
+                result.databaseName,
+                `project_${Date.now()}`,
+                projectName || scanResult.projectName
+              );
+              
+              // Test the created database to get schema info
+              const testResult = await testDatabaseFile(result.databasePath);
+              if (testResult.success) {
+                dbConnection.tables = testResult.tables || [];
+                dbConnection.schema = testResult.schema || null;
+                dbConnection.tableCount = testResult.tables?.length || 0;
+                dbConnection.totalRows = testResult.tables?.reduce((sum, table) => sum + (table.rowCount || 0), 0) || 0;
+                dbConnection.hasForeignKeys = testResult.tables?.some(table => table.relationships?.length > 0) || false;
+                dbConnection.hasIndexes = testResult.tables?.some(table => table.indexes?.length > 0) || false;
+                dbConnection.isConnected = false;
+                dbConnection.lastSync = null;
+                dbConnection.status = 'ready';
+              }
+              
+              databaseFiles.push(dbConnection);
+              createdDatabases.push(dbConnection);
+              console.log(`✅ Added database connection: ${dbConnection.name}`);
+            } else {
+              console.warn(`❌ Failed to create database for schema: ${result.databaseName} - ${result.error}`);
+            }
+          }
+
+          // Auto-connect to the created databases
+          if (createdDatabases.length > 0) {
+            console.log('🔄 Auto-connecting to created databases...');
+            const autoConnectionService = AutoConnectionService.getInstance();
+            const projectId = `project_${Date.now()}`;
+            
+            try {
+              const connectionResults = await autoConnectionService.autoConnectMultipleDatabases(
+                createdDatabases,
+                projectId,
+                projectName || scanResult.projectName
+              );
+              
+              const successfulConnections = connectionResults.filter(r => r.success).length;
+              console.log(`✅ Auto-connected to ${successfulConnections}/${connectionResults.length} databases`);
+              
+              // Update database status based on connection results
+              for (let i = 0; i < databaseFiles.length; i++) {
+                const dbFile = databaseFiles[i];
+                const connectionResult = connectionResults.find(r => r.databaseName === dbFile.name);
+                if (connectionResult) {
+                  dbFile.isConnected = connectionResult.success;
+                  dbFile.connectionId = connectionResult.connectionId;
+                  if (connectionResult.success) {
+                    dbFile.status = 'connected';
+                  } else {
+                    dbFile.status = 'error';
+                    dbFile.error = connectionResult.error;
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('❌ Error auto-connecting to databases:', error);
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error converting schemas to databases:', error);
+          // Continue with the upload even if schema conversion fails
+        }
+      }
+
+      // Merge schemas from all sources
+      const allTables = [
+        ...databaseFiles.flatMap(db => db.tables || db.schema?.tables || []),
+        ...extractedSchemas.flatMap(schema => schema.tables || [])
+      ];
+      const allRelationships = [
+        ...databaseFiles.flatMap(db => db.schema?.relationships || []),
+        ...extractedSchemas.flatMap(schema => schema.relationships || [])
+      ];
+      const allIndexes = [
+        ...databaseFiles.flatMap(db => db.schema?.indexes || []),
+        ...extractedSchemas.flatMap(schema => schema.indexes || [])
+      ];
+
+      console.log('📊 Schema merging debug:', {
+        databaseFilesCount: databaseFiles.length,
+        extractedSchemasCount: extractedSchemas.length,
+        allTablesCount: allTables.length,
+        databaseFilesTables: databaseFiles.map(db => ({
+          name: db.name,
+          tablesCount: db.tables?.length || 0,
+          schemaTablesCount: db.schema?.tables?.length || 0,
+          hasTables: !!db.tables,
+          hasSchemaTables: !!db.schema?.tables
+        }))
+      });
+
+      // Create comprehensive schema
+      const mergedSchema = {
+        id: `schema_${Date.now()}`,
+        name: `${projectName || scanResult.projectName} Schema`,
+        tables: allTables,
+        relationships: allRelationships,
+        indexes: allIndexes,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 1,
+        confidence: scanResult.confidence,
+        sources: {
+          databaseFiles: databaseFiles.length,
+          extractedSchemas: extractedSchemas.length,
+          configFiles: scanResult.configFiles.length
+        }
+      };
+
+      projectData = {
+        id: `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: projectName || scanResult.projectName,
+        description: projectDescription,
+        technology: scanResult.projectType,
+        uploadPath: uploadDir,
+        uploadDate: new Date(),
+        databases: databaseFiles,
+        extractedSchemas: extractedSchemas,
+        configFiles: scanResult.configFiles,
+        schema: mergedSchema,
+        scanResults: {
+          totalFiles: scanResult.totalFiles,
+          processedFiles: scanResult.processedFiles,
+          confidence: scanResult.confidence,
+          errors: scanResult.errors
+        }
+      };
+    } else {
+      // Use legacy detection for backward compatibility
+      console.log('🔍 Using legacy project detection...');
+      detectionResult = detectProjectType(filePaths);
+      console.log('📋 Project type detected:', detectionResult);
+      
+      // Extract and analyze database files from the upload directory
+      console.log('🗄️ Extracting database files...');
+      databaseFiles = await extractDatabaseFiles(uploadDir);
+      console.log('📊 Found database files:', databaseFiles.length);
+      
+      // Merge schemas from all databases
+      const allTables = databaseFiles.flatMap(db => db.tables || []);
+      const allRelationships = databaseFiles.flatMap(db => db.schema?.relationships || []);
+      const allIndexes = databaseFiles.flatMap(db => db.schema?.indexes || []);
+
+      console.log('📊 Legacy schema merging debug:', {
+        databaseFilesCount: databaseFiles.length,
+        allTablesCount: allTables.length,
+        databaseFilesTables: databaseFiles.map(db => ({
+          name: db.name,
+          tablesCount: db.tables?.length || 0,
+          schemaTablesCount: db.schema?.tables?.length || 0,
+          hasTables: !!db.tables,
+          hasSchemaTables: !!db.schema?.tables
+        }))
+      });
+      
+      // Create comprehensive schema
+      const mergedSchema = {
+        id: `schema_${Date.now()}`,
+        name: `${projectName || 'Uploaded Project'} Schema`,
+        tables: allTables,
+        relationships: allRelationships,
+        indexes: allIndexes,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 1
+      };
+
+      projectData = {
+        id: `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: projectName || detectionResult.projectName,
+        description: projectDescription,
+        technology: detectionResult.projectType,
+        uploadPath: uploadDir,
+        uploadDate: new Date(),
+        databases: databaseFiles,
+        schema: mergedSchema
+      };
+    }
     
-    // Extract and analyze database files from the upload directory
-    console.log('🗄️ Extracting database files...');
-    const databaseFiles = await extractDatabaseFiles(uploadDir);
-    console.log('📊 Found database files:', databaseFiles.length);
-    
-    // Create project with database information
-    console.log('🏗️ Creating project object...');
-    
-    // Merge schemas from all databases
-    const allTables = databaseFiles.flatMap(db => db.tables || []);
-    const allRelationships = databaseFiles.flatMap(db => db.schema?.relationships || []);
-    const allIndexes = databaseFiles.flatMap(db => db.schema?.indexes || []);
-    
-    // Create comprehensive schema
-    const mergedSchema = {
-      id: `schema_${Date.now()}`,
-      name: `${projectName || 'Uploaded Project'} Schema`,
-      tables: allTables,
-      relationships: allRelationships,
-      indexes: allIndexes,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      version: 1
-    };
-    
+    // Use the projectData we created above
     const project = {
-      id: `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: projectName || detectionResult.projectName || 'Uploaded Project',
-      description: projectDescription || `Database project with ${databaseFiles.length} file(s) uploaded via QueryFlow`,
-      technology: 'sqlite',
+      ...projectData,
       status: 'disconnected',
       lastSynced: null,
       databaseCount: databaseFiles.length,
       icon: '🗄️',
       color: 'blue',
       isExample: false,
-      databases: databaseFiles,
-      schema: mergedSchema,
-      tables: allTables,
       queries: [],
-      uploadPath: uploadDir,
       originalFiles: filePaths,
       // Additional metadata
-      totalTables: allTables.length,
+      totalTables: projectData.schema?.tables?.length || 0,
       totalRows: databaseFiles.reduce((sum, db) => sum + (db.totalRows || 0), 0),
-      hasForeignKeys: allRelationships.length > 0,
-      hasIndexes: allIndexes.length > 0,
+      hasForeignKeys: (projectData.schema?.relationships?.length || 0) > 0,
+      hasIndexes: (projectData.schema?.indexes?.length || 0) > 0,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -122,7 +344,11 @@ export async function POST(request: NextRequest) {
       name: project.name,
       technology: project.technology,
       databaseCount: project.databaseCount,
-      databases: project.databases.length
+      databases: project.databases.length,
+      totalTables: project.totalTables,
+      schemaTablesCount: projectData.schema?.tables?.length || 0,
+      schemaExists: !!projectData.schema,
+      schemaTables: projectData.schema?.tables?.map(t => t.name) || []
     });
 
     // Save project to database

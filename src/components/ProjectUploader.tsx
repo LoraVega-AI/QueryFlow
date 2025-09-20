@@ -55,6 +55,8 @@ const PROJECT_TYPE_ICONS: Record<ProjectType, string> = {
   nextjs: '▲',
   express: '🚀',
   php: '🐘',
+  local: '💻',
+  github: '🐙',
   unknown: '❓'
 };
 
@@ -74,6 +76,8 @@ const PROJECT_TYPE_NAMES: Record<ProjectType, string> = {
   nextjs: 'Next.js',
   express: 'Express.js',
   php: 'PHP',
+  local: 'Local Project',
+  github: 'GitHub',
   unknown: 'Unknown'
 };
 
@@ -158,22 +162,42 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
 
   // Process selected/uploaded files
   const processFiles = async (files: File[]) => {
-    console.log('🚀 Starting file upload process with files:', files.map(f => f.name));
+    console.log('🚀 Starting advanced project upload process with files:', files.map(f => f.name));
     
-    // Validate file types
-    const validExtensions = ['.db', '.sqlite', '.sqlite3', '.db3', '.s3db', '.sl3'];
-    const invalidFiles = files.filter(file => {
+    // Check if this is a single zip file or multiple files
+    const isZipUpload = files.length === 1 && files[0].name.toLowerCase().endsWith('.zip');
+    const isProjectUpload = files.length > 1 || isZipUpload || files.some(f => 
+      f.name.toLowerCase().endsWith('.sql') || 
+      f.name.toLowerCase().endsWith('.js') ||
+      f.name.toLowerCase().endsWith('.ts') ||
+      f.name.toLowerCase().endsWith('.py') ||
+      f.name.toLowerCase().endsWith('.php') ||
+      f.name.toLowerCase().endsWith('.java') ||
+      f.name.toLowerCase().endsWith('.cs') ||
+      f.name.toLowerCase().endsWith('.rb') ||
+      f.name.toLowerCase().endsWith('.go') ||
+      f.name.toLowerCase().endsWith('.rs')
+    );
+
+    // For backward compatibility, still allow single database files
+    const isDatabaseUpload = files.length === 1 && files.every(file => {
       const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
-      return !validExtensions.includes(ext);
+      return ['.db', '.sqlite', '.sqlite3', '.db3', '.s3db', '.sl3'].includes(ext);
     });
 
-    if (invalidFiles.length > 0) {
+    if (!isProjectUpload && !isDatabaseUpload) {
       setUploadState(prev => ({
         ...prev,
         status: 'error',
         progress: 0,
         message: 'Invalid file types detected',
-        error: `Please upload only database files (.db, .sqlite, .sqlite3, .db3, .s3db, .sl3). Invalid files: ${invalidFiles.map(f => f.name).join(', ')}`
+        error: `Please upload either:
+        • Database files (.db, .sqlite, .sqlite3, .db3, .s3db, .sl3)
+        • Project folders (zipped or multiple files)
+        • Source code files (.js, .ts, .py, .php, .java, .cs, .rb, .go, .rs)
+        • SQL files (.sql)
+        
+        Invalid files: ${files.map(f => f.name).join(', ')}`
       }));
       return;
     }
@@ -181,7 +205,7 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
     setUploadState({
       status: 'uploading',
       progress: 10,
-      message: 'Uploading database files...',
+      message: isProjectUpload ? 'Uploading project files...' : 'Uploading database files...',
       files: files.map(f => f.name)
     });
 
@@ -195,9 +219,21 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
       });
       
       // Generate project name from first file
-      const projectName = files[0]?.name.replace(/\.[^/.]+$/, '') || 'Database Project';
+      const projectName = files[0]?.name.replace(/\.[^/.]+$/, '') || 'Project';
       formData.append('projectName', projectName);
-      formData.append('projectDescription', `Database project with ${files.length} file(s) uploaded via QueryFlow`);
+      formData.append('projectDescription', isProjectUpload ? 
+        `Project with ${files.length} file(s) uploaded via QueryFlow - Advanced scanning enabled` :
+        `Database project with ${files.length} file(s) uploaded via QueryFlow`
+      );
+      
+      // Add advanced scanning options
+      formData.append('advancedScanning', 'true');
+      formData.append('scanOptions', JSON.stringify({
+        includeHidden: uploadOptions.includeHidden,
+        maxDepth: uploadOptions.maxDepth,
+        ignorePatterns: uploadOptions.ignorePatterns,
+        scanTimeout: uploadOptions.scanTimeout
+      }));
       
       console.log('📤 FormData created, sending request...');
       console.log('📤 FormData entries:');
@@ -209,7 +245,7 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
         ...prev,
         status: 'detecting',
         progress: 30,
-        message: 'Analyzing database structure...'
+        message: isProjectUpload ? 'Scanning project files for database schemas...' : 'Analyzing database structure...'
       }));
 
       console.log('🌐 Making fetch request to /api/projects/upload...');
@@ -217,10 +253,17 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
       console.log('🌐 Request method: POST');
       console.log('🌐 FormData size:', formData.get('files') ? 'Files present' : 'No files');
       
+      // Add timeout and better error handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+      
       const uploadResponse = await fetch('/api/projects/upload', {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       console.log('🌐 Fetch request completed');
 
       console.log('Upload response status:', uploadResponse.status);
@@ -249,7 +292,7 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
         ...prev,
         status: 'detecting',
         progress: 70,
-        message: 'Extracting database schema...'
+        message: isProjectUpload ? 'Extracting and normalizing database schemas...' : 'Extracting database schema...'
       }));
 
       // Process the uploaded project data
@@ -265,7 +308,14 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
             filePath: db.connectionString || db.filePath,
             database: db.name
           },
-          status: db.status === 'ready' ? 'ready' : 'error'
+          status: db.isConnected ? 'connected' : (db.status === 'ready' ? 'ready' : 'error'),
+          isConnected: db.isConnected || false,
+          connectionId: db.connectionId,
+          tableCount: db.tableCount || 0,
+          totalRows: db.totalRows || 0,
+          hasForeignKeys: db.hasForeignKeys || false,
+          hasIndexes: db.hasIndexes || false,
+          error: db.error
         })),
         uploadPath: uploadData.data.uploadPath,
         projectId: uploadData.data.id,
@@ -281,11 +331,18 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
         projectId: result.projectId
       });
       
+      const schemaCount = uploadData.data.extractedSchemas?.length || 0;
+      const databaseCount = result.databases.length;
+      const connectedCount = result.databases.filter(db => db.isConnected).length;
+      const autoCreatedCount = result.databases.filter(db => db.name.includes('_schema') || db.name.includes('extracted')).length;
+      
       setUploadState(prev => ({
         ...prev,
         status: 'completed',
         progress: 100,
-        message: `Database uploaded successfully! Found ${result.databases.length} database(s) with schema information.`,
+        message: isProjectUpload ? 
+          `Project uploaded successfully! Found ${schemaCount} schema(s), created ${autoCreatedCount} database(s), and connected to ${connectedCount}/${databaseCount} database(s).` :
+          `Database uploaded successfully! Found ${databaseCount} database(s) with schema information.`,
         result
       }));
 
@@ -303,12 +360,25 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
       console.error('❌ Error message:', error instanceof Error ? error.message : 'Unknown error');
       console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');
       
+      let errorMessage = 'Unknown error';
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          errorMessage = 'Upload timed out. Please try again with smaller files or check your connection.';
+        } else if (error.message.includes('Failed to fetch')) {
+          errorMessage = 'Server is not responding. Please make sure the development server is running and try again.';
+        } else if (error.message.includes('TypeError')) {
+          errorMessage = 'Connection error. Please refresh the page and try again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       setUploadState(prev => ({
         ...prev,
         status: 'error',
         progress: 0,
-        message: 'Failed to upload database',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Upload Failed',
+        error: errorMessage
       }));
     }
   };
@@ -334,10 +404,10 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
               <Database className="w-8 h-8 text-orange-600" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Upload Database Files
+              Upload Project Files
             </h3>
             <p className="text-gray-600 mb-4">
-              Drag and drop SQLite database files or click to select
+              Drag and drop project files, databases, or click to select
             </p>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
               <div className="flex items-start space-x-2">
@@ -362,17 +432,32 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
               className="inline-flex items-center px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
             >
               <Database className="w-5 h-5 mr-2" />
-              Select Database Files
+              Select Files
             </button>
 
             <div className="text-sm text-gray-500">
-              <div className="font-medium mb-1">Supported formats:</div>
-              <div className="flex flex-wrap justify-center gap-2">
-                {['.db', '.sqlite', '.sqlite3', '.db3', '.s3db', '.sl3'].map(ext => (
-                  <span key={ext} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                    {ext}
-                  </span>
-                ))}
+              <div className="font-medium mb-2">Supported formats:</div>
+              <div className="space-y-2">
+                <div>
+                  <div className="text-xs font-medium text-gray-600 mb-1">Database files:</div>
+                  <div className="flex flex-wrap gap-1">
+                    {['.db', '.sqlite', '.sqlite3', '.db3', '.s3db', '.sl3'].map(ext => (
+                      <span key={ext} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                        {ext}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs font-medium text-gray-600 mb-1">Project files:</div>
+                  <div className="flex flex-wrap gap-1">
+                    {['.zip', '.sql', '.js', '.ts', '.py', '.php', '.java', '.cs', '.rb', '.go', '.rs'].map(ext => (
+                      <span key={ext} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                        {ext}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -455,9 +540,15 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
             Upload Failed
           </h3>
 
-          <p className="text-red-600 mb-4">
-            {uploadState.error}
-          </p>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+            <div className="flex items-start space-x-2">
+              <XCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-red-800 font-medium mb-1">Error Details:</p>
+                <p className="text-red-700 text-sm">{uploadState.error}</p>
+              </div>
+            </div>
+          </div>
 
           <button
             onClick={() => setUploadState({
@@ -635,7 +726,7 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
         className="hidden"
         onChange={handleFileInputChange}
         multiple
-        accept=".db,.sqlite,.sqlite3,.db3,.s3db,.sl3"
+        accept=".db,.sqlite,.sqlite3,.db3,.s3db,.sl3,.zip,.sql,.js,.ts,.py,.php,.java,.cs,.rb,.go,.rs"
       />
     </div>
   );

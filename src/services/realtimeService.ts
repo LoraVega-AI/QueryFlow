@@ -91,7 +91,23 @@ class RealtimeServiceImpl implements RealtimeService {
     };
 
     this.eventSource.onerror = (error) => {
-      console.error('Real-time connection error:', error);
+      // Only log errors that are not connection state changes
+      if (this.eventSource?.readyState === EventSource.CONNECTING) {
+        console.log('EventSource is connecting...');
+        return;
+      }
+      
+      if (this.eventSource?.readyState === EventSource.CLOSED) {
+        console.log('EventSource connection closed');
+        this.disconnectCallbacks.forEach(callback => callback());
+        return;
+      }
+      
+      // Only log actual errors, not connection state changes
+      if (error && error.type === 'error') {
+        console.warn('Real-time connection issue:', error.type);
+      }
+      
       this.handleError(error);
       
       if (!this.isManualDisconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
@@ -104,12 +120,13 @@ class RealtimeServiceImpl implements RealtimeService {
 
   private scheduleReconnect(): void {
     this.reconnectAttempts++;
-    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+    const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 30000); // Max 30 seconds
     
     console.log(`Scheduling reconnect attempt ${this.reconnectAttempts} in ${delay}ms`);
     
     this.reconnectTimeout = setTimeout(() => {
       if (!this.isManualDisconnect) {
+        console.log(`Attempting reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
         this.connect();
       }
     }, delay);

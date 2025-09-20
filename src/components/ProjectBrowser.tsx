@@ -27,7 +27,8 @@ import {
   BarChart3,
   Github as GitHubIcon,
   Server,
-  Activity
+  Activity,
+  Archive
 } from 'lucide-react';
 import { Project, ProjectType, ProjectStatus } from '@/types/project';
 
@@ -63,6 +64,8 @@ const PROJECT_TYPE_ICONS: Record<ProjectType, string> = {
   nextjs: '▲',
   express: '🚀',
   php: '🐘',
+  local: '💻',
+  github: '🐙',
   unknown: '❓'
 };
 
@@ -82,16 +85,22 @@ const PROJECT_TYPE_NAMES: Record<ProjectType, string> = {
   nextjs: 'Next.js',
   express: 'Express.js',
   php: 'PHP',
+  local: 'Local Project',
+  github: 'GitHub',
   unknown: 'Unknown'
 };
 
 const STATUS_CONFIG = {
-  detecting: { icon: Clock, color: 'text-blue-500', bg: 'bg-blue-50', label: 'Detecting' },
-  linking: { icon: RefreshCw, color: 'text-blue-500', bg: 'bg-blue-50', label: 'Linking' },
+  active: { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50', label: 'Active' },
+  inactive: { icon: AlertTriangle, color: 'text-yellow-500', bg: 'bg-yellow-50', label: 'Inactive' },
+  archived: { icon: Archive, color: 'text-gray-500', bg: 'bg-gray-50', label: 'Archived' },
+  draft: { icon: Edit, color: 'text-blue-500', bg: 'bg-blue-50', label: 'Draft' },
   connected: { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50', label: 'Connected' },
+  disconnected: { icon: AlertTriangle, color: 'text-yellow-500', bg: 'bg-yellow-50', label: 'Disconnected' },
   syncing: { icon: RefreshCw, color: 'text-blue-500', bg: 'bg-blue-50', label: 'Syncing' },
   error: { icon: XCircle, color: 'text-red-500', bg: 'bg-red-50', label: 'Error' },
-  disconnected: { icon: AlertTriangle, color: 'text-yellow-500', bg: 'bg-yellow-50', label: 'Disconnected' }
+  detecting: { icon: Clock, color: 'text-blue-500', bg: 'bg-blue-50', label: 'Detecting' },
+  linking: { icon: RefreshCw, color: 'text-blue-500', bg: 'bg-blue-50', label: 'Linking' }
 };
 
 export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect, onSyncProject }: ProjectBrowserProps) {
@@ -211,7 +220,7 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
         connectedProjects: mockProjects.filter(p => p.status === 'connected').length,
         syncingProjects: mockProjects.filter(p => p.status === 'syncing').length,
         errorProjects: mockProjects.filter(p => p.status === 'error').length,
-        totalDatabases: mockProjects.reduce((sum, p) => sum + p.databases.length, 0),
+        totalDatabases: mockProjects.reduce((sum, p) => sum + (p.databases?.length || 0), 0),
         activeSyncs: mockProjects.filter(p => p.status === 'syncing').length
       };
       setStats(stats);
@@ -284,7 +293,7 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
         break;
       case 'sync':
         // Start sync session for the project
-        if (project.databases.length > 0) {
+        if (project.databases && project.databases.length > 0) {
           try {
             const database = project.databases[0];
             // Import DatabaseSyncService dynamically to avoid circular dependencies
@@ -434,7 +443,7 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
 
           <div className="flex items-center justify-between text-xs text-gray-500 mb-4">
             <span>Last synced: {project.lastSyncedAt ? project.lastSyncedAt.toLocaleDateString() : 'Never'}</span>
-            <span>{project.databases.length} databases</span>
+            <span>{project.databases?.length || 0} databases</span>
           </div>
 
           <div className="flex items-center justify-between">

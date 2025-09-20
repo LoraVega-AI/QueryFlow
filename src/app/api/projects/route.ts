@@ -10,11 +10,20 @@ export async function GET() {
     await dbConnectionManager.initializeAppData();
     const projects = await dbConnectionManager.getAllProjects();
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       message: 'Projects retrieved successfully',
-      data: projects
+      data: projects,
+      timestamp: Date.now() // Add timestamp for cache busting
     });
+
+    // Add cache-busting headers
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    response.headers.set('Last-Modified', new Date().toUTCString());
+
+    return response;
   } catch (error: any) {
     console.error('Failed to get projects:', error);
     return NextResponse.json({

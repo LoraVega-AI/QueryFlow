@@ -56,6 +56,11 @@ export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
 
   const handleError = useCallback((error: Event) => {
     console.error('Real-time connection error:', error);
+    console.error('Error details:', {
+      type: error.type,
+      target: error.target,
+      readyState: (error.target as EventSource)?.readyState
+    });
     onError?.(error);
   }, [onError]);
 
