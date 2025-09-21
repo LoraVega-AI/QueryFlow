@@ -56,19 +56,27 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
       }
     }
     
-    // 3. Extract from JavaScript/TypeScript files (Sequelize, Mongoose, etc.)
+    // 3. Extract from JavaScript/TypeScript files using enhanced parsing
     const jsFiles = allFiles.filter(file => {
       const ext = path.extname(file).toLowerCase();
-      return ['.js', '.ts'].includes(ext);
+      return ['.js', '.ts', '.jsx', '.tsx'].includes(ext);
     });
     
     console.log(`📄 Found ${jsFiles.length} JS/TS files`);
     for (const filePath of jsFiles) {
       try {
-        const tables = await extractFromJSFile(filePath);
-        extractedTables.push(...tables);
-        if (tables.length > 0) {
-          console.log(`✅ Extracted ${tables.length} tables from JS/TS: ${path.basename(filePath)}`);
+        // Try enhanced introspection service first
+        const dbResult = await introspectionService.extractDatabaseContent(filePath);
+        if (dbResult && dbResult.tables) {
+          extractedTables.push(...dbResult.tables);
+          console.log(`✅ Enhanced extraction from ${path.basename(filePath)}: ${dbResult.tables.length} tables (${dbResult.databaseType})`);
+        } else {
+          // Fallback to old method
+          const tables = await extractFromJSFile(filePath);
+          extractedTables.push(...tables);
+          if (tables.length > 0) {
+            console.log(`✅ Fallback extraction from JS/TS: ${tables.length} tables from ${path.basename(filePath)}`);
+          }
         }
       } catch (error) {
         console.log(`⚠️ Failed to extract from JS/TS ${path.basename(filePath)}:`, error.message);
@@ -94,7 +102,7 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
       }
     }
 
-    // 5. Extract from Python files (Django, SQLAlchemy)
+    // 5. Extract from Python files using enhanced parsing
     const pyFiles = allFiles.filter(file => {
       const ext = path.extname(file).toLowerCase();
       return ['.py'].includes(ext);
@@ -103,13 +111,78 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
     console.log(`📄 Found ${pyFiles.length} Python files`);
     for (const filePath of pyFiles) {
       try {
-        const tables = await extractFromPythonFile(filePath);
-        extractedTables.push(...tables);
-        if (tables.length > 0) {
-          console.log(`✅ Extracted ${tables.length} tables from Python: ${path.basename(filePath)}`);
+        // Try enhanced introspection service first
+        const dbResult = await introspectionService.extractDatabaseContent(filePath);
+        if (dbResult && dbResult.tables) {
+          extractedTables.push(...dbResult.tables);
+          console.log(`✅ Enhanced extraction from ${path.basename(filePath)}: ${dbResult.tables.length} tables (${dbResult.databaseType})`);
+        } else {
+          // Fallback to old method
+          const tables = await extractFromPythonFile(filePath);
+          extractedTables.push(...tables);
+          if (tables.length > 0) {
+            console.log(`✅ Fallback extraction from Python: ${tables.length} tables from ${path.basename(filePath)}`);
+          }
         }
       } catch (error) {
         console.log(`⚠️ Failed to extract from Python ${path.basename(filePath)}:`, error.message);
+      }
+    }
+
+    // 6. Extract from PHP files (Laravel Eloquent)
+    const phpFiles = allFiles.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return ['.php'].includes(ext);
+    });
+    
+    console.log(`📄 Found ${phpFiles.length} PHP files`);
+    for (const filePath of phpFiles) {
+      try {
+        const dbResult = await introspectionService.extractDatabaseContent(filePath);
+        if (dbResult && dbResult.tables) {
+          extractedTables.push(...dbResult.tables);
+          console.log(`✅ Extracted from PHP ${path.basename(filePath)}: ${dbResult.tables.length} tables (${dbResult.databaseType})`);
+        }
+      } catch (error) {
+        console.log(`⚠️ Failed to extract from PHP ${path.basename(filePath)}:`, error.message);
+      }
+    }
+
+    // 7. Extract from Java files (Hibernate/JPA)
+    const javaFiles = allFiles.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return ['.java'].includes(ext);
+    });
+    
+    console.log(`📄 Found ${javaFiles.length} Java files`);
+    for (const filePath of javaFiles) {
+      try {
+        const dbResult = await introspectionService.extractDatabaseContent(filePath);
+        if (dbResult && dbResult.tables) {
+          extractedTables.push(...dbResult.tables);
+          console.log(`✅ Extracted from Java ${path.basename(filePath)}: ${dbResult.tables.length} tables (${dbResult.databaseType})`);
+        }
+      } catch (error) {
+        console.log(`⚠️ Failed to extract from Java ${path.basename(filePath)}:`, error.message);
+      }
+    }
+
+    // 8. Extract from C# files (Entity Framework)
+    const csFiles = allFiles.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return ['.cs'].includes(ext);
+    });
+    
+    console.log(`📄 Found ${csFiles.length} C# files`);
+    for (const filePath of csFiles) {
+      try {
+        const dbResult = await introspectionService.extractDatabaseContent(filePath);
+        if (dbResult && dbResult.tables) {
+          extractedTables.push(...dbResult.tables);
+          console.log(`✅ Extracted from C# ${path.basename(filePath)}: ${dbResult.tables.length} tables (${dbResult.databaseType})`);
+        }
+      } catch (error) {
+        console.log(`⚠️ Failed to extract from C# ${path.basename(filePath)}:`, error.message);
       }
     }
     

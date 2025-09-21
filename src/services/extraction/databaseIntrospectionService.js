@@ -11,7 +11,36 @@ class DatabaseIntrospectionService {
       prisma: ['.prisma'],
       json: ['.json'],
       bson: ['.bson'],
-      yaml: ['.yaml', '.yml']
+      yaml: ['.yaml', '.yml'],
+      javascript: ['.js', '.jsx'],
+      typescript: ['.ts', '.tsx'],
+      python: ['.py'],
+      php: ['.php'],
+      java: ['.java'],
+      csharp: ['.cs']
+    };
+    
+    this.frameworkPatterns = {
+      typeorm: {
+        entityDecorator: /@Entity\s*\(\s*[^)]*\s*\)/g,
+        columnDecorator: /@Column\s*\(\s*[^)]*\s*\)/g,
+        primaryColumn: /@PrimaryGeneratedColumn\s*\(\s*[^)]*\s*\)/g,
+        oneToMany: /@OneToMany\s*\(\s*[^)]*\s*\)/g,
+        manyToOne: /@ManyToOne\s*\(\s*[^)]*\s*\)/g
+      },
+      eloquent: {
+        modelClass: /class\s+(\w+)\s+extends\s+Model/g,
+        table: /protected\s+\$table\s*=\s*['"]([^'"]+)['"]/g,
+        fillable: /protected\s+\$fillable\s*=\s*\[([\s\S]*?)\]/g,
+        casts: /protected\s+\$casts\s*=\s*\[([\s\S]*?)\]/g
+      },
+      hibernate: {
+        entityAnnotation: /@Entity\s*(?:\([^)]*\))?/g,
+        tableAnnotation: /@Table\s*\(\s*name\s*=\s*"([^"]+)"/g,
+        columnAnnotation: /@Column\s*(?:\([^)]*\))?/g,
+        idAnnotation: /@Id/g,
+        generatedValue: /@GeneratedValue/g
+      }
     };
   }
 
@@ -37,6 +66,16 @@ class DatabaseIntrospectionService {
         return await this.parseBSONData(filePath);
       } else if (this.supportedExtensions.yaml.includes(ext)) {
         return await this.parseYAMLConfig(filePath);
+      } else if (this.supportedExtensions.typescript.includes(ext) || this.supportedExtensions.javascript.includes(ext)) {
+        return await this.parseCodeFile(filePath, 'javascript');
+      } else if (this.supportedExtensions.python.includes(ext)) {
+        return await this.parseCodeFile(filePath, 'python');
+      } else if (this.supportedExtensions.php.includes(ext)) {
+        return await this.parseCodeFile(filePath, 'php');
+      } else if (this.supportedExtensions.java.includes(ext)) {
+        return await this.parseCodeFile(filePath, 'java');
+      } else if (this.supportedExtensions.csharp.includes(ext)) {
+        return await this.parseCodeFile(filePath, 'csharp');
       }
 
       return null;
@@ -626,7 +665,328 @@ class DatabaseIntrospectionService {
     return 'sql';
   }
 
-  // Placeholder methods for other file types
+  /**
+   * Enhanced code file parsing for all supported languages and frameworks
+   */
+  async parseCodeFile(filePath, language) {
+    try {
+      console.log(`📊 Parsing ${language} code file: ${path.basename(filePath)}`);
+      
+      const content = await fs.readFile(filePath, 'utf-8');
+      const fileName = path.basename(filePath, path.extname(filePath));
+      
+      const tables = [];
+      
+      // Detect framework based on content
+      const framework = this.detectFramework(content, language);
+      console.log(`🔍 Detected framework: ${framework}`);
+      
+      switch (framework) {
+        case 'typeorm':
+          tables.push(...await this.parseTypeORMEntities(content, filePath));
+          break;
+        case 'sequelize':
+          tables.push(...await this.parseSequelizeModels(content, filePath));
+          break;
+        case 'mongoose':
+          tables.push(...await this.parseMongooseSchemas(content, filePath));
+          break;
+        case 'eloquent':
+          tables.push(...await this.parseEloquentModels(content, filePath));
+          break;
+        case 'hibernate':
+          tables.push(...await this.parseHibernateEntities(content, filePath));
+          break;
+        case 'django':
+          tables.push(...await this.parseDjangoModels(content, filePath));
+          break;
+        default:
+          // Try generic parsing for undetected frameworks
+          tables.push(...await this.parseGenericModels(content, filePath, language));
+      }
+
+      if (tables.length > 0) {
+        return {
+          databaseName: fileName,
+          databaseType: framework || language,
+          filePath: filePath,
+          tables: tables,
+          metadata: {
+            totalTables: tables.length,
+            totalColumns: tables.reduce((sum, table) => sum + table.columns.length, 0),
+            framework: framework
+          }
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error(`❌ Code file parsing failed for ${filePath}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Detect framework based on file content
+   */
+  detectFramework(content, language) {
+    const lowerContent = content.toLowerCase();
+    
+    // TypeORM detection
+    if (content.includes('@Entity') && content.includes('@Column')) {
+      return 'typeorm';
+    }
+    
+    // Sequelize detection
+    if (lowerContent.includes('sequelize.define') || lowerContent.includes('datatypes.')) {
+      return 'sequelize';
+    }
+    
+    // Mongoose detection
+    if (lowerContent.includes('mongoose.schema') || lowerContent.includes('mongoose.model')) {
+      return 'mongoose';
+    }
+    
+    // Laravel Eloquent detection
+    if (content.includes('extends Model') && language === 'php') {
+      return 'eloquent';
+    }
+    
+    // Hibernate/JPA detection
+    if (content.includes('@Entity') && content.includes('@Table') && language === 'java') {
+      return 'hibernate';
+    }
+    
+    // Django detection
+    if (content.includes('models.Model') && language === 'python') {
+      return 'django';
+    }
+    
+    return null;
+  }
+
+  // Enhanced framework-specific parsing methods
+  async parseTypeORMEntities(content, filePath) {
+    const tables = [];
+    
+    try {
+      // Find entity classes with @Entity decorator
+      const entityMatches = content.matchAll(/export\s+class\s+(\w+)\s*{([\s\S]*?)}/g);
+      
+      for (const match of entityMatches) {
+        if (!content.includes('@Entity')) continue;
+        
+        const entityName = match[1];
+        const entityBody = match[2];
+        
+        console.log(`📋 Found TypeORM entity: ${entityName}`);
+        console.log(`📝 Entity body preview: ${entityBody.substring(0, 200)}...`);
+        
+        const columns = [];
+        
+        // Extract all property declarations and check for decorators
+        const propertyRegex = /(\w+):\s*([^;]+);/g;
+        const allProperties = Array.from(entityBody.matchAll(propertyRegex));
+        console.log(`🔍 Found ${allProperties.length} properties in ${entityName}`);
+        
+        for (const propMatch of allProperties) {
+          const propertyName = propMatch[1];
+          const propertyType = propMatch[2].trim();
+          
+          // Look for decorators above this property
+          const beforeProperty = entityBody.substring(0, propMatch.index);
+          const lines = beforeProperty.split('\n');
+          const lastFewLines = lines.slice(-5).join('\n'); // Check last 5 lines for decorators
+          
+          // Check if this property has any column decorators
+          const hasColumnDecorator = /@(?:PrimaryGeneratedColumn|Column|PrimaryColumn|CreateDateColumn|UpdateDateColumn)/.test(lastFewLines);
+          console.log(`🔍 Property ${propertyName}: hasDecorator=${hasColumnDecorator}, lastLines=${lastFewLines.replace(/\n/g, ' ')}`);
+          
+          if (hasColumnDecorator) {
+            const isPrimaryKey = /@(?:PrimaryGeneratedColumn|PrimaryColumn)/.test(lastFewLines);
+            const isAutoIncrement = /@PrimaryGeneratedColumn/.test(lastFewLines);
+            const isCreateDate = /@CreateDateColumn/.test(lastFewLines);
+            const isUpdateDate = /@UpdateDateColumn/.test(lastFewLines);
+            
+            // Extract column options from @Column decorator
+            const columnMatch = lastFewLines.match(/@Column\s*\(([^)]*)\)/);
+            let nullable = true;
+            let unique = false;
+            let defaultValue = null;
+            
+            if (columnMatch) {
+              const options = columnMatch[1];
+              nullable = !options.includes('nullable: false');
+              unique = options.includes('unique: true');
+              const defaultMatch = options.match(/default:\s*([^,}]+)/);
+              if (defaultMatch) {
+                defaultValue = defaultMatch[1].trim().replace(/['"]/g, '');
+              }
+            }
+            
+            columns.push({
+              id: propertyName.toLowerCase(),
+              name: propertyName,
+              type: this.mapTypeScriptType(propertyType),
+              nullable: nullable && !isPrimaryKey,
+              primaryKey: isPrimaryKey,
+              unique: unique || isPrimaryKey,
+              autoIncrement: isAutoIncrement || isCreateDate || isUpdateDate,
+              defaultValue: defaultValue
+            });
+          }
+        }
+        
+        if (columns.length > 0) {
+          tables.push({
+            id: entityName.toLowerCase(),
+            name: entityName,
+            columns: columns,
+            framework: 'typeorm'
+          });
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to parse TypeORM entities:`, error.message);
+    }
+    
+    return tables;
+  }
+
+  async parseEloquentModels(content, filePath) {
+    const tables = [];
+    
+    try {
+      // Find model classes
+      const modelMatches = content.matchAll(/class\s+(\w+)\s+extends\s+Model\s*{([\s\S]*?)}/g);
+      
+      for (const match of modelMatches) {
+        const modelName = match[1];
+        const modelBody = match[2];
+        
+        console.log(`📋 Found Eloquent model: ${modelName}`);
+        
+        // Extract fillable fields
+        const fillableMatch = modelBody.match(/protected\s+\$fillable\s*=\s*\[([\s\S]*?)\]/);
+        const fillableFields = [];
+        
+        if (fillableMatch) {
+          const fillableStr = fillableMatch[1];
+          const fieldMatches = fillableStr.matchAll(/['"]([^'"]+)['"]/g);
+          for (const fieldMatch of fieldMatches) {
+            fillableFields.push(fieldMatch[1]);
+          }
+        }
+        
+        // Create columns
+        const columns = [
+          {
+            id: 'id',
+            name: 'id',
+            type: 'INTEGER',
+            nullable: false,
+            primaryKey: true,
+            unique: true,
+            autoIncrement: true,
+            defaultValue: null
+          }
+        ];
+        
+        // Add fillable fields
+        fillableFields.forEach(field => {
+          columns.push({
+            id: field.toLowerCase(),
+            name: field,
+            type: 'VARCHAR',
+            nullable: true,
+            primaryKey: false,
+            unique: false,
+            autoIncrement: false,
+            defaultValue: null
+          });
+        });
+        
+        // Add timestamps if not disabled
+        if (!modelBody.includes('$timestamps = false')) {
+          columns.push(
+            {
+              id: 'created_at',
+              name: 'created_at',
+              type: 'TIMESTAMP',
+              nullable: true,
+              primaryKey: false,
+              unique: false,
+              autoIncrement: false,
+              defaultValue: null
+            },
+            {
+              id: 'updated_at',
+              name: 'updated_at',
+              type: 'TIMESTAMP',
+              nullable: true,
+              primaryKey: false,
+              unique: false,
+              autoIncrement: false,
+              defaultValue: null
+            }
+          );
+        }
+        
+        tables.push({
+          id: modelName.toLowerCase(),
+          name: modelName,
+          columns: columns,
+          framework: 'eloquent'
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to parse Eloquent models:`, error.message);
+    }
+    
+    return tables;
+  }
+
+  // Type mapping utilities
+  mapTypeScriptType(tsType) {
+    const cleanType = tsType.replace(/[\[\]?]/g, '').trim();
+    
+    const typeMap = {
+      'string': 'VARCHAR',
+      'number': 'INTEGER',
+      'boolean': 'BOOLEAN',
+      'Date': 'DATETIME',
+      'Buffer': 'BLOB'
+    };
+    
+    return typeMap[cleanType] || cleanType.toUpperCase();
+  }
+
+  async parseGenericModels(content, filePath, language) {
+    // Fallback parsing for unrecognized frameworks
+    return [];
+  }
+
+  // Placeholder methods for additional functionality
+  async parseSequelizeModels(content, filePath) {
+    // Enhanced Sequelize parsing - use existing implementation
+    return [];
+  }
+
+  async parseMongooseSchemas(content, filePath) {
+    // Enhanced Mongoose parsing - use existing implementation
+    return [];
+  }
+
+  async parseHibernateEntities(content, filePath) {
+    // Hibernate/JPA entity parsing
+    return [];
+  }
+
+  async parseDjangoModels(content, filePath) {
+    // Django model parsing
+    return [];
+  }
+
   async parseJSONSchema(filePath) {
     // TODO: Implement JSON schema parsing
     return null;
