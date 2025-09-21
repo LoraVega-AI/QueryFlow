@@ -1,6 +1,7 @@
 // Comprehensive database extraction function that handles multiple database types
 const fs = require('fs').promises;
 const path = require('path');
+const { DatabaseIntrospectionService } = require('../../../../services/extraction/databaseIntrospectionService');
 
 async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
   try {
@@ -8,39 +9,50 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
     console.log('🔍 Upload directory:', uploadDir);
     console.log('🔍 All files count:', allFiles.length);
     
+    const introspectionService = new DatabaseIntrospectionService();
     const extractedTables = [];
+    let totalRows = 0;
+    let hasForeignKeys = false;
+    let hasIndexes = false;
     
-    // 1. Extract from SQLite files
+    // 1. Extract from SQLite files using real introspection
     const sqliteFiles = allFiles.filter(file => {
       const ext = path.extname(file).toLowerCase();
-      return ['.sqlite', '.db'].includes(ext);
+      return ['.sqlite', '.db', '.sqlite3', '.db3'].includes(ext);
     });
     
     console.log(`📄 Found ${sqliteFiles.length} SQLite files`);
     for (const filePath of sqliteFiles) {
       try {
-        const tables = await extractFromSQLiteFile(filePath);
-        extractedTables.push(...tables);
-        console.log(`✅ Extracted ${tables.length} tables from SQLite: ${path.basename(filePath)}`);
+        const dbResult = await introspectionService.introspectSQLiteDatabase(filePath);
+        if (dbResult && dbResult.tables) {
+          extractedTables.push(...dbResult.tables);
+          totalRows += dbResult.metadata?.totalRows || 0;
+          hasForeignKeys = hasForeignKeys || dbResult.metadata?.hasForeignKeys || false;
+          hasIndexes = hasIndexes || dbResult.metadata?.hasIndexes || false;
+          console.log(`✅ Introspected SQLite ${path.basename(filePath)}: ${dbResult.tables.length} tables, ${dbResult.metadata?.totalRows || 0} total rows`);
+        }
       } catch (error) {
-        console.log(`⚠️ Failed to extract from SQLite ${path.basename(filePath)}:`, error.message);
+        console.log(`⚠️ Failed to introspect SQLite ${path.basename(filePath)}:`, error.message);
       }
     }
     
-    // 2. Extract from SQL files
+    // 2. Extract from SQL files using enhanced parsing
     const sqlFiles = allFiles.filter(file => {
       const ext = path.extname(file).toLowerCase();
-      return ['.sql'].includes(ext);
+      return ['.sql', '.ddl'].includes(ext);
     });
     
     console.log(`📄 Found ${sqlFiles.length} SQL files`);
     for (const filePath of sqlFiles) {
       try {
-        const tables = await extractFromSQLFile(filePath);
-        extractedTables.push(...tables);
-        console.log(`✅ Extracted ${tables.length} tables from SQL: ${path.basename(filePath)}`);
+        const dbResult = await introspectionService.parseSQLDump(filePath);
+        if (dbResult && dbResult.tables) {
+          extractedTables.push(...dbResult.tables);
+          console.log(`✅ Parsed SQL ${path.basename(filePath)}: ${dbResult.tables.length} tables (${dbResult.databaseType})`);
+        }
       } catch (error) {
-        console.log(`⚠️ Failed to extract from SQL ${path.basename(filePath)}:`, error.message);
+        console.log(`⚠️ Failed to parse SQL ${path.basename(filePath)}:`, error.message);
       }
     }
     
@@ -63,7 +75,26 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
       }
     }
     
-    // 4. Extract from Python files (Django, SQLAlchemy)
+    // 4. Extract from Prisma schema files
+    const prismaFiles = allFiles.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return ['.prisma'].includes(ext);
+    });
+    
+    console.log(`📄 Found ${prismaFiles.length} Prisma files`);
+    for (const filePath of prismaFiles) {
+      try {
+        const dbResult = await introspectionService.parsePrismaSchema(filePath);
+        if (dbResult && dbResult.tables) {
+          extractedTables.push(...dbResult.tables);
+          console.log(`✅ Parsed Prisma ${path.basename(filePath)}: ${dbResult.tables.length} models`);
+        }
+      } catch (error) {
+        console.log(`⚠️ Failed to parse Prisma ${path.basename(filePath)}:`, error.message);
+      }
+    }
+
+    // 5. Extract from Python files (Django, SQLAlchemy)
     const pyFiles = allFiles.filter(file => {
       const ext = path.extname(file).toLowerCase();
       return ['.py'].includes(ext);
@@ -89,8 +120,11 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
     
     console.log(`🎉 Total extracted tables: ${extractedTables.length}`);
     console.log('📊 Tables:', extractedTables.map(t => t.name));
+    console.log('📊 Total rows across all tables:', totalRows);
+    console.log('📊 Has foreign keys:', hasForeignKeys);
+    console.log('📊 Has indexes:', hasIndexes);
     
-    // Return the extracted database
+    // Return the extracted database with enhanced metadata
     return [{
       id: `extracted_schema_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: 'Extracted Schema',
@@ -105,98 +139,31 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
         id: `extracted_schema_${Date.now()}`,
         name: 'Extracted Schema',
         tables: extractedTables,
-        relationships: [],
-        indexes: []
+        relationships: extractedTables.flatMap(t => t.foreignKeys || []),
+        indexes: extractedTables.flatMap(t => t.indexes || [])
       },
       status: 'ready',
       processingStartTime: new Date().toISOString(),
       processingTime: 0,
-      conversionLogs: [`[${new Date().toISOString()}] Extracted ${extractedTables.length} tables from multiple sources`]
+      conversionLogs: [
+        `[${new Date().toISOString()}] Extracted ${extractedTables.length} tables from multiple sources`,
+        `[${new Date().toISOString()}] Total rows: ${totalRows}`,
+        `[${new Date().toISOString()}] Foreign keys: ${hasForeignKeys ? 'Yes' : 'No'}`,
+        `[${new Date().toISOString()}] Indexes: ${hasIndexes ? 'Yes' : 'No'}`
+      ],
+      metadata: {
+        totalTables: extractedTables.length,
+        totalColumns: extractedTables.reduce((sum, table) => sum + (table.columns?.length || 0), 0),
+        totalRows: totalRows,
+        hasForeignKeys: hasForeignKeys,
+        hasIndexes: hasIndexes
+      }
     }];
     
   } catch (error) {
     console.error('❌ Extraction failed:', error);
     return [];
   }
-}
-
-// Extract tables from SQLite files
-async function extractFromSQLiteFile(filePath) {
-  const tables = [];
-  try {
-    // For now, we'll create a placeholder since we can't easily read SQLite in this context
-    // In a real implementation, you'd use a SQLite library
-    const fileName = path.basename(filePath, path.extname(filePath));
-    tables.push({
-      id: fileName.toLowerCase(),
-      name: fileName,
-      columns: [
-        { id: 'id', name: 'id', type: 'INTEGER', nullable: false, primaryKey: true, unique: false, autoIncrement: true, defaultValue: null }
-      ]
-    });
-  } catch (error) {
-    console.log(`Failed to extract from SQLite ${filePath}:`, error.message);
-  }
-  return tables;
-}
-
-// Extract tables from SQL files
-async function extractFromSQLFile(filePath) {
-  const tables = [];
-  try {
-    const content = await fs.readFile(filePath, 'utf-8');
-    
-    // Find CREATE TABLE statements
-    const createTableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:`?(\w+)`?\.)?`?(\w+)`?\s*\(([\s\S]*?)\)/gi;
-    let match;
-    
-    while ((match = createTableRegex.exec(content)) !== null) {
-      const tableName = match[2] || match[1];
-      const columnsStr = match[3];
-      
-      const columns = [];
-      
-      // Extract column definitions
-      const columnLines = columnsStr.split(',').map(line => line.trim()).filter(line => line);
-      
-      for (const line of columnLines) {
-        if (line.includes('PRIMARY KEY') || line.includes('FOREIGN KEY') || line.includes('UNIQUE') || line.includes('INDEX')) {
-          continue; // Skip constraint lines for now
-        }
-        
-        const columnMatch = line.match(/`?(\w+)`?\s+(\w+)(?:\([^)]+\))?(?:\s+(NOT\s+NULL|NULL))?(?:\s+(PRIMARY\s+KEY))?(?:\s+(AUTO_INCREMENT|AUTOINCREMENT))?/i);
-        if (columnMatch) {
-          const columnName = columnMatch[1];
-          const columnType = columnMatch[2].toUpperCase();
-          const isNotNull = line.includes('NOT NULL');
-          const isPrimaryKey = line.includes('PRIMARY KEY');
-          const isAutoIncrement = line.includes('AUTO_INCREMENT') || line.includes('AUTOINCREMENT');
-          
-          columns.push({
-            id: columnName.toLowerCase(),
-            name: columnName,
-            type: columnType,
-            nullable: !isNotNull,
-            primaryKey: isPrimaryKey,
-            unique: false,
-            autoIncrement: isAutoIncrement,
-            defaultValue: null
-          });
-        }
-      }
-      
-      if (columns.length > 0) {
-        tables.push({
-          id: tableName.toLowerCase(),
-          name: tableName,
-          columns: columns
-        });
-      }
-    }
-  } catch (error) {
-    console.log(`Failed to extract from SQL ${filePath}:`, error.message);
-  }
-  return tables;
 }
 
 // Extract tables from JavaScript/TypeScript files (Sequelize, Mongoose, etc.)
