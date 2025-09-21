@@ -24,7 +24,7 @@ export class DatabaseConnector {
 
   static async introspectSchema(type: string, config: any): Promise<DatabaseSchema> {
     try {
-      return await SchemaIntrospectionService.introspectSchema(type as any, config);
+      return await SchemaIntrospectionService.introspectSchema(type as any, config) as any;
     } catch (error) {
       console.error('Schema introspection failed:', error);
       throw error;

@@ -207,6 +207,8 @@ export class SchemaIntrospectionService {
     ];
 
     return {
+      id: `schema_${Date.now()}`,
+      name: 'Introspected Schema',
       tables: tables as any, // Cast to avoid type mismatch between database and project Table types
       relationships: [],
       indexes: tables.flatMap(t => t.indexes).filter(Boolean) as any // Cast to avoid type mismatch
@@ -259,6 +261,8 @@ export class SchemaIntrospectionService {
     ];
 
     return {
+      id: `schema_${Date.now()}`,
+      name: 'Introspected Schema',
       tables: tables as any,
       relationships: [],
       indexes: [],
@@ -311,6 +315,8 @@ export class SchemaIntrospectionService {
     ];
 
     return {
+      id: `schema_${Date.now()}`,
+      name: 'Introspected Schema',
       tables: tables as any,
       relationships: [],
       indexes: [],
@@ -365,6 +371,8 @@ export class SchemaIntrospectionService {
     ];
 
     return {
+      id: `schema_${Date.now()}`,
+      name: 'Introspected Schema',
       tables: tables as any,
       relationships: [],
       indexes: [],
@@ -666,7 +674,7 @@ export class SchemaIntrospectionService {
     }
 
     // Create indexes
-    for (const index of schema.indexes) {
+    for (const index of schema.indexes || []) {
       scripts.push(this.generateIndexSQL(index, targetType));
     }
 
@@ -726,6 +734,8 @@ export class SchemaIntrospectionService {
     // This would be a complex SQL parser in real implementation
     // For now, return a basic schema
     return {
+      id: `schema_${Date.now()}`,
+      name: 'Introspected Schema',
       tables: [],
       relationships: [],
       indexes: [],

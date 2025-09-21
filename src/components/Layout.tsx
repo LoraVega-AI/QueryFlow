@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { Database, Code, Table, BarChart3, Settings, Menu, X, Workflow, Search, Download, Shield, Zap, Cloud, Users, Monitor, FolderOpen, Server, RefreshCw } from 'lucide-react';
 import { PerformanceDashboard } from './PerformanceDashboard';
 import { projectsManager } from '../utils/projectsManager';
-import { Project } from '../types/projects';
+import { Project } from '../types/project';
 
 interface LayoutProps {
   children: React.ReactNode;

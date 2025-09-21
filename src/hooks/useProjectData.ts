@@ -2,7 +2,7 @@
 // Provides unified access to project database, schema, and metadata
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Project, DatabaseSchema, Database as ProjectDatabase, Table as ProjectTable, Column as ProjectColumn } from '@/types/projects';
+import { Project, DatabaseSchema, Database as ProjectDatabase, Table, Column } from '@/types/project';
 import { DatabaseSchema as FullDatabaseSchema, Table as FullTable, Column as FullColumn, DataType } from '@/types/database';
 import { projectsManager } from '@/utils/projectsManager';
 import { useDatabase } from '@/contexts/DatabaseContext';
@@ -47,11 +47,11 @@ export function useProjectData(): UseProjectDataReturn {
   const { activeConnection, getConnectionInfo } = useDatabase();
 
   // Convert project table to full database table
-  const convertTable = useCallback((projectTable: ProjectTable, index: number = 0): FullTable => {
+  const convertTable = useCallback((projectTable: Table, index: number = 0): FullTable => {
     return {
       id: projectTable.id || `table_${projectTable.name}_${index}`,
       name: projectTable.name,
-      columns: projectTable.columns?.map((col: ProjectColumn, colIndex: number) => ({
+      columns: projectTable.columns?.map((col: Column, colIndex: number) => ({
         id: col.id || `col_${col.name}_${colIndex}`,
         name: col.name,
         type: col.type as DataType,
@@ -90,8 +90,8 @@ export function useProjectData(): UseProjectDataReturn {
       id: schema.id || `project-${projectRef?.id || 'unknown'}`,
       name: schema.name || projectRef?.name || 'Project Schema',
       tables: schema.tables?.map((table, index) => convertTable(table, index)) || [],
-      createdAt: schema.createdAt || new Date(),
-      updatedAt: schema.updatedAt || new Date(),
+      createdAt: schema.createdAt ? (schema.createdAt instanceof Date ? schema.createdAt : new Date(schema.createdAt)) : new Date(),
+      updatedAt: schema.updatedAt ? (schema.updatedAt instanceof Date ? schema.updatedAt : new Date(schema.updatedAt)) : new Date(),
       version: schema.version || 1,
       description: projectRef?.description || undefined,
       tags: [],

@@ -40,10 +40,9 @@ import {
   SyncOperation
 } from '@/types/sync';
 import { DatabaseSyncService } from '@/services/databaseSyncService';
-import { Project, DatabaseConnection } from '@/types/project';
+import { Project, Database as ProjectDatabase, DatabaseConnection } from '@/types/project';
 import { getProjectsManager } from '@/utils/projectsManager';
 import { useDatabase } from '@/contexts/DatabaseContext';
-import { Project as ProjectsProject, Database as ProjectDatabase } from '@/types/projects';
 
 interface SyncManagerProps {
   projectId?: string;
@@ -96,8 +95,8 @@ export function SyncManager({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [syncHistory, setSyncHistory] = useState<SyncSession[]>([]);
   const [alerts, setAlerts] = useState<SyncAlert[]>([]);
-  const [projects, setProjects] = useState<ProjectsProject[]>([]);
-  const [selectedProject, setSelectedProject] = useState<ProjectsProject | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedDatabase, setSelectedDatabase] = useState<ProjectDatabase | null>(null);
 
   // Load projects and set selected items
@@ -108,7 +107,7 @@ export function SyncManager({
         setProjects(allProjects);
 
         if (projectId) {
-          const project = allProjects.find((p: ProjectsProject) => p.id === projectId);
+          const project = allProjects.find((p: Project) => p.id === projectId);
           setSelectedProject(project || null);
 
           if (project && databaseId) {

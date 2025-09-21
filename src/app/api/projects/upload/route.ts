@@ -2,8 +2,8 @@
 // POST /api/projects/upload
 
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir, readdir, stat } from 'fs/promises';
-import { join, extname, basename } from 'path';
+import { writeFile, mkdir, readdir, stat, readFile } from 'fs/promises';
+import path, { join, extname, basename } from 'path';
 import { dbConnectionManager } from '@/utils/databaseConnection';
 import { createReadStream, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
@@ -98,14 +98,39 @@ export async function POST(request: NextRequest) {
         console.log(`  ${index + 1}. ${db.name} (${db.type}) - ${db.status}`);
       });
     }
+
+    // Also extract database definitions from source code using the new extractor
+    console.log('🔍 Extracting database definitions from source code...');
+    console.log('📁 All files for extraction:', allFiles.slice(0, 10).map(f => path.basename(f)));
+    console.log('📁 All files count:', allFiles.length);
+    console.log('📁 Upload directory:', uploadDir);
+    
+    // Use simple extraction instead of complex DatabaseDefinitionExtractor
+    const { extractDatabaseDefinitionsFromSourceCode } = await import('./simpleExtraction.js');
+    const sourceCodeDatabases = await extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir);
+    console.log('📊 Found source code databases:', sourceCodeDatabases.length);
+    console.log('📊 Source code databases details:', sourceCodeDatabases.map(db => ({ name: db.name, type: db.type, tables: db.tables?.length || 0 })));
+
+    // Combine both actual database files and extracted definitions
+    const allDatabases = [...databaseFiles, ...sourceCodeDatabases];
+    console.log('📊 Total databases found:', allDatabases.length);
+
+    // Check if we have any databases at all
+    if (allDatabases.length === 0) {
+      console.log('❌ No databases found (neither actual files nor extracted definitions)');
+      return NextResponse.json({
+        success: false,
+        message: 'No database files or database definitions found in the uploaded content. Please ensure your project contains database files (.db, .sqlite) or source code with database models (Sequelize, Django, Laravel, etc.)'
+      }, { status: 400 });
+    }
     
     // Create project with database information
     console.log('🏗️ Creating project object...');
     
-    // Merge schemas from all databases
-    const allTables = databaseFiles.flatMap(db => db.tables || []);
-    const allRelationships = databaseFiles.flatMap(db => db.schema?.relationships || []);
-    const allIndexes = databaseFiles.flatMap(db => db.schema?.indexes || []);
+    // Merge schemas from all databases (both actual files and extracted definitions)
+    const allTables = allDatabases.flatMap(db => db.tables || []);
+    const allRelationships = allDatabases.flatMap(db => db.schema?.relationships || []);
+    const allIndexes = allDatabases.flatMap(db => db.schema?.indexes || []);
     
     // Create comprehensive schema
     const mergedSchema = {
@@ -122,15 +147,15 @@ export async function POST(request: NextRequest) {
     const project = {
       id: `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: projectName || detectionResult.projectName || 'Uploaded Project',
-      description: projectDescription || `Database project with ${databaseFiles.length} file(s) uploaded via QueryFlow`,
+      description: projectDescription || `Database project with ${allDatabases.length} file(s) uploaded via QueryFlow`,
       technology: 'sqlite',
       status: 'disconnected',
       lastSynced: null,
-      databaseCount: databaseFiles.length,
+      databaseCount: allDatabases.length,
       icon: '🗄️',
       color: 'blue',
       isExample: false,
-      databases: databaseFiles,
+      databases: allDatabases,
       schema: mergedSchema,
       tables: allTables,
       queries: [],
@@ -138,7 +163,7 @@ export async function POST(request: NextRequest) {
       originalFiles: filePaths,
       // Additional metadata
       totalTables: allTables.length,
-      totalRows: databaseFiles.reduce((sum, db) => sum + (db.totalRows || 0), 0),
+      totalRows: allDatabases.reduce((sum, db) => sum + (db.totalRows || 0), 0),
       hasForeignKeys: allRelationships.length > 0,
       hasIndexes: allIndexes.length > 0,
       createdAt: new Date(),
@@ -243,11 +268,8 @@ async function extractDatabaseFiles(uploadDir: string): Promise<any[]> {
     console.log('📁 Found database-related files:', detectedFiles.length);
 
     if (detectedFiles.length === 0) {
-      console.log('⚠️ No database files found in upload directory');
-      return NextResponse.json({
-        success: false,
-        message: 'No database files found in the uploaded content'
-      }, { status: 400 });
+      console.log('⚠️ No actual database files found in upload directory');
+      // Don't return error here - we'll check for extracted definitions later
     }
 
     // Convert detected files to a standardized format with enhanced error handling
@@ -297,15 +319,8 @@ async function extractDatabaseFiles(uploadDir: string): Promise<any[]> {
       const primaryError = errorMessages.length > 0 ? errorMessages[0] : 'No valid databases could be processed';
 
       console.log('❌ No valid databases found after processing');
-      return NextResponse.json({
-        success: false,
-        message: 'Failed to process any valid databases',
-        details: {
-          totalFiles: convertedDatabases.length,
-          errors: errorMessages,
-          skipped: skippedDatabases.length
-        }
-      }, { status: 400 });
+      // Return empty array instead of NextResponse - the error will be handled by the calling function
+      return [];
     }
 
     // Use valid databases for project creation
@@ -715,4 +730,166 @@ async function findAllFiles(dir: string): Promise<string[]> {
 
   await scanDirectory(dir);
   return allFiles;
+}
+
+/**
+ * Extract database definitions from source code files using the Database Definition Extractor
+ */
+async function extractDatabaseDefinitionsFromSourceCode(allFiles: string[], uploadDir: string): Promise<any[]> {
+  try {
+    console.log('🔍 Starting database definition extraction from source code...');
+    console.log('🔍 Upload directory:', uploadDir);
+    console.log('🔍 All files count:', allFiles.length);
+    
+    // Import the Database Definition Extractor
+    const { DatabaseDefinitionExtractor } = await import('@/services/databaseDefinitionExtractor');
+    
+    // Filter source code files that might contain database definitions
+    const sourceCodeFiles = allFiles.filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return ['.js', '.jsx', '.ts', '.tsx', '.py', '.php', '.java', '.prisma', '.sql'].includes(ext);
+    });
+    
+    console.log(`📄 Found ${sourceCodeFiles.length} source code files to analyze`);
+    console.log('📄 Source code files:', sourceCodeFiles.slice(0, 5).map(f => path.basename(f)));
+    console.log('📄 Full source code files paths:', sourceCodeFiles);
+    
+    if (sourceCodeFiles.length === 0) {
+      console.log('⚠️ No source code files found for database definition extraction');
+      return [];
+    }
+    
+    // Read file contents
+    const fileContents = [];
+    for (const filePath of sourceCodeFiles) {
+      try {
+        const content = await readFile(filePath, 'utf-8');
+        const relativePath = filePath.replace(uploadDir, '').replace(/\\/g, '/');
+        
+        fileContents.push({
+          name: relativePath,
+          content: content
+        });
+      } catch (error) {
+        console.warn(`Failed to read file ${filePath}:`, error instanceof Error ? error.message : 'Unknown error');
+      }
+    }
+    
+    console.log(`📖 Read ${fileContents.length} source code files`);
+    console.log('📖 Sample file contents:', fileContents.slice(0, 2).map(f => ({ name: f.name, contentLength: f.content.length, preview: f.content.substring(0, 100) })));
+    
+    if (fileContents.length === 0) {
+      return [];
+    }
+    
+    // Initialize the extractor
+    console.log('🔧 Initializing Database Definition Extractor...');
+    console.log('🔧 File contents for extraction:', fileContents.map(f => ({ name: f.name, contentLength: f.content.length })));
+    const extractor = new DatabaseDefinitionExtractor();
+    
+    // Extract database definitions
+    console.log('🔍 Starting extraction process...');
+    let extractionResult;
+    try {
+      extractionResult = await extractor.extractFromFiles(fileContents, {
+        languages: ['javascript', 'typescript', 'python', 'php', 'java'],
+        frameworks: ['sequelize', 'prisma', 'mongoose', 'typeorm', 'django', 'sqlalchemy', 'laravel', 'hibernate'],
+        confidence: { 
+          minimum: 50,
+          regexWeight: 0.3,
+          astWeight: 0.5,
+          frameworkWeight: 0.2
+        },
+        parallelProcessing: true,
+        enableASTCaching: true
+      });
+    } catch (extractionError) {
+      console.error('❌ Extraction failed:', extractionError);
+      console.error('❌ Extraction error details:', {
+        message: extractionError instanceof Error ? extractionError.message : 'Unknown error',
+        stack: extractionError instanceof Error ? extractionError.stack : 'No stack'
+      });
+      return [];
+    }
+    
+    console.log(`🎉 Extraction completed! Found ${extractionResult.schema.tables.length} tables`);
+    console.log('📊 Extraction result:', {
+      tablesCount: extractionResult.schema.tables.length,
+      hasSchema: !!extractionResult.schema,
+      hasMetadata: !!extractionResult.metadata,
+      confidence: extractionResult.metadata?.confidence
+    });
+    
+    // Convert extraction result to database format
+    if (extractionResult.schema.tables.length > 0) {
+      const extractedDatabase = {
+        id: `extracted_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: 'Extracted Schema',
+        type: 'extracted',
+        connectionString: 'extracted',
+        filePath: 'extracted',
+        relativePath: 'extracted',
+        isConnected: false,
+        lastSync: null,
+        tables: extractionResult.schema.tables.map(table => ({
+          id: table.name,
+          name: table.name,
+          columns: table.fields.map(field => ({
+            id: field.name,
+            name: field.name,
+            type: field.type,
+            nullable: field.nullable,
+            primaryKey: field.primaryKey,
+            defaultValue: field.defaultValue,
+            foreignKey: field.foreignKey ? {
+              tableId: field.foreignKey.table,
+              columnId: field.foreignKey.field,
+              relationshipType: 'one-to-many',
+              onDelete: field.foreignKey.onDelete,
+              onUpdate: field.foreignKey.onUpdate
+            } : undefined,
+            unique: field.unique,
+            autoIncrement: field.autoIncrement,
+            indexed: field.indexes && field.indexes.length > 0,
+            constraints: field.constraints
+          })),
+          position: { x: 0, y: 0 },
+          size: { width: 200, height: 100 },
+          documentation: table.metadata.documentation,
+          tags: table.metadata.tags
+        })),
+        schema: {
+          tables: extractionResult.schema.tables,
+          relationships: extractionResult.schema.relationships,
+          metadata: extractionResult.schema.metadata
+        },
+        size: 0,
+        status: 'ready',
+        tableCount: extractionResult.schema.tables.length,
+        totalRows: 0,
+        hasForeignKeys: extractionResult.schema.relationships.length > 0,
+        hasIndexes: extractionResult.schema.tables.some(table => table.indexes && table.indexes.length > 0),
+        // Extraction metadata
+        extractionMetadata: {
+          confidence: extractionResult.metadata.confidence,
+          frameworks: extractionResult.schema.metadata.frameworks,
+          languages: extractionResult.schema.metadata.languages,
+          sourceFiles: extractionResult.schema.sourceFiles,
+          extractionTime: extractionResult.performance.totalTime
+        }
+      };
+      
+      console.log(`✅ Created extracted database with ${extractedDatabase.tableCount} tables`);
+      return [extractedDatabase];
+    }
+    
+    return [];
+    
+  } catch (error) {
+    console.error('❌ Failed to extract database definitions from source code:', error);
+    console.error('❌ Error type:', typeof error);
+    console.error('❌ Error message:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');
+    return [];
+  }
 }

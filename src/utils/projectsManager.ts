@@ -1,7 +1,7 @@
 // Projects Manager for QueryFlow
 // Handles project data, embedded databases, and synchronization
 
-import { Project, Database, Table, Column, DatabaseSchema as ProjectSchema } from '../types/projects';
+import { Project, Database, Table, Column, DatabaseSchema as ProjectSchema } from '../types/project';
 import { DatabaseManager } from './database';
 import { DatabaseSchema } from '../types/database';
 import { memoryManager } from './memoryManager';
@@ -59,6 +59,8 @@ export class ProjectsManager {
         icon: '📦',
         color: 'orange',
         isExample: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
         databases: [
           {
             id: 'ecommerce-main',
@@ -94,6 +96,8 @@ export class ProjectsManager {
         icon: '🎸',
         color: 'blue',
         isExample: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
         databases: [
           {
             id: 'analytics-main',
@@ -120,6 +124,8 @@ export class ProjectsManager {
         icon: '🐘',
         color: 'red',
         isExample: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
         databases: [
           {
             id: 'legacy-main',
@@ -264,6 +270,8 @@ export class ProjectsManager {
 
   private createEcommerceSchema(): ProjectSchema {
     return {
+      id: 'ecommerce-schema',
+      name: 'E-commerce Schema',
       tables: [
         {
           id: 'users',
@@ -317,6 +325,8 @@ export class ProjectsManager {
 
   private createAnalyticsSchema(): ProjectSchema {
     return {
+      id: 'analytics-schema',
+      name: 'Analytics Schema',
       tables: [
         {
           id: 'page_views',
@@ -350,6 +360,8 @@ export class ProjectsManager {
 
   private createLegacySchema(): ProjectSchema {
     return {
+      id: 'legacy-schema',
+      name: 'Legacy Schema',
       tables: [
         {
           id: 'posts',
@@ -515,7 +527,9 @@ export class ProjectsManager {
         databases: [], // Will be loaded separately
         schema: p.schema,
         tables: p.schema?.tables || [],
-        queries: []
+        queries: [],
+        createdAt: p.createdAt || new Date(),
+        updatedAt: p.updatedAt || new Date()
       }));
 
       console.log('🔄 ProjectsManager: Loading databases for each project...');
@@ -582,7 +596,9 @@ export class ProjectsManager {
         })),
         schema: persistedProject.schema,
         tables: persistedProject.schema?.tables || [],
-        queries: []
+        queries: [],
+        createdAt: persistedProject.createdAt || new Date(),
+        updatedAt: persistedProject.updatedAt || new Date()
       };
     } catch (error) {
       console.error(`Failed to get project ${projectId}:`, error);
@@ -617,7 +633,7 @@ export class ProjectsManager {
       }
 
       // Update sync timestamp
-      project.lastSynced = new Date().toISOString();
+      project.lastSynced = new Date();
       project.status = 'connected';
 
       // Set as current project

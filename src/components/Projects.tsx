@@ -19,7 +19,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { projectsManager } from '../utils/projectsManager';
-import { Project } from '../types/projects';
+import { Project } from '../types/project';
 import { DatabaseConnectionModal } from './DatabaseConnectionModal';
 import { QueryEditor } from './QueryEditor';
 import { ProjectUploader } from './ProjectUploader';
@@ -75,36 +75,58 @@ export function Projects() {
     }
     
     try {
-      console.log('🔄 Projects component: Loading projects...');
-      const allProjects = await projectsManager.getAllProjects();
-      console.log('📁 Projects component: Projects loaded:', allProjects.length, 'projects');
-      console.log('📁 Projects component: Project details:', allProjects.map(p => ({ 
-        id: p.id, 
-        name: p.name, 
-        databaseCount: p.databaseCount,
-        totalTables: p.totalTables || 0,
-        totalRows: p.totalRows || 0,
-        hasSchema: !!p.schema,
-        schemaTables: p.schema?.tables?.length || 0
-      })));
-      setProjects(allProjects);
-      setLastRefresh(new Date());
+      console.log('🔄 Projects component: Loading projects via API...');
+      const response = await fetch('/api/projects');
+      const data = await response.json();
+      console.log('📡 Projects component: API response:', data);
+      
+      if (data.success && data.data) {
+        const allProjects = data.data;
+        console.log('📁 Projects component: Projects loaded:', allProjects.length, 'projects');
+        console.log('📁 Projects component: Project details:', allProjects.map(p => ({ 
+          id: p.id, 
+          name: p.name, 
+          databaseCount: p.databaseCount,
+          totalTables: p.totalTables || 0,
+          totalRows: p.totalRows || 0,
+          hasSchema: !!p.schema,
+          schemaTables: p.schema?.tables?.length || 0
+        })));
+        
+        // Debug: Check for projects with tables
+        const projectsWithTables = allProjects.filter(p => (p.totalTables || 0) > 0);
+        console.log('🔍 Projects with tables:', projectsWithTables.length);
+        console.log('🔍 Projects with tables details:', projectsWithTables.map(p => ({
+          id: p.id,
+          name: p.name,
+          totalTables: p.totalTables,
+          hasSchema: !!p.schema,
+          schemaTables: p.schema?.tables?.length || 0,
+          status: p.status
+        })));
+        
+        // Debug: Check the first project in detail
+        if (allProjects.length > 0) {
+          const firstProject = allProjects[0];
+          console.log('🔍 First project details:', {
+            id: firstProject.id,
+            name: firstProject.name,
+            totalTables: firstProject.totalTables,
+            hasSchema: !!firstProject.schema,
+            schemaTables: firstProject.schema?.tables?.length || 0,
+            status: firstProject.status,
+            isExample: firstProject.isExample
+          });
+        }
+        
+        setProjects(allProjects);
+        setLastRefresh(new Date());
+        console.log('✅ Projects component: Projects loaded via API');
+      } else {
+        console.error('❌ Projects component: API returned error:', data.message);
+      }
     } catch (error) {
       console.error('❌ Projects component: Failed to load projects:', error);
-      // Try direct API call as fallback
-      try {
-        console.log('🔄 Projects component: Trying direct API call as fallback...');
-        const response = await fetch('/api/projects');
-        const data = await response.json();
-        console.log('📡 Projects component: API response:', data);
-        if (data.success && data.data) {
-          setProjects(data.data);
-          setLastRefresh(new Date());
-          console.log('✅ Projects component: Projects loaded via API fallback');
-        }
-      } catch (apiError) {
-        console.error('❌ Projects component: API fallback failed:', apiError);
-      }
     } finally {
       if (showLoading) {
         setIsRefreshing(false);
@@ -149,7 +171,10 @@ export function Projects() {
   }, [loadProjects, showNotification]);
 
   const handleRealtimeError = useCallback((error: Event) => {
-    console.error('Real-time connection error:', error);
+    console.error('Real-time connection error:', {
+      type: error.type,
+      timestamp: new Date().toISOString()
+    });
     setRealtimeConnected(false);
     showNotification('error', 'Real-time connection lost. Using fallback polling.');
   }, [showNotification]);
@@ -227,19 +252,142 @@ export function Projects() {
   }, [loadProjects, realtimeConnected]);
 
   const handleSync = async (projectId: string) => {
+    console.log('🔄 Sync button clicked for project:', projectId);
     const project = projects.find(p => p.id === projectId);
-    if (!project) return;
+    if (!project) {
+      console.log('❌ Project not found:', projectId);
+      showNotification('error', 'Project not found');
+      return;
+    }
+
+    console.log('📊 Project found:', {
+      id: project.id,
+      name: project.name,
+      isExample: project.isExample,
+      hasSchema: !!project.schema,
+      schemaTables: project.schema?.tables?.length || 0,
+      hasDatabases: !!project.databases,
+      databasesLength: project.databases?.length || 0,
+      totalTables: project.totalTables
+    });
 
     // Add to recent projects
     addRecentProject(projectId);
 
-    // Check if this is an example project - auto-connect if so
-    if (project.isExample) {
-      await handleExampleProjectSync(project);
-    } else {
-      // Open connection modal for real projects
-      setConnectionProjectId(projectId);
-      setShowConnectionModal(true);
+    try {
+      // Check if this is an example project - auto-connect if so
+      if (project.isExample) {
+        console.log('📝 Example project, using example sync');
+        await handleExampleProjectSync(project);
+      } else {
+        console.log('📁 Uploaded project, checking for data...');
+        // For uploaded projects, try to sync directly if we have schema or databases
+        if ((project.schema && project.schema.tables && project.schema.tables.length > 0) || 
+            (project.databases && project.databases.length > 0)) {
+          console.log('✅ Project has data, proceeding with sync');
+          await handleUploadedProjectSync(project);
+        } else {
+          console.log('❌ No data found, opening connection modal');
+          // Open connection modal for projects without databases
+          setConnectionProjectId(projectId);
+          setShowConnectionModal(true);
+        }
+      }
+    } catch (error) {
+      console.error('Sync failed:', error);
+      showNotification('error', `Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleUploadedProjectSync = async (project: Project) => {
+    try {
+      console.log('🔄 Starting sync for project:', project.id, project.name);
+      console.log('📊 Project data:', {
+        hasSchema: !!project.schema,
+        schemaTables: project.schema?.tables?.length || 0,
+        totalTables: project.totalTables,
+        hasDatabases: !!project.databases,
+        databasesLength: project.databases?.length || 0
+      });
+
+      setSyncingProject(project.id);
+      setProjects(prev => prev.map(p =>
+        p.id === project.id ? { ...p, status: 'syncing' as const } : p
+      ));
+
+      showNotification('info', `Syncing project "${project.name}"...`);
+
+      // For uploaded projects, check if we have schema data
+      if (project.schema && project.schema.tables && project.schema.tables.length > 0) {
+        console.log('✅ Found schema data, proceeding with sync');
+        const connectionId = `project_${project.id}_extracted`;
+        
+        // Create a virtual database connection for extracted schema
+        const credentials = {
+          type: 'extracted',
+          database: project.name,
+          filePath: 'extracted'
+        };
+
+        // Connect to global database context with the extracted schema
+        connectDatabase(connectionId, credentials, project.schema as any, {
+          projectId: project.id,
+          projectName: project.name,
+          tableCount: project.totalTables || 0,
+          totalRows: project.totalRows || 0,
+          hasForeignKeys: project.hasForeignKeys || false,
+          hasIndexes: project.hasIndexes || false
+        });
+
+        // Update project status
+        setProjects(prev => prev.map(p =>
+          p.id === project.id ? { ...p, status: 'connected' as const } : p
+        ));
+
+        showNotification('success', `Project "${project.name}" synced successfully! Found ${project.totalTables || 0} tables.`);
+      } else if (project.databases && project.databases.length > 0) {
+        // Fallback to databases array if available
+        const firstDb = project.databases[0];
+        const connectionId = `project_${project.id}_${firstDb.id}`;
+
+        // Convert database config to credentials format
+        const credentials = {
+          type: firstDb.type,
+          filePath: firstDb.type === 'sqlite' ? firstDb.connectionString : undefined,
+          database: firstDb.name,
+          host: firstDb.host,
+          port: firstDb.port,
+          username: firstDb.username,
+          password: firstDb.password
+        };
+
+        // Connect to global database context
+        connectDatabase(connectionId, credentials, project.schema as any, {
+          projectId: project.id,
+          projectName: project.name,
+          tableCount: project.totalTables || 0,
+          totalRows: project.totalRows || 0,
+          hasForeignKeys: project.hasForeignKeys || false,
+          hasIndexes: project.hasIndexes || false
+        });
+
+        // Update project status
+        setProjects(prev => prev.map(p =>
+          p.id === project.id ? { ...p, status: 'connected' as const } : p
+        ));
+
+        showNotification('success', `Project "${project.name}" synced successfully!`);
+      } else {
+        throw new Error('No schema or databases found in project');
+      }
+    } catch (error) {
+      console.error('Uploaded project sync failed:', error);
+      setProjects(prev => prev.map(p =>
+        p.id === project.id ? { ...p, status: 'error' as const } : p
+      ));
+      showNotification('error', `Failed to sync project: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSyncingProject(null);
     }
   };
 
@@ -356,25 +504,57 @@ export function Projects() {
 
   const handleOpenProject = async (projectId: string) => {
     const project = projects.find(p => p.id === projectId);
-    if (!project) return;
-
-    const connection = connections.get(projectId);
-
-    if (!connection) {
-      setNotification({
-        type: 'error',
-        message: 'Project is not connected. Please sync first.'
-      });
+    if (!project) {
+      showNotification('error', 'Project not found');
       return;
     }
 
-    // Open query editor
-    setQueryEditorConnection({
-      connectionId: connection.connectionId,
-      projectName: project.name,
-      databaseName: connection.credentials.database
-    });
-    setShowQueryEditor(true);
+    // Check if project has schema data
+    if (!project.schema || !project.schema.tables || project.schema.tables.length === 0) {
+      showNotification('error', 'Project has no schema data. Please sync first.');
+      return;
+    }
+
+    // Check if project is connected
+    if (project.status !== 'connected') {
+      showNotification('error', 'Project is not connected. Please sync first.');
+      return;
+    }
+
+    try {
+      // Create connection ID for the project
+      const connectionId = `project_${projectId}_extracted`;
+      
+      // Create credentials for extracted schema
+      const credentials = {
+        type: 'extracted',
+        database: project.name,
+        filePath: 'extracted'
+      };
+
+      // Connect to global database context
+      connectDatabase(connectionId, credentials, project.schema as any, {
+        projectId: project.id,
+        projectName: project.name,
+        tableCount: project.totalTables || 0,
+        totalRows: project.totalRows || 0,
+        hasForeignKeys: project.hasForeignKeys || false,
+        hasIndexes: project.hasIndexes || false
+      });
+
+      // Open query editor
+      setQueryEditorConnection({
+        connectionId: connectionId,
+        projectName: project.name,
+        databaseName: project.name
+      });
+      setShowQueryEditor(true);
+
+      showNotification('success', `Opened project "${project.name}" in query editor with ${project.totalTables || 0} tables`);
+    } catch (error) {
+      console.error('Failed to open project:', error);
+      showNotification('error', `Failed to open project: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
   const handleDownloadProject = async (projectId: string) => {
@@ -487,9 +667,10 @@ export function Projects() {
     }
   };
 
-  const formatLastSynced = (lastSynced: string | null) => {
+  const formatLastSynced = (lastSynced: Date | string | null | undefined) => {
     if (!lastSynced) return 'Never';
-    return new Date(lastSynced).toLocaleDateString();
+    const date = lastSynced instanceof Date ? lastSynced : new Date(lastSynced);
+    return date.toLocaleDateString();
   };
 
   return (
@@ -578,15 +759,15 @@ export function Projects() {
                 </div>
                 <div className="flex items-center space-x-2">
                   {/* Technology Icon */}
-                  {project.technology.toLowerCase().includes('node') && (
+                  {project.technology?.toLowerCase().includes('node') && (
                     <div className="w-6 h-6 bg-green-100 rounded flex items-center justify-center">
                       <span className="text-xs text-green-600">JS</span>
                     </div>
                   )}
-                  {project.technology.toLowerCase().includes('django') && (
+                  {project.technology?.toLowerCase().includes('django') && (
                     <Github className="w-4 h-4 text-gray-400" />
                   )}
-                  {project.technology.toLowerCase().includes('php') && (
+                  {project.technology?.toLowerCase().includes('php') && (
                     <div className="text-lg">🐘</div>
                   )}
 
@@ -607,14 +788,14 @@ export function Projects() {
               <div className="flex items-center justify-between text-xs text-gray-500 mb-4">
                 <span>Last synced: {formatLastSynced(project.lastSynced)}</span>
                 <div className="flex items-center space-x-2">
-                  {project.totalTables && (
+                  {project.totalTables !== undefined && (
                     <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">
                       {project.totalTables} tables
                     </span>
                   )}
-                  {project.totalRows && (
+                  {project.totalRows !== undefined && (
                     <span className="px-2 py-1 bg-green-100 text-green-700 rounded">
-                      {project.totalRows.toLocaleString()} rows
+                      {(project.totalRows || 0).toLocaleString()} rows
                     </span>
                   )}
                 </div>
@@ -624,7 +805,7 @@ export function Projects() {
               {project.schema ? (
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="text-xs text-gray-500">Tables ({project.schema.tables.length}):</div>
+                    <div className="text-xs text-gray-500">Tables ({(project.schema?.tables?.length || 0)}):</div>
                     <div className="flex items-center space-x-1 text-xs">
                       {project.hasForeignKeys && (
                         <span className="px-1 py-0.5 bg-purple-100 text-purple-600 rounded" title="Has foreign keys">
@@ -639,8 +820,8 @@ export function Projects() {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    {project.schema.tables.slice(0, 3).map((table) => (
-                      <div key={table.name} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 rounded p-2">
+                    {(project.schema?.tables || []).slice(0, 3).map((table: any, index: number) => (
+                      <div key={`${project.id}-table-${table.name}-${index}`} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 rounded p-2">
                         <div className="flex items-center space-x-2">
                           <Database className="w-3 h-3" />
                           <span className="font-medium">{table.name}</span>
@@ -653,9 +834,9 @@ export function Projects() {
                         </div>
                       </div>
                     ))}
-                    {project.schema.tables.length > 3 && (
+                    {(project.schema?.tables?.length || 0) > 3 && (
                       <div className="text-xs text-gray-400 text-center py-1">
-                        +{project.schema.tables.length - 3} more tables
+                        +{(project.schema?.tables?.length || 0) - 3} more tables
                       </div>
                     )}
                   </div>
@@ -664,8 +845,8 @@ export function Projects() {
                 <div className="mb-4">
                   <div className="text-xs text-gray-500 mb-2">Databases:</div>
                   <div className="space-y-1">
-                    {project.databases.slice(0, 2).map((db) => (
-                      <div key={db.id} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 rounded p-2">
+                    {(project.databases || []).slice(0, 2).map((db, index) => (
+                      <div key={`${project.id}-db-${db.id || db.name || index}`} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 rounded p-2">
                         <div className="flex items-center space-x-2">
                           <Database className="w-3 h-3" />
                           <span className="font-medium">{db.name}</span>
@@ -680,9 +861,9 @@ export function Projects() {
                         </div>
                       </div>
                     ))}
-                    {project.databases.length > 2 && (
+                    {(project.databases?.length || 0) > 2 && (
                       <div className="text-xs text-gray-400 text-center py-1">
-                        +{project.databases.length - 2} more databases
+                        +{(project.databases?.length || 0) - 2} more databases
                       </div>
                     )}
                   </div>
@@ -694,15 +875,24 @@ export function Projects() {
                 <div className="flex space-x-2">
                   <button
                     onClick={() => handleOpenProject(project.id)}
-                    className="inline-flex items-center px-3 py-1 bg-orange-600 text-white text-sm rounded hover:bg-orange-700 transition-colors disabled:opacity-50"
-                    disabled={project.status !== 'connected' || !connections.has(project.id)}
+                    className="inline-flex items-center px-3 py-1 bg-orange-600 text-white text-sm rounded hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={syncingProject === project.id}
+                    title={project.status === 'connected' ? 'Open project in query editor' : 'Project not connected - sync first'}
                   >
                     Open
                   </button>
                   <button
-                    onClick={() => handleSync(project.id)}
-                    disabled={syncingProject === project.id || project.databases.length === 0}
-                    className="inline-flex items-center px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => {
+                      console.log('🔄 Sync button clicked!', {
+                        projectId: project.id,
+                        syncingProject,
+                        isDisabled: syncingProject === project.id
+                      });
+                      handleSync(project.id);
+                    }}
+                    disabled={syncingProject === project.id}
+                    className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={syncingProject === project.id ? 'Syncing...' : 'Sync project databases'}
                   >
                     <RefreshCw className={`w-3 h-3 mr-1 ${syncingProject === project.id ? 'animate-spin' : ''}`} />
                     {syncingProject === project.id ? 'Syncing' : 'Sync'}
@@ -780,6 +970,8 @@ export function Projects() {
         <ProjectUploader
           onProjectDetected={async (result) => {
             console.log('🎉 Project detected callback received:', result);
+            console.log('🎉 Project data:', result.projectData);
+            console.log('🎉 Project ID:', result.projectId);
             try {
               // Add a small delay to ensure the project is saved
               console.log('⏳ Waiting 1 second for project to be saved...');
@@ -789,6 +981,7 @@ export function Projects() {
               console.log('🔄 Reloading projects...');
               await loadProjects(true);
               console.log('✅ Projects reloaded successfully');
+              console.log('📊 Current projects count:', projects.length);
               
               // Automatically connect the uploaded database to QueryFlow
               if (result.projectData && result.projectData.databases && result.projectData.databases.length > 0) {

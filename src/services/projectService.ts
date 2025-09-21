@@ -70,7 +70,20 @@ export class ProjectService {
         createdAt: now,
         updatedAt: now,
         status: 'connected',
-        metadata: detectionResult.metadata
+        // Required LocalProject properties
+        isLocal: true,
+        technology: detectionResult.projectType,
+        databaseCount: detectionResult.databases.length,
+        icon: '📁',
+        color: 'blue',
+        isExample: false,
+        tables: [],
+        queries: [],
+        schema: undefined,
+        totalTables: 0,
+        totalRows: 0,
+        hasForeignKeys: false,
+        hasIndexes: false
       } as LocalProject;
     } else {
       project = {
@@ -88,7 +101,21 @@ export class ProjectService {
         createdAt: now,
         updatedAt: now,
         status: 'connected',
-        metadata: detectionResult.metadata
+        // Required GitHubProject properties
+        githubPath: options.path,
+        isLocal: false,
+        technology: detectionResult.projectType,
+        databaseCount: detectionResult.databases.length,
+        icon: '🐙',
+        color: 'purple',
+        isExample: false,
+        tables: [],
+        queries: [],
+        schema: undefined,
+        totalTables: 0,
+        totalRows: 0,
+        hasForeignKeys: false,
+        hasIndexes: false
       } as GitHubProject;
     }
 
@@ -190,10 +217,9 @@ export class ProjectService {
       configFiles: result.configFiles,
       metadata: {
         ...project.metadata,
-        ...result.metadata,
-        dependencies: result.metadata.dependencies || project.metadata?.dependencies || [],
-        scripts: result.metadata.scripts || project.metadata?.scripts || {},
-        environment: result.metadata.environment || project.metadata?.environment || 'development'
+        dependencies: project.metadata?.dependencies || [],
+        scripts: project.metadata?.scripts || {},
+        environment: project.metadata?.environment || 'development'
       },
       updatedAt: new Date()
     } as Project;
@@ -261,7 +287,7 @@ export class ProjectService {
     return projects.filter(project =>
       project.name.toLowerCase().includes(lowercaseQuery) ||
       project.description?.toLowerCase().includes(lowercaseQuery) ||
-      project.projectType.toLowerCase().includes(lowercaseQuery)
+      project.projectType?.toLowerCase().includes(lowercaseQuery)
     );
   }
 
@@ -331,7 +357,9 @@ export class ProjectService {
 
     for (const project of projects) {
       // Count by type
-      stats.byType[project.projectType] = (stats.byType[project.projectType] || 0) + 1;
+      if (project.projectType) {
+        stats.byType[project.projectType] = (stats.byType[project.projectType] || 0) + 1;
+      }
 
       // Count by status
       stats.byStatus[project.status] = (stats.byStatus[project.status] || 0) + 1;
@@ -375,7 +403,7 @@ export class ProjectService {
     // Database validation
     for (const database of project.databases) {
       try {
-        const validation = DatabaseConnector.validateConfig(database.type, database.config);
+        const validation = ProjectService.validateDatabaseConfig(database.type, database.config);
         if (!validation.isValid) {
           errors.push(`Database ${database.name}: ${validation.errors.join(', ')}`);
         }
@@ -388,6 +416,23 @@ export class ProjectService {
       isValid: errors.length === 0,
       errors,
       warnings
+    };
+  }
+
+  private static validateDatabaseConfig(type: string, config: any): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    
+    if (!type) {
+      errors.push('Database type is required');
+    }
+    
+    if (!config) {
+      errors.push('Database configuration is required');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
     };
   }
 }

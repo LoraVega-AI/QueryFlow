@@ -5,7 +5,7 @@ import { DatabaseSchema, QueryResult } from '@/types/database';
 
 interface DatabaseConnection {
   id: string;
-  type: 'mysql' | 'postgresql' | 'sqlite';
+  type: 'mysql' | 'postgresql' | 'sqlite' | 'extracted';
   host?: string;
   database?: string;
   credentials: {

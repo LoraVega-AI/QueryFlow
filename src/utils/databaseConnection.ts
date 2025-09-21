@@ -429,6 +429,9 @@ class ApplicationDataManager {
 
     if (!this.appDb) return; // Additional check
 
+    // Check if we need to migrate the projects table
+    await this.migrateProjectsTable();
+
     // Projects table
     await this.appDb.exec(`
       CREATE TABLE IF NOT EXISTS projects (
@@ -439,6 +442,10 @@ class ApplicationDataManager {
         status TEXT DEFAULT 'disconnected',
         last_synced TEXT,
         database_count INTEGER DEFAULT 0,
+        total_tables INTEGER DEFAULT 0,
+        total_rows INTEGER DEFAULT 0,
+        has_foreign_keys INTEGER DEFAULT 0,
+        has_indexes INTEGER DEFAULT 0,
         icon TEXT,
         color TEXT,
         is_example INTEGER DEFAULT 0,
@@ -492,32 +499,112 @@ class ApplicationDataManager {
     console.log('Application database tables created');
   }
 
+  private async migrateProjectsTable(): Promise<void> {
+    if (!this.appDb) return;
+
+    try {
+      console.log('🔄 Starting projects table migration...');
+      
+      // Check if the new columns exist
+      const columns = await this.appDb.all("PRAGMA table_info(projects)");
+      const columnNames = columns.map((col: any) => col.name);
+      
+      console.log('📋 Current columns:', columnNames);
+      
+      // Add missing columns if they don't exist
+      if (!columnNames.includes('total_tables')) {
+        console.log('➕ Adding total_tables column...');
+        await this.appDb.exec('ALTER TABLE projects ADD COLUMN total_tables INTEGER DEFAULT 0');
+        console.log('✅ Added total_tables column to projects table');
+      } else {
+        console.log('✅ total_tables column already exists');
+      }
+      
+      if (!columnNames.includes('total_rows')) {
+        console.log('➕ Adding total_rows column...');
+        await this.appDb.exec('ALTER TABLE projects ADD COLUMN total_rows INTEGER DEFAULT 0');
+        console.log('✅ Added total_rows column to projects table');
+      } else {
+        console.log('✅ total_rows column already exists');
+      }
+      
+      if (!columnNames.includes('has_foreign_keys')) {
+        console.log('➕ Adding has_foreign_keys column...');
+        await this.appDb.exec('ALTER TABLE projects ADD COLUMN has_foreign_keys INTEGER DEFAULT 0');
+        console.log('✅ Added has_foreign_keys column to projects table');
+      } else {
+        console.log('✅ has_foreign_keys column already exists');
+      }
+      
+      if (!columnNames.includes('has_indexes')) {
+        console.log('➕ Adding has_indexes column...');
+        await this.appDb.exec('ALTER TABLE projects ADD COLUMN has_indexes INTEGER DEFAULT 0');
+        console.log('✅ Added has_indexes column to projects table');
+      } else {
+        console.log('✅ has_indexes column already exists');
+      }
+      
+      console.log('✅ Projects table migration completed');
+    } catch (error) {
+      console.error('❌ Migration failed:', error);
+      console.error('❌ Error type:', typeof error);
+      console.error('❌ Error message:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');
+    }
+  }
+
   // Project operations
   async saveProject(project: any): Promise<void> {
     if (!this.appDb) await this.initialize();
-    if (!this.appDb) return; // SQLite not available
+    if (!this.appDb) {
+      console.error('❌ Database not available for saving project');
+      return;
+    }
+
+    console.log('💾 Saving project to database:', {
+      id: project.id,
+      name: project.name,
+      totalTables: project.totalTables,
+      totalRows: project.totalRows,
+      hasForeignKeys: project.hasForeignKeys,
+      hasIndexes: project.hasIndexes
+    });
 
     const schemaData = JSON.stringify(project.schema || {});
     const now = new Date().toISOString();
 
-    await this.appDb.run(`
-      INSERT OR REPLACE INTO projects
-      (id, name, description, technology, status, last_synced, database_count, icon, color, is_example, schema_data, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      project.id,
-      project.name,
-      project.description || '',
-      project.technology || '',
-      project.status || 'disconnected',
-      project.lastSynced || null,
-      project.databaseCount || 0,
-      project.icon || '',
-      project.color || '',
-      project.isExample ? 1 : 0,
-      schemaData,
-      now
-    ]);
+    try {
+      await this.appDb.run(`
+        INSERT OR REPLACE INTO projects
+        (id, name, description, technology, status, last_synced, database_count, total_tables, total_rows, has_foreign_keys, has_indexes, icon, color, is_example, schema_data, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        project.id,
+        project.name,
+        project.description || '',
+        project.technology || '',
+        project.status || 'disconnected',
+        project.lastSynced || null,
+        project.databaseCount || 0,
+        project.totalTables || 0,
+        project.totalRows || 0,
+        project.hasForeignKeys ? 1 : 0,
+        project.hasIndexes ? 1 : 0,
+        project.icon || '',
+        project.color || '',
+        project.isExample ? 1 : 0,
+        schemaData,
+        now
+      ]);
+      
+      console.log('✅ Project saved successfully to database');
+    } catch (error) {
+      console.error('❌ Failed to save project to database:', error);
+      console.error('❌ Error type:', typeof error);
+      console.error('❌ Error message:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');
+      throw error;
+    }
   }
 
   async getProject(projectId: string): Promise<any | null> {
@@ -546,6 +633,10 @@ class ApplicationDataManager {
       schema: JSON.parse(row.schema_data || '{}'),
       isExample: row.is_example === 1,
       databaseCount: row.database_count,
+      totalTables: row.total_tables || 0,
+      totalRows: row.total_rows || 0,
+      hasForeignKeys: row.has_foreign_keys === 1,
+      hasIndexes: row.has_indexes === 1,
       lastSynced: row.last_synced
     }));
   }

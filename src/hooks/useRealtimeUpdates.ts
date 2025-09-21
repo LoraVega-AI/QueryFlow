@@ -55,13 +55,17 @@ export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
   }, []);
 
   const handleError = useCallback((error: Event) => {
-    console.error('Real-time connection error:', error);
+    console.error('Real-time connection error:', {
+      type: error.type,
+      timestamp: new Date().toISOString(),
+      isConnected: isConnectedRef.current
+    });
     onError?.(error);
   }, [onError]);
 
   // Connect to real-time updates
   const connect = useCallback(() => {
-    if (!isConnectedRef.current) {
+    if (!isConnectedRef.current && typeof window !== 'undefined') {
       realtimeService.connect();
     }
   }, []);
@@ -93,12 +97,14 @@ export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
 
   // Auto-connect if enabled
   useEffect(() => {
-    if (autoConnect) {
+    if (autoConnect && typeof window !== 'undefined') {
       connect();
     }
 
     return () => {
-      disconnect();
+      if (typeof window !== 'undefined') {
+        disconnect();
+      }
     };
   }, [autoConnect, connect, disconnect]);
 

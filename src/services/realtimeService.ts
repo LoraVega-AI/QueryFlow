@@ -32,11 +32,19 @@ class RealtimeServiceImpl implements RealtimeService {
   constructor(private url: string = '/api/realtime/events') {}
 
   connect(): void {
+    // Check if we're in a browser environment
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+      console.warn('EventSource not available in this environment');
+      return;
+    }
+
     if (this.eventSource?.readyState === EventSource.OPEN) {
+      console.log('EventSource already connected');
       return;
     }
 
     try {
+      console.log('Connecting to real-time service:', this.url);
       this.eventSource = new EventSource(this.url);
       this.setupEventListeners();
     } catch (error) {
@@ -74,7 +82,11 @@ class RealtimeServiceImpl implements RealtimeService {
     if (!this.eventSource) return;
 
     this.eventSource.onopen = () => {
-      console.log('Real-time connection opened');
+      console.log('Real-time connection opened', {
+        url: this.eventSource?.url,
+        readyState: this.eventSource?.readyState,
+        reconnectAttempts: this.reconnectAttempts
+      });
       this.reconnectAttempts = 0;
       this.isManualDisconnect = false;
       this.connectCallbacks.forEach(callback => callback());
@@ -91,7 +103,13 @@ class RealtimeServiceImpl implements RealtimeService {
     };
 
     this.eventSource.onerror = (error) => {
-      console.error('Real-time connection error:', error);
+      console.error('Real-time connection error:', {
+        type: error.type,
+        readyState: this.eventSource?.readyState,
+        url: this.eventSource?.url,
+        reconnectAttempts: this.reconnectAttempts,
+        isManualDisconnect: this.isManualDisconnect
+      });
       this.handleError(error);
       
       if (!this.isManualDisconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
@@ -128,6 +146,22 @@ class RealtimeServiceImpl implements RealtimeService {
   }
 
   private handleError(error: Event): void {
+    const errorInfo = {
+      type: error.type,
+      readyState: this.eventSource?.readyState,
+      url: this.eventSource?.url,
+      reconnectAttempts: this.reconnectAttempts,
+      isManualDisconnect: this.isManualDisconnect,
+      timestamp: new Date().toISOString()
+    };
+    
+    // Only log warnings for non-critical errors
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      console.warn('Real-time service error (will retry):', errorInfo);
+    } else {
+      console.error('Real-time service error (max retries reached):', errorInfo);
+    }
+    
     this.errorCallbacks.forEach(callback => callback(error));
   }
 }

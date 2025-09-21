@@ -88,6 +88,7 @@ const PROJECT_TYPE_NAMES: Record<ProjectType, string> = {
 const STATUS_CONFIG = {
   detecting: { icon: Clock, color: 'text-blue-500', bg: 'bg-blue-50', label: 'Detecting' },
   linking: { icon: RefreshCw, color: 'text-blue-500', bg: 'bg-blue-50', label: 'Linking' },
+  connecting: { icon: RefreshCw, color: 'text-blue-500', bg: 'bg-blue-50', label: 'Connecting' },
   connected: { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50', label: 'Connected' },
   syncing: { icon: RefreshCw, color: 'text-blue-500', bg: 'bg-blue-50', label: 'Syncing' },
   error: { icon: XCircle, color: 'text-red-500', bg: 'bg-red-50', label: 'Error' },
@@ -119,16 +120,23 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
         id: '1',
         name: 'E-commerce API',
         description: 'Node.js REST API for e-commerce platform',
+        technology: 'nodejs',
+        status: 'connected',
+        databaseCount: 0,
+        icon: '📦',
+        color: 'blue',
+        isExample: false,
+        databases: [],
+        tables: [],
+        queries: [],
         path: '/Users/dev/projects/ecommerce-api',
         projectType: 'nodejs',
         type: 'local',
         localPath: '/Users/dev/projects/ecommerce-api',
-        databases: [],
         configFiles: [],
         createdAt: new Date('2024-01-15'),
         updatedAt: new Date('2024-01-20'),
-        lastSyncedAt: new Date('2024-01-20'),
-        status: 'connected',
+        lastSynced: new Date('2024-01-20'),
         metadata: {
           version: '1.0.0',
           packageManager: 'npm',
@@ -142,6 +150,15 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
         id: '2',
         name: 'Data Analytics Dashboard',
         description: 'Python Django application with PostgreSQL',
+        technology: 'django',
+        status: 'connected',
+        databaseCount: 1,
+        icon: '🐍',
+        color: 'green',
+        isExample: false,
+        databases: [],
+        tables: [],
+        queries: [],
         path: '/Users/dev/projects/analytics-dashboard',
         projectType: 'django',
         type: 'github',
@@ -161,12 +178,10 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
         } as any,
         branch: 'main',
         clonePath: '/tmp/queryflow/analytics-dashboard',
-        databases: [],
         configFiles: [],
         createdAt: new Date('2024-01-10'),
         updatedAt: new Date('2024-01-19'),
-        lastSyncedAt: new Date('2024-01-19'),
-        status: 'syncing',
+        lastSynced: new Date('2024-01-19'),
         metadata: {
           version: '2.1.0',
           packageManager: 'pip',
@@ -181,15 +196,22 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
         id: '3',
         name: 'Legacy PHP System',
         description: 'Old PHP application with MySQL database',
+        technology: 'php',
+        status: 'error',
+        databaseCount: 1,
+        icon: '🐘',
+        color: 'purple',
+        isExample: false,
+        databases: [],
+        tables: [],
+        queries: [],
         path: '/var/www/legacy-system',
         projectType: 'php',
         type: 'local',
         localPath: '/var/www/legacy-system',
-        databases: [],
         configFiles: [],
         createdAt: new Date('2024-01-05'),
         updatedAt: new Date('2024-01-18'),
-        status: 'error',
         metadata: {
           language: 'php',
           packageManager: 'composer',
@@ -227,7 +249,7 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
       filtered = filtered.filter(project =>
         project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         project.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        PROJECT_TYPE_NAMES[project.projectType].toLowerCase().includes(searchQuery.toLowerCase())
+        (project.projectType ? PROJECT_TYPE_NAMES[project.projectType] : '').toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
@@ -251,8 +273,8 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
           bValue = b.name.toLowerCase();
           break;
         case 'type':
-          aValue = PROJECT_TYPE_NAMES[a.projectType];
-          bValue = PROJECT_TYPE_NAMES[b.projectType];
+          aValue = a.projectType ? PROJECT_TYPE_NAMES[a.projectType] : '';
+          bValue = b.projectType ? PROJECT_TYPE_NAMES[b.projectType] : '';
           break;
         case 'status':
           aValue = STATUS_CONFIG[a.status].label;
@@ -328,7 +350,7 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
 
   // Get unique project types for filter
   const getUniqueTypes = () => {
-    const types = new Set(projects.map(p => p.projectType));
+    const types = new Set(projects.map(p => p.projectType).filter((type): type is ProjectType => Boolean(type)));
     return Array.from(types);
   };
 
@@ -407,11 +429,11 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center">
               <div className="text-2xl mr-3">
-                {PROJECT_TYPE_ICONS[project.projectType]}
+                {project.projectType ? PROJECT_TYPE_ICONS[project.projectType] : '📁'}
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">{project.name}</h3>
-                <p className="text-sm text-gray-600">{PROJECT_TYPE_NAMES[project.projectType]}</p>
+                <p className="text-sm text-gray-600">{project.projectType ? PROJECT_TYPE_NAMES[project.projectType] : 'Unknown'}</p>
               </div>
             </div>
 

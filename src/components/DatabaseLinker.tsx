@@ -39,7 +39,7 @@ import { DatabaseConnector } from '@/utils/databaseConnector';
 import { ProjectService } from '@/services/projectService';
 import { projectsManager } from '@/utils/projectsManager';
 import { useDatabase } from '@/contexts/DatabaseContext';
-import { Project, Database as ProjectDatabase } from '@/types/projects';
+import { Project, Database as ProjectDatabase } from '@/types/project';
 
 interface DatabaseLinkerProps {
   projectId?: string;
@@ -159,8 +159,7 @@ export function DatabaseLinker({
         isTesting: false,
         result: {
           success: result.success,
-          error: result.error,
-          latency: result.latency
+          error: result.error
         }
       })));
 
@@ -566,7 +565,7 @@ export function DatabaseLinker({
             </div>
             <div className="text-xs text-blue-700 space-y-1">
               <div>Tables: {schema.tables.length}</div>
-              <div>Relationships: {schema.relationships.length}</div>
+              <div>Relationships: {schema.relationships?.length || 0}</div>
             </div>
           </div>
         )}

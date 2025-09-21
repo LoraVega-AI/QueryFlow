@@ -25,7 +25,7 @@ import { SyncManager } from '@/components/SyncManager';
 import { DatabaseSchema, QueryResult, QueryError, DatabaseRecord } from '@/types/database';
 import { Database, RefreshCw } from 'lucide-react';
 import { ProjectDetectionResult } from '@/types/project';
-import { Project } from '@/types/projects';
+import { Project } from '@/types/project';
 import { StorageManager } from '@/utils/storage';
 import { ProjectService } from '@/services/projectService';
 import { DatabaseConnector } from '@/utils/databaseConnector';

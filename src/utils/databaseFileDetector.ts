@@ -146,7 +146,7 @@ export class DatabaseFileDetector {
           // Check for ORM-related directories (still traverse inside to inspect files)
           if (ORM_FILE_PATTERNS.migrations.includes(entry.name) ||
               ORM_FILE_PATTERNS.models.includes(entry.name)) {
-            const migrationFiles = await this.findDatabaseFiles(fullPath);
+            const migrationFiles = await DatabaseFileDetector.findDatabaseFiles(fullPath);
             databaseFiles.push(...migrationFiles);
           } else if (entry.name !== 'node_modules' && entry.name !== '.git') {
             // Recursively search other directories
@@ -178,7 +178,7 @@ export class DatabaseFileDetector {
           // Language-agnostic embedded database detection on reasonably small files (<=1 MB)
           const fileStats = await stat(fullPath);
           if (fileStats.size > 0 && fileStats.size < 1024 * 1024) {
-            const content = await this.checkEmbeddedDatabaseContent(fullPath);
+            const content = await DatabaseFileDetector.checkEmbeddedDatabaseContent(fullPath);
             if (content) {
               databaseFiles.push(fullPath);
             }
@@ -289,13 +289,13 @@ export class DatabaseFileDetector {
           // Test SQLite database directly
           const testResult = await this.testSQLiteDatabase(filePath);
           if (testResult.success) {
-            dbInfo['tables'] = testResult.tables || [];
-            dbInfo['schema'] = testResult.schema || null;
+            (dbInfo as any)['tables'] = testResult.tables || [];
+            (dbInfo as any)['schema'] = testResult.schema || null;
             dbInfo.status = 'ready';
             dbInfo.conversionLogs.push(`[${new Date().toISOString()}] SQLite database validated successfully`);
           } else {
             dbInfo.status = 'error';
-            dbInfo.conversionLogs.push(`[${new Date().toISOString()}] SQLite validation failed: ${testResult.error || 'Unknown error'}`);
+            dbInfo.conversionLogs.push(`[${new Date().toISOString()}] SQLite validation failed: ${(testResult as any).error || 'Unknown error'}`);
           }
         } else if (dbType !== 'unknown') {
           // Attempt conversion for other database types
@@ -305,13 +305,13 @@ export class DatabaseFileDetector {
             // Update database info with converted file
             dbInfo.filePath = conversionResult.convertedPath;
             dbInfo.type = 'sqlite'; // Now it's SQLite
-            dbInfo.conversionMetadata = conversionResult.metadata;
+            (dbInfo as any).conversionMetadata = conversionResult.metadata;
 
             // Test the converted SQLite database
             const testResult = await this.testSQLiteDatabase(conversionResult.convertedPath);
             if (testResult.success) {
-              dbInfo['tables'] = testResult.tables || [];
-              dbInfo['schema'] = testResult.schema || null;
+              (dbInfo as any)['tables'] = testResult.tables || [];
+              (dbInfo as any)['schema'] = testResult.schema || null;
               dbInfo.status = 'ready';
               dbInfo.conversionLogs.push(`[${new Date().toISOString()}] Successfully converted ${dbType} to SQLite`);
               dbInfo.conversionLogs.push(`[${new Date().toISOString()}] Original size: ${conversionResult.metadata?.originalSize} bytes`);
@@ -322,18 +322,18 @@ export class DatabaseFileDetector {
             }
           } else {
             dbInfo.status = 'error';
-            dbInfo.conversionLogs.push(`[${new Date().toISOString()}] Conversion failed: ${conversionResult.error}`);
+            dbInfo.conversionLogs.push(`[${new Date().toISOString()}] Conversion failed: ${(conversionResult as any).error}`);
           }
         } else {
           // Handle config files and embedded content
           if (ext === '.json' || ext === '.yaml' || ext === '.yml' || ext === '.toml') {
-            dbInfo['configContent'] = await this.parseConfigFile(filePath);
+            (dbInfo as any)['configContent'] = await this.parseConfigFile(filePath);
             dbInfo.status = 'ready';
             dbInfo.conversionLogs.push(`[${new Date().toISOString()}] Configuration file parsed successfully`);
           } else if (this.isSourceCodeFile(ext)) {
             const embeddedContent = await this.extractEmbeddedDatabaseContent(filePath);
             if (embeddedContent) {
-              dbInfo['embeddedContent'] = embeddedContent;
+              (dbInfo as any)['embeddedContent'] = embeddedContent;
               dbInfo.status = 'ready';
               dbInfo.conversionLogs.push(`[${new Date().toISOString()}] Embedded database content extracted`);
             } else {
@@ -348,7 +348,7 @@ export class DatabaseFileDetector {
 
         // Calculate processing time
         const processingTime = Date.now() - startTime;
-        dbInfo.processingTime = processingTime;
+        (dbInfo as any).processingTime = processingTime;
         dbInfo.conversionLogs.push(`[${new Date().toISOString()}] Processing completed in ${processingTime}ms`);
 
         convertedDatabases.push(dbInfo);
@@ -361,6 +361,9 @@ export class DatabaseFileDetector {
         console.error(`❌ Error processing database file ${filePath}:`, error);
 
         // Create error database info
+        const fileName = path.basename(filePath);
+        const ext = path.extname(filePath);
+        const dbType = this.getDatabaseType(ext);
         const errorDbInfo = {
           id: `db_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           name: fileName.replace(ext, ''),
@@ -411,14 +414,6 @@ export class DatabaseFileDetector {
     return 'unknown';
   }
   
-  /**
-   * Test SQLite database file (placeholder - replace with actual implementation)
-   * @param filePath Path to SQLite database file
-   */
-  static async testSQLiteDatabase(filePath: string): Promise<{ success: boolean; tables?: any[]; schema?: any }> {
-    // Placeholder implementation - replace with actual SQLite testing logic
-    return { success: true, tables: [], schema: null };
-  }
   
   /**
    * Parse configuration files

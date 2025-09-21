@@ -66,8 +66,8 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
   const isUpdatingRef = useRef(false);
   
   // Refs to store latest callback functions
-  const handleUpdateTableRef = useRef<(updatedTable: Table) => void>();
-  const handleDeleteTableRef = useRef<(updatedTable: Table) => void>();
+  const handleUpdateTableRef = useRef<(updatedTable: Table) => void>(() => {});
+  const handleDeleteTableRef = useRef<(tableId: string) => void>(() => {});
   
   // Refs to store stable nodes and edges
   const nodesRef = useRef<Node[]>([]);
@@ -647,12 +647,10 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
     try {
       const result = await ERDExportService.exportDiagram(
         container,
-        {
-          nodes: memoizedNodes,
-          edges: memoizedEdges,
-          schema,
-          exportOptions
-        }
+        memoizedNodes,
+        memoizedEdges,
+        schema,
+        exportOptions
       );
 
       if (result.success) {

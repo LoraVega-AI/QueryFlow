@@ -7,16 +7,38 @@ import { dbConnectionManager } from '@/utils/databaseConnection';
 
 export async function GET() {
   try {
+    console.log('🔄 Projects API: Force fresh database read...');
+    
+    // Force reinitialize to ensure fresh connection
+    const { dbConnectionManager } = await import('@/utils/databaseConnection');
     await dbConnectionManager.initializeAppData();
+    console.log('✅ Projects API: Fresh database connection initialized');
+    
+    // Get projects with fresh data
     const projects = await dbConnectionManager.getAllProjects();
+    console.log('📊 Projects API: Fresh data retrieved:', projects.length, 'projects');
+    
+    // Sort by creation date to get latest first
+    const sortedProjects = projects.sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.created_at || 0);
+      const dateB = new Date(b.createdAt || b.created_at || 0);
+      return dateB.getTime() - dateA.getTime();
+    });
+    
+    console.log('📊 Projects API: Latest projects:', sortedProjects.slice(0, 3).map(p => ({
+      id: p.id,
+      name: p.name,
+      totalTables: p.totalTables,
+      createdAt: p.createdAt || p.created_at
+    })));
 
     return NextResponse.json({
       success: true,
       message: 'Projects retrieved successfully',
-      data: projects
+      data: sortedProjects
     });
   } catch (error: any) {
-    console.error('Failed to get projects:', error);
+    console.error('❌ Projects API: Failed to get projects:', error);
     return NextResponse.json({
       success: false,
       message: 'Failed to retrieve projects',

@@ -149,7 +149,7 @@ export class DatabaseConverter {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown conversion error';
 
-      this.errorHandler.recordError('database_conversion', error, {
+      this.errorHandler.recordError('database_conversion', errorMessage, {
         databaseType,
         filePath,
         duration,
@@ -323,11 +323,15 @@ export class DatabaseConverter {
         success: true,
         convertedPath: outputPath,
         metadata: {
+          originalType: 'mysql',
+          originalSize: 0, // We don't have the original size in this context
+          convertedSize: 0, // We don't have the converted size in this context
           tables
         }
       };
     } catch (error) {
-      this.errorHandler.recordError('mysql_conversion', error, {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown MySQL conversion error';
+      this.errorHandler.recordError('mysql_conversion', errorMessage, {
         dumpPath,
         outputPath,
         operationId
@@ -385,6 +389,9 @@ export class DatabaseConverter {
         success: true,
         convertedPath: outputPath,
         metadata: {
+          originalType: 'postgresql',
+          originalSize: 0,
+          convertedSize: 0,
           tables: await this.extractTableInfo(convertedSQL)
         }
       };
@@ -462,6 +469,9 @@ export class DatabaseConverter {
         success: true,
         convertedPath: outputPath,
         metadata: {
+          originalType: 'json',
+          originalSize: 0,
+          convertedSize: 0,
           tables: await this.extractTableInfo(sqlStatements)
         }
       };
@@ -510,6 +520,9 @@ export class DatabaseConverter {
         success: true,
         convertedPath: outputPath,
         metadata: {
+          originalType: 'csv',
+          originalSize: 0,
+          convertedSize: 0,
           tables: await this.extractTableInfo(sqlStatements)
         }
       };
@@ -542,6 +555,9 @@ export class DatabaseConverter {
         success: true,
         convertedPath: outputPath,
         metadata: {
+          originalType: 'sql',
+          originalSize: 0,
+          convertedSize: 0,
           tables: await this.extractTableInfo(convertedSQL)
         }
       };

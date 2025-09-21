@@ -106,7 +106,14 @@ class SessionManagerImpl implements SessionManager {
 
   isSessionValid(): boolean {
     try {
-      const session = this.loadSession();
+      // Get session data directly from localStorage without calling loadSession
+      // to avoid infinite recursion
+      const stored = localStorage.getItem(this.SESSION_KEY);
+      if (!stored) {
+        return false;
+      }
+
+      const session = JSON.parse(stored);
       if (!session?.lastActivity) {
         return false;
       }

@@ -144,6 +144,9 @@ export interface SchemaMetadata {
   totalTables: number;
   totalColumns: number;
   totalRelationships: number;
+  totalRows?: number;
+  hasForeignKeys?: boolean;
+  hasIndexes?: boolean;
   complexity: 'low' | 'medium' | 'high';
   lastValidated?: Date;
   validationStatus: 'valid' | 'warning' | 'error';

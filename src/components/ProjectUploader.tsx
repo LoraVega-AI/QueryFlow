@@ -413,29 +413,45 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
             </div>
 
             <div className="grid grid-cols-1 gap-3 text-sm">
-              <div className="flex items-center justify-center">
-                <Database className="w-4 h-4 mr-2 text-green-500" />
-                <span className="font-medium">{result.databases.length} database(s) found</span>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Project Type:</span>
+                <span className="font-medium">
+                  {PROJECT_TYPE_NAMES[result.projectType as ProjectType] || result.projectType}
+                </span>
               </div>
               
-              {result.databases.map((db, index) => (
-                <div key={index} className="bg-white rounded p-3 border">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <Database className="w-4 h-4 mr-2 text-blue-500" />
-                      <span className="font-medium">{db.name}</span>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Databases Found:</span>
+                <span className="font-medium text-green-600">
+                  {result.databases.length}
+                </span>
+              </div>
+              
+              {result.databases.length > 0 && (
+                <div className="mt-2">
+                  <div className="text-gray-600 text-xs mb-1">Database Details:</div>
+                  {result.databases.map((db, index) => (
+                    <div key={index} className="text-xs bg-gray-100 rounded px-2 py-1 mb-1">
+                      <div className="flex justify-between">
+                        <span className="font-medium">{db.name}</span>
+                        <span className="text-gray-500">{db.type}</span>
+                      </div>
+                      {(db as any).tableCount !== undefined && (
+                        <div className="text-gray-600">
+                          {(db as any).tableCount} tables
+                          {(db as any).totalRows !== undefined && `, ${(db as any).totalRows} rows`}
+                        </div>
+                      )}
+                      {(db as any).extractionMetadata && (
+                        <div className="text-gray-600">
+                          Extracted from {(db as any).extractionMetadata.frameworks?.join(', ')} 
+                          ({(db as any).extractionMetadata.confidence}% confidence)
+                        </div>
+                      )}
                     </div>
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      db.status === 'ready' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                    }`}>
-                      {db.status === 'ready' ? 'Ready' : 'Error'}
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Type: {db.type} • Path: {db.config.filePath}
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
