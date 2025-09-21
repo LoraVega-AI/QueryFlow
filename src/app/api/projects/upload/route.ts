@@ -9,6 +9,7 @@ import { createReadStream, createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
 import { createGunzip } from 'zlib';
 import { createUnzip } from 'zlib';
+import { DatabaseFileDetector } from '@/utils/databaseFileDetector';
 import { broadcastMessage } from '@/utils/realtimeBroadcast';
 
 export async function POST(request: NextRequest) {
@@ -46,30 +47,57 @@ export async function POST(request: NextRequest) {
 
     // Save uploaded files and extract if needed
     const filePaths: string[] = [];
+    const zipFiles: string[] = [];
+
     for (const file of files) {
       const filePath = join(uploadDir, file.name);
       // Handle binary files properly
       const buffer = Buffer.from(await file.arrayBuffer());
       await writeFile(filePath, buffer);
       filePaths.push(filePath);
-      
+
       console.log(`Saved file: ${file.name} (${buffer.length} bytes)`);
-      
-      // If it's a zip file, extract it
+
+      // Collect zip files for later extraction
       if (file.name.toLowerCase().endsWith('.zip')) {
-        await extractZipFile(filePath, uploadDir);
+        zipFiles.push(filePath);
       }
     }
 
-    // Detect project type and databases
+    // Extract all zip files to subdirectories
+    for (const zipFile of zipFiles) {
+      await extractZipFile(zipFile, uploadDir);
+    }
+
+    // Get all files after extraction (including those from zip files)
+    const allFiles = await findAllFiles(uploadDir);
+    console.log(`📁 Total files after extraction: ${allFiles.length}`);
+
+    // Log some sample files for debugging
+    if (allFiles.length > 0) {
+      console.log('📄 Sample files found:', allFiles.slice(0, 10).map(f => basename(f)));
+      if (allFiles.length > 10) {
+        console.log(`... and ${allFiles.length - 10} more files`);
+      }
+    }
+
+    // Detect project type using all files
     console.log('🔍 Detecting project type...');
-    const detectionResult = detectProjectType(filePaths);
+    const detectionResult = detectProjectType(allFiles);
     console.log('📋 Project type detected:', detectionResult);
-    
+
     // Extract and analyze database files from the upload directory
     console.log('🗄️ Extracting database files...');
     const databaseFiles = await extractDatabaseFiles(uploadDir);
     console.log('📊 Found database files:', databaseFiles.length);
+
+    // Log database file details
+    if (databaseFiles.length > 0) {
+      console.log('🗃️ Database files found:');
+      databaseFiles.forEach((db, index) => {
+        console.log(`  ${index + 1}. ${db.name} (${db.type}) - ${db.status}`);
+      });
+    }
     
     // Create project with database information
     console.log('🏗️ Creating project object...');
@@ -208,21 +236,80 @@ async function extractDatabaseFiles(uploadDir: string): Promise<any[]> {
   const databaseFiles: any[] = [];
   
   try {
-    console.log('🔍 Searching for database files in:', uploadDir);
-    // Find all potential database files
-    const dbFiles = await findDatabaseFiles(uploadDir);
-    console.log('📁 Found database files:', dbFiles);
+    console.log('🔍 Searching for comprehensive database files in:', uploadDir);
     
-    for (const dbFile of dbFiles) {
-      console.log('🔬 Analyzing database file:', dbFile);
-      const dbInfo = await analyzeDatabaseFile(dbFile, uploadDir);
-      if (dbInfo) {
-        console.log('✅ Database file analyzed successfully:', dbInfo.name);
-        databaseFiles.push(dbInfo);
-      } else {
-        console.log('❌ Failed to analyze database file:', dbFile);
+    // Use new DatabaseFileDetector to find all database-related files
+    const detectedFiles = await DatabaseFileDetector.findDatabaseFiles(uploadDir);
+    console.log('📁 Found database-related files:', detectedFiles.length);
+
+    if (detectedFiles.length === 0) {
+      console.log('⚠️ No database files found in upload directory');
+      return NextResponse.json({
+        success: false,
+        message: 'No database files found in the uploaded content'
+      }, { status: 400 });
+    }
+
+    // Convert detected files to a standardized format with enhanced error handling
+    const convertedDatabases = await DatabaseFileDetector.convertDatabaseFiles(detectedFiles, uploadDir);
+
+    // Filter and process converted databases with detailed logging
+    const validDatabases: any[] = [];
+    const errorDatabases: any[] = [];
+    const skippedDatabases: any[] = [];
+
+    for (const database of convertedDatabases) {
+      console.log('🔬 Processing database:', database.name, '- Status:', database.status);
+
+      switch (database.status) {
+        case 'ready':
+          console.log('✅ Database ready for use:', database.name);
+          validDatabases.push(database);
+          break;
+        case 'error':
+          console.log('❌ Database conversion failed:', database.name, database.error);
+          errorDatabases.push(database);
+          break;
+        case 'skipped':
+          console.log('⏭️ Database skipped:', database.name);
+          skippedDatabases.push(database);
+          break;
+        case 'unknown':
+          console.log('❓ Unknown database type:', database.name);
+          skippedDatabases.push(database);
+          break;
+        default:
+          console.log('⚠️ Unexpected database status:', database.status, database.name);
+          skippedDatabases.push(database);
       }
     }
+
+    // Log detailed conversion summary
+    console.log('📊 Database Conversion Summary:');
+    console.log(`   ✅ Valid databases: ${validDatabases.length}`);
+    console.log(`   ❌ Failed conversions: ${errorDatabases.length}`);
+    console.log(`   ⏭️ Skipped/Unknown: ${skippedDatabases.length}`);
+    console.log(`   📁 Total processed: ${convertedDatabases.length}`);
+
+    // If no valid databases were found, return error
+    if (validDatabases.length === 0) {
+      const errorMessages = errorDatabases.map(db => db.error).filter(Boolean);
+      const primaryError = errorMessages.length > 0 ? errorMessages[0] : 'No valid databases could be processed';
+
+      console.log('❌ No valid databases found after processing');
+      return NextResponse.json({
+        success: false,
+        message: 'Failed to process any valid databases',
+        details: {
+          totalFiles: convertedDatabases.length,
+          errors: errorMessages,
+          skipped: skippedDatabases.length
+        }
+      }, { status: 400 });
+    }
+
+    // Use valid databases for project creation
+    databaseFiles.push(...validDatabases);
   } catch (error) {
     console.error('❌ Error extracting database files:', error);
   }
@@ -437,38 +524,114 @@ async function testDatabaseFile(filePath: string): Promise<{ success: boolean; t
 }
 
 function detectProjectType(filePaths: string[]): { projectName: string; projectType: string } {
-  const fileNames = filePaths.map(f => f.toLowerCase());
-  
-  // Check for package.json (Node.js)
-  if (fileNames.some(f => f.includes('package.json'))) {
+  // Create a set of file names for quick lookup
+  const fileNames = new Set(filePaths.map(f => basename(f).toLowerCase()));
+
+  // Create a set of directory names for quick lookup
+  const directories = new Set();
+  filePaths.forEach(f => {
+    const parts = f.split('/');
+    for (let i = 0; i < parts.length - 1; i++) {
+      directories.add(parts.slice(0, i + 1).join('/').toLowerCase());
+    }
+  });
+
+  console.log('🔍 Analyzing project structure...');
+  console.log('📁 Found files:', Array.from(fileNames));
+  console.log('📂 Found directories:', Array.from(directories));
+
+  // Check for Node.js projects
+  if (fileNames.has('package.json')) {
+    console.log('📦 Detected Node.js project');
     return { projectName: 'Node.js Project', projectType: 'nodejs' };
   }
-  
-  // Check for requirements.txt or setup.py (Python)
-  if (fileNames.some(f => f.includes('requirements.txt') || f.includes('setup.py'))) {
+
+  // Check for Python projects
+  if (fileNames.has('requirements.txt') || fileNames.has('setup.py') || fileNames.has('pyproject.toml')) {
+    console.log('🐍 Detected Python project');
     return { projectName: 'Python Project', projectType: 'python' };
   }
-  
+
   // Check for Django
-  if (fileNames.some(f => f.includes('manage.py') || f.includes('settings.py'))) {
+  if (fileNames.has('manage.py') || fileNames.has('settings.py')) {
+    console.log('🎸 Detected Django project');
     return { projectName: 'Django Project', projectType: 'django' };
   }
-  
+
   // Check for Laravel
-  if (fileNames.some(f => f.includes('artisan') || f.includes('composer.json'))) {
+  if (fileNames.has('artisan') || fileNames.has('composer.json')) {
+    console.log('🎼 Detected Laravel project');
     return { projectName: 'Laravel Project', projectType: 'laravel' };
   }
-  
+
+  // Check for Ruby/Rails
+  if (fileNames.has('gemfile') || fileNames.has('rails') || fileNames.has('config.ru')) {
+    console.log('💎 Detected Ruby/Rails project');
+    return { projectName: 'Ruby on Rails Project', projectType: 'rails' };
+  }
+
+  // Check for PHP projects
+  if (fileNames.has('composer.json') && !fileNames.has('artisan')) {
+    console.log('🐘 Detected PHP project');
+    return { projectName: 'PHP Project', projectType: 'php' };
+  }
+
+  // Check for Java projects
+  if (fileNames.has('pom.xml') || fileNames.has('build.gradle') || fileNames.has('build.gradle.kts')) {
+    console.log('☕ Detected Java project');
+    return { projectName: 'Java Project', projectType: 'java' };
+  }
+
   // Check for React
-  if (fileNames.some(f => f.includes('src/app.js') || f.includes('src/index.js'))) {
+  if (fileNames.has('src/app.js') || fileNames.has('src/index.js') ||
+      (fileNames.has('package.json') && directories.has('src'))) {
+    console.log('⚛️ Detected React project');
     return { projectName: 'React Project', projectType: 'react' };
   }
-  
+
   // Check for Next.js
-  if (fileNames.some(f => f.includes('next.config.js') || f.includes('pages/'))) {
+  if (fileNames.has('next.config.js') || directories.has('pages') || directories.has('app')) {
+    console.log('▲ Detected Next.js project');
     return { projectName: 'Next.js Project', projectType: 'nextjs' };
   }
-  
+
+  // Check for Vue.js
+  if (fileNames.has('vue.config.js') || fileNames.has('vite.config.js')) {
+    console.log('💚 Detected Vue.js project');
+    return { projectName: 'Vue.js Project', projectType: 'vue' };
+  }
+
+  // Check for Angular
+  if (fileNames.has('angular.json') || directories.has('src/app')) {
+    console.log('🅰️ Detected Angular project');
+    return { projectName: 'Angular Project', projectType: 'angular' };
+  }
+
+  // Check for .NET/C#
+  if (fileNames.has('project.csproj') || fileNames.has('project.sln') || fileNames.has('appsettings.json')) {
+    console.log('🔷 Detected .NET/C# project');
+    return { projectName: 'C#/.NET Project', projectType: 'csharp' };
+  }
+
+  // Check for Go projects
+  if (fileNames.has('go.mod') || fileNames.has('main.go')) {
+    console.log('🐹 Detected Go project');
+    return { projectName: 'Go Project', projectType: 'go' };
+  }
+
+  // Check for Rust projects
+  if (fileNames.has('cargo.toml')) {
+    console.log('🦀 Detected Rust project');
+    return { projectName: 'Rust Project', projectType: 'rust' };
+  }
+
+  // Check for database-heavy projects
+  if (fileNames.has('schema.rb') || directories.has('migrations') || fileNames.has('schema.prisma')) {
+    console.log('🗄️ Detected database-focused project');
+    return { projectName: 'Database Project', projectType: 'database' };
+  }
+
+  console.log('❓ Could not determine specific project type');
   return { projectName: 'Uploaded Project', projectType: 'unknown' };
 }
 
@@ -489,6 +652,11 @@ function getProjectIcon(projectType: string): string {
     nextjs: '▲',
     express: '🚀',
     php: '🐘',
+    java: '☕',
+    csharp: '🔷',
+    go: '🐹',
+    rust: '🦀',
+    database: '🗄️',
     unknown: '❓'
   };
   
@@ -497,24 +665,54 @@ function getProjectIcon(projectType: string): string {
 
 async function extractZipFile(zipPath: string, extractDir: string): Promise<void> {
   try {
+    const zipFileName = basename(zipPath, '.zip');
+    const extractionSubdir = join(extractDir, zipFileName);
+
+    console.log(`📦 Extracting zip file to subdirectory: ${extractionSubdir}`);
+
     // Use adm-zip for extraction
     const AdmZip = require('adm-zip');
     const zip = new AdmZip(zipPath);
-    
-    // Create extraction directory
-    await mkdir(extractDir, { recursive: true });
-    
-    // Extract all files
-    zip.extractAllTo(extractDir, true);
-    
-    console.log(`Extracted zip file ${zipPath} to ${extractDir}`);
-    
+
+    // Create extraction subdirectory
+    await mkdir(extractionSubdir, { recursive: true });
+
+    // Extract all files to subdirectory
+    zip.extractAllTo(extractionSubdir, true);
+
+    console.log(`✅ Extracted zip file ${zipPath} to ${extractionSubdir}`);
+
     // List extracted files for debugging
-    const extractedFiles = await readdir(extractDir, { withFileTypes: true });
-    console.log(`Extracted ${extractedFiles.length} items:`, extractedFiles.map(f => f.name));
-    
+    const extractedFiles = await readdir(extractionSubdir, { withFileTypes: true });
+    console.log(`📁 Extracted ${extractedFiles.length} items:`, extractedFiles.map(f => f.name));
+
   } catch (error) {
     console.error('Error extracting zip file:', error);
     throw error;
   }
+}
+
+// Helper function to recursively find all files in a directory
+async function findAllFiles(dir: string): Promise<string[]> {
+  const allFiles: string[] = [];
+
+  async function scanDirectory(currentDir: string): Promise<void> {
+    const entries = await readdir(currentDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = join(currentDir, entry.name);
+
+      if (entry.isDirectory()) {
+        // Skip node_modules and other common directories we don't want to scan
+        if (entry.name !== 'node_modules' && entry.name !== '.git' && entry.name !== '__pycache__') {
+          await scanDirectory(fullPath);
+        }
+      } else {
+        allFiles.push(fullPath);
+      }
+    }
+  }
+
+  await scanDirectory(dir);
+  return allFiles;
 }

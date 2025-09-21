@@ -95,6 +95,7 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
   const [isDragOver, setIsDragOver] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
 
   // Handle drag and drop events
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -160,28 +161,17 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
   const processFiles = async (files: File[]) => {
     console.log('🚀 Starting file upload process with files:', files.map(f => f.name));
     
-    // Validate file types
-    const validExtensions = ['.db', '.sqlite', '.sqlite3', '.db3', '.s3db', '.sl3'];
-    const invalidFiles = files.filter(file => {
-      const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
-      return !validExtensions.includes(ext);
-    });
-
-    if (invalidFiles.length > 0) {
-      setUploadState(prev => ({
-        ...prev,
-        status: 'error',
-        progress: 0,
-        message: 'Invalid file types detected',
-        error: `Please upload only database files (.db, .sqlite, .sqlite3, .db3, .s3db, .sl3). Invalid files: ${invalidFiles.map(f => f.name).join(', ')}`
-      }));
-      return;
-    }
+    // (Server-side will handle file verification). No extension restriction client-side.
     
+    // Check if any zip files are included
+    const hasZipFiles = files.some(file => file.name.toLowerCase().endsWith('.zip'));
+
     setUploadState({
       status: 'uploading',
       progress: 10,
-      message: 'Uploading database files...',
+      message: hasZipFiles
+        ? 'Uploading database files and zip archives...'
+        : 'Uploading database files...',
       files: files.map(f => f.name)
     });
 
@@ -281,11 +271,16 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
         projectId: result.projectId
       });
       
+      const hasZipFiles = files.some(file => file.name.toLowerCase().endsWith('.zip'));
+      const successMessage = hasZipFiles
+        ? `Project uploaded successfully! Found ${result.databases.length} database(s) from ${files.length} file(s) including zip archives.`
+        : `Database uploaded successfully! Found ${result.databases.length} database(s) with schema information.`;
+
       setUploadState(prev => ({
         ...prev,
         status: 'completed',
         progress: 100,
-        message: `Database uploaded successfully! Found ${result.databases.length} database(s) with schema information.`,
+        message: successMessage,
         result
       }));
 
@@ -318,6 +313,8 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
     console.log('📁 Opening file dialog...');
     if (fileInputRef.current) {
       console.log('📁 File input ref found, clicking');
+      console.log('📁 File input accept attribute:', fileInputRef.current.accept);
+      console.log('📁 File input multiple:', fileInputRef.current.multiple);
       fileInputRef.current.click();
     } else {
       console.log('❌ File input ref not found');
@@ -334,10 +331,10 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
               <Database className="w-8 h-8 text-orange-600" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Upload Database Files
+              Upload Database Files or Project Archives
             </h3>
             <p className="text-gray-600 mb-4">
-              Drag and drop SQLite database files or click to select
+              Drag and drop SQLite database files, zip archives, or click to select
             </p>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
               <div className="flex items-start space-x-2">
@@ -345,8 +342,10 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
                 <div className="text-left text-sm text-blue-800">
                   <p className="font-medium mb-1">What happens when you upload:</p>
                   <ul className="list-disc list-inside space-y-1 text-blue-700">
-                    <li>Database schema is automatically extracted</li>
-                    <li>Tables and relationships are analyzed</li>
+                    <li>Zip files are automatically extracted to subdirectories</li>
+                    <li>Database files are detected and processed</li>
+                    <li>Project structure is analyzed for type detection</li>
+                    <li>All databases are converted to SQLite format</li>
                     <li>Project is created and saved to QueryFlow</li>
                     <li>Database becomes available in Schema Designer</li>
                     <li>You can query and edit data immediately</li>
@@ -357,19 +356,32 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
           </div>
 
           <div className="space-y-3">
-            <button
-              onClick={openFileDialog}
-              className="inline-flex items-center px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
-            >
-              <Database className="w-5 h-5 mr-2" />
-              Select Database Files
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={openFileDialog}
+                className="inline-flex items-center px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
+              >
+                <Database className="w-5 h-5 mr-2" />
+                Select Any Files
+              </button>
+              <button
+                onClick={() => zipInputRef.current?.click()}
+                className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                <FileText className="w-5 h-5 mr-2" />
+                Select Zip Files Only
+              </button>
+            </div>
 
             <div className="text-sm text-gray-500">
               <div className="font-medium mb-1">Supported formats:</div>
               <div className="flex flex-wrap justify-center gap-2">
-                {['.db', '.sqlite', '.sqlite3', '.db3', '.s3db', '.sl3'].map(ext => (
-                  <span key={ext} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                {['.db', '.sqlite', '.sqlite3', '.db3', '.s3db', '.sl3', '.zip'].map(ext => (
+                  <span key={ext} className={`px-2 py-1 rounded text-xs ${
+                    ext === '.zip'
+                      ? 'bg-orange-100 text-orange-700'
+                      : 'bg-gray-100 text-gray-700'
+                  }`}>
                     {ext}
                   </span>
                 ))}
@@ -628,14 +640,21 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
         </div>
       </div>
 
-      {/* Hidden file input */}
+      {/* Hidden file inputs */}
       <input
         ref={fileInputRef}
         type="file"
         className="hidden"
         onChange={handleFileInputChange}
         multiple
-        accept=".db,.sqlite,.sqlite3,.db3,.s3db,.sl3"
+      />
+      <input
+        ref={zipInputRef}
+        type="file"
+        className="hidden"
+        onChange={handleFileInputChange}
+        multiple
+        accept=".zip"
       />
     </div>
   );
