@@ -81,6 +81,8 @@ export function Projects() {
   
   // Table expansion state
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
+  // Table details expansion state (for showing rows/columns)
+  const [expandedTableDetails, setExpandedTableDetails] = useState<Set<string>>(new Set());
   
   // Session management
   const { addRecentProject, getRecentProjects, updateUserPreferences, getUserPreferences } = useSessionManager({
@@ -749,6 +751,19 @@ export function Projects() {
     });
   }, []);
 
+  // Toggle table details expansion
+  const toggleTableDetails = useCallback((tableKey: string) => {
+    setExpandedTableDetails(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(tableKey)) {
+        newSet.delete(tableKey);
+      } else {
+        newSet.add(tableKey);
+      }
+      return newSet;
+    });
+  }, []);
+
   return (
     <div className="h-full flex flex-col">
       {/* Header - Fixed */}
@@ -1072,36 +1087,168 @@ export function Projects() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    {(project.schema?.tables || []).slice(0, 3).map((table: any, index: number) => (
-                      <div key={`${project.id}-table-${table.name}-${index}`} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 rounded-lg p-3 hover:bg-gray-100 transition-colors duration-200">
-                        <div className="flex items-center space-x-3">
-                          <Database className="w-4 h-4 text-gray-400" />
-                          <span className="font-semibold text-gray-800">{table.name}</span>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          <span className="text-gray-500 font-medium">({table.rowCount || 0} rows)</span>
-                          {table.columns && (
-                            <span className="text-gray-500 font-medium">({table.columns.length} cols)</span>
+                    {(project.schema?.tables || []).slice(0, 3).map((table: any, index: number) => {
+                      const tableKey = `${project.id}-${table.name}`;
+                      const isExpanded = expandedTableDetails.has(tableKey);
+                      
+                      return (
+                        <div key={`${project.id}-table-${table.name}-${index}`} className="bg-gray-50 rounded-lg overflow-hidden">
+                          <div className="flex items-center justify-between text-xs text-gray-600 p-3 hover:bg-gray-100 transition-colors duration-200 cursor-pointer" onClick={() => toggleTableDetails(tableKey)}>
+                            <div className="flex items-center space-x-3">
+                              <Database className="w-4 h-4 text-gray-400" />
+                              <span className="font-semibold text-gray-800">{table.name}</span>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              <span className="text-gray-500 font-medium">({table.rowCount || 0} rows)</span>
+                              {table.columns && (
+                                <span className="text-gray-500 font-medium">({table.columns.length} cols)</span>
+                              )}
+                              <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                            </div>
+                          </div>
+                          
+                          {/* Collapsible table details */}
+                          {isExpanded && (
+                            <div className="px-3 pb-3 border-t border-gray-200 bg-white">
+                              <div className="pt-3 space-y-2">
+                                {/* Columns */}
+                                {table.columns && table.columns.length > 0 && (
+                                  <div>
+                                    <div className="text-xs font-semibold text-gray-700 mb-2">Columns ({table.columns.length}):</div>
+                                    <div className="grid grid-cols-1 gap-1">
+                                      {table.columns.map((column: any, colIndex: number) => (
+                                        <div key={colIndex} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1">
+                                          <span className="font-medium text-gray-800">{column.name}</span>
+                                          <span className="text-gray-500">{column.type || 'TEXT'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                {/* Sample rows */}
+                                {table.data && table.data.length > 0 && (
+                                  <div>
+                                    <div className="text-xs font-semibold text-gray-700 mb-2">Sample Data ({table.data.length} rows):</div>
+                                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                                      {table.data.slice(0, 5).map((row: any, rowIndex: number) => (
+                                        <div key={rowIndex} className="text-xs bg-gray-50 rounded px-2 py-1">
+                                          <div className="flex flex-wrap gap-1">
+                                            {Object.entries(row).slice(0, 3).map(([key, value]) => (
+                                              <span key={key} className="text-gray-600">
+                                                <span className="font-medium">{key}:</span> {String(value)}
+                                              </span>
+                                            ))}
+                                            {Object.keys(row).length > 3 && (
+                                              <span className="text-gray-400">+{Object.keys(row).length - 3} more</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                      {table.data.length > 5 && (
+                                        <div className="text-xs text-gray-400 text-center py-1">
+                                          +{table.data.length - 5} more rows
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                {/* Table info */}
+                                <div className="text-xs text-gray-500 pt-2 border-t border-gray-100">
+                                  <div className="flex justify-between">
+                                    <span>Total Rows: {table.rowCount || 0}</span>
+                                    <span>Total Columns: {table.columns?.length || 0}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     
                     {/* Additional tables (hidden by default) */}
-                    {expandedTables.has(project.id) && (project.schema?.tables || []).slice(3).map((table: any, index: number) => (
-                      <div key={`${project.id}-table-${table.name}-${index + 3}`} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 rounded-lg p-3 hover:bg-gray-100 transition-colors duration-200">
-                        <div className="flex items-center space-x-3">
-                          <Database className="w-4 h-4 text-gray-400" />
-                          <span className="font-semibold text-gray-800">{table.name}</span>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          <span className="text-gray-500 font-medium">({table.rowCount || 0} rows)</span>
-                          {table.columns && (
-                            <span className="text-gray-500 font-medium">({table.columns.length} cols)</span>
+                    {expandedTables.has(project.id) && (project.schema?.tables || []).slice(3).map((table: any, index: number) => {
+                      const tableKey = `${project.id}-${table.name}`;
+                      const isExpanded = expandedTableDetails.has(tableKey);
+                      
+                      return (
+                        <div key={`${project.id}-table-${table.name}-${index + 3}`} className="bg-gray-50 rounded-lg overflow-hidden">
+                          <div className="flex items-center justify-between text-xs text-gray-600 p-3 hover:bg-gray-100 transition-colors duration-200 cursor-pointer" onClick={() => toggleTableDetails(tableKey)}>
+                            <div className="flex items-center space-x-3">
+                              <Database className="w-4 h-4 text-gray-400" />
+                              <span className="font-semibold text-gray-800">{table.name}</span>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              <span className="text-gray-500 font-medium">({table.rowCount || 0} rows)</span>
+                              {table.columns && (
+                                <span className="text-gray-500 font-medium">({table.columns.length} cols)</span>
+                              )}
+                              <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                            </div>
+                          </div>
+                          
+                          {/* Collapsible table details */}
+                          {isExpanded && (
+                            <div className="px-3 pb-3 border-t border-gray-200 bg-white">
+                              <div className="pt-3 space-y-2">
+                                {/* Columns */}
+                                {table.columns && table.columns.length > 0 && (
+                                  <div>
+                                    <div className="text-xs font-semibold text-gray-700 mb-2">Columns ({table.columns.length}):</div>
+                                    <div className="grid grid-cols-1 gap-1">
+                                      {table.columns.map((column: any, colIndex: number) => (
+                                        <div key={colIndex} className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1">
+                                          <span className="font-medium text-gray-800">{column.name}</span>
+                                          <span className="text-gray-500">{column.type || 'TEXT'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                {/* Sample rows */}
+                                {table.data && table.data.length > 0 && (
+                                  <div>
+                                    <div className="text-xs font-semibold text-gray-700 mb-2">Sample Data ({table.data.length} rows):</div>
+                                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                                      {table.data.slice(0, 5).map((row: any, rowIndex: number) => (
+                                        <div key={rowIndex} className="text-xs bg-gray-50 rounded px-2 py-1">
+                                          <div className="flex flex-wrap gap-1">
+                                            {Object.entries(row).slice(0, 3).map(([key, value]) => (
+                                              <span key={key} className="text-gray-600">
+                                                <span className="font-medium">{key}:</span> {String(value)}
+                                              </span>
+                                            ))}
+                                            {Object.keys(row).length > 3 && (
+                                              <span className="text-gray-400">+{Object.keys(row).length - 3} more</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                      {table.data.length > 5 && (
+                                        <div className="text-xs text-gray-400 text-center py-1">
+                                          +{table.data.length - 5} more rows
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                                
+                                {/* Table info */}
+                                <div className="text-xs text-gray-500 pt-2 border-t border-gray-100">
+                                  <div className="flex justify-between">
+                                    <span>Total Rows: {table.rowCount || 0}</span>
+                                    <span>Total Columns: {table.columns?.length || 0}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     
                     {(project.schema?.tables?.length || 0) > 3 && (
                       <button
