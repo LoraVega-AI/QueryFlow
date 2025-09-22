@@ -15,7 +15,6 @@ import {
   AlertTriangle,
   CheckCircle,
   Upload,
-  Download,
   Trash2,
   Search,
   Filter,
@@ -79,6 +78,9 @@ export function Projects() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Table expansion state
+  const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
   
   // Session management
   const { addRecentProject, getRecentProjects, updateUserPreferences, getUserPreferences } = useSessionManager({
@@ -575,35 +577,6 @@ export function Projects() {
     }
   };
 
-  const handleDownloadProject = async (projectId: string) => {
-    try {
-      const response = await fetch(`/api/projects/${projectId}/download`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to download project');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `project_${projectId}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      setNotification({
-        type: 'success',
-        message: 'Project downloaded successfully with updated database information!'
-      });
-    } catch (error) {
-      setNotification({
-        type: 'error',
-        message: `Failed to download project: ${error instanceof Error ? error.message : 'Unknown error'}`
-      });
-    }
-  };
 
   const handleDeleteProject = async (projectId: string) => {
     const project = projects.find(p => p.id === projectId);
@@ -761,6 +734,19 @@ export function Projects() {
     setTechnologyFilter('all');
     setSortBy('name');
     setSortOrder('asc');
+  }, []);
+
+  // Toggle table expansion
+  const toggleTableExpansion = useCallback((projectId: string) => {
+    setExpandedTables(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(projectId)) {
+        newSet.delete(projectId);
+      } else {
+        newSet.add(projectId);
+      }
+      return newSet;
+    });
   }, []);
 
   return (
@@ -1100,10 +1086,33 @@ export function Projects() {
                         </div>
                       </div>
                     ))}
-                    {(project.schema?.tables?.length || 0) > 3 && (
-                      <div className="text-xs text-gray-500 text-center py-2 font-medium">
-                        +{(project.schema?.tables?.length || 0) - 3} more tables
+                    
+                    {/* Additional tables (hidden by default) */}
+                    {expandedTables.has(project.id) && (project.schema?.tables || []).slice(3).map((table: any, index: number) => (
+                      <div key={`${project.id}-table-${table.name}-${index + 3}`} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 rounded-lg p-3 hover:bg-gray-100 transition-colors duration-200">
+                        <div className="flex items-center space-x-3">
+                          <Database className="w-4 h-4 text-gray-400" />
+                          <span className="font-semibold text-gray-800">{table.name}</span>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <span className="text-gray-500 font-medium">({table.rowCount || 0} rows)</span>
+                          {table.columns && (
+                            <span className="text-gray-500 font-medium">({table.columns.length} cols)</span>
+                          )}
+                        </div>
                       </div>
+                    ))}
+                    
+                    {(project.schema?.tables?.length || 0) > 3 && (
+                      <button
+                        onClick={() => toggleTableExpansion(project.id)}
+                        className="w-full text-xs text-gray-500 text-center py-2 font-medium hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200"
+                      >
+                        {expandedTables.has(project.id) 
+                          ? `- Hide ${(project.schema?.tables?.length || 0) - 3} more tables`
+                          : `+ Show ${(project.schema?.tables?.length || 0) - 3} more tables`
+                        }
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1162,14 +1171,6 @@ export function Projects() {
                         >
                           <RefreshCw className={`w-4 h-4 mr-2 ${syncingProject === project.id ? 'animate-spin' : ''}`} />
                           {syncingProject === project.id ? 'Syncing' : 'Sync'}
-                        </button>
-                        <button
-                          onClick={() => handleDownloadProject(project.id)}
-                          className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-xl hover:bg-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                          title="Download project with updated database"
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Download
                         </button>
                         <button
                           onClick={() => handleDeleteProject(project.id)}
