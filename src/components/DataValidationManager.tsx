@@ -8,10 +8,11 @@ import {
   Shield, AlertTriangle, CheckCircle, XCircle, TrendingUp, TrendingDown,
   BarChart3, Activity, Settings, RefreshCw, Download, Filter, Search,
   Eye, EyeOff, Target, Zap, Clock, AlertCircle, Info, Database,
-  FileText, PieChart, LineChart, Users, Award, Bookmark, Lock, Key, Hash, Star
+  FileText, PieChart, LineChart, Users, Award, Bookmark, Lock, Key, Hash, Star,
+  GitBranch, Folder, Timer, RotateCcw, Link, Code
 } from 'lucide-react';
 
-import { DatabaseSchema, DatabaseRecord } from '@/types/database';
+import { DatabaseSchema, DatabaseRecord, Migration } from '@/types/database';
 import {
   DataValidationService,
   ValidationRule,
@@ -22,6 +23,8 @@ import {
   AnomalyDetectionResult
 } from '@/services/dataValidationService';
 import { useProjectData } from '@/hooks/useProjectData';
+import { MigrationDetailsModal } from './MigrationDetailsModal';
+import { ORMModelDetailsModal } from './ORMModelDetailsModal';
 
 interface DataValidationManagerProps {
   schema?: DatabaseSchema | null; // Made optional since we get it from project
@@ -51,7 +54,7 @@ export function DataValidationManager({ schema: propSchema, records: propRecords
   const records = projectRecords.length > 0 ? projectRecords : (propRecords || []);
 
   // State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'rules' | 'report' | 'anomalies' | 'profiles' | 'constraints'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'rules' | 'report' | 'anomalies' | 'profiles' | 'constraints' | 'migrations' | 'orm' | 'advanced' | 'metadata'>('dashboard');
   const [validationRules, setValidationRules] = useState<ValidationRule[]>([]);
   const [currentReport, setCurrentReport] = useState<ValidationReport | null>(null);
   const [isValidating, setIsValidating] = useState(false);
@@ -59,6 +62,10 @@ export function DataValidationManager({ schema: propSchema, records: propRecords
   const [showFailedOnly, setShowFailedOnly] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSeverity, setSelectedSeverity] = useState<'all' | 'error' | 'warning' | 'info'>('all');
+  const [selectedMigration, setSelectedMigration] = useState<Migration | null>(null);
+  const [showMigrationDetails, setShowMigrationDetails] = useState(false);
+  const [selectedORMModel, setSelectedORMModel] = useState<any>(null);
+  const [showORMModelDetails, setShowORMModelDetails] = useState(false);
 
   // Extract real data from project tables
   const extractProjectData = useCallback(() => {
@@ -662,6 +669,1345 @@ export function DataValidationManager({ schema: propSchema, records: propRecords
     </div>
   );
 
+  // Render database metadata and statistics
+  const renderDatabaseMetadata = () => {
+    if (!schema) return null;
+
+    const databaseInfo = schema.databaseInfo || {};
+    const totalTables = schema.tables.length;
+    const totalColumns = schema.tables.reduce((sum, table) => sum + table.columns.length, 0);
+    const totalIndexes = schema.tables.reduce((sum, table) => sum + (table.indexes?.length || 0), 0);
+    const totalRecords = schema.tables.reduce((sum, table) => sum + (table.data?.length || 0), 0);
+    const totalForeignKeys = schema.tables.reduce((sum, table) => 
+      sum + table.columns.filter(col => col.foreignKey).length, 0
+    );
+    const totalPrimaryKeys = schema.tables.reduce((sum, table) => 
+      sum + table.columns.filter(col => col.primaryKey).length, 0
+    );
+
+    // Calculate database size estimation
+    const estimatedSize = schema.tables.reduce((sum, table) => {
+      const tableSize = table.data?.length || 0;
+      const columnCount = table.columns.length;
+      const avgRowSize = columnCount * 50; // Estimate 50 bytes per column
+      return sum + (tableSize * avgRowSize);
+    }, 0);
+
+    // Get table statistics
+    const tableStats = schema.tables.map(table => ({
+      name: table.name,
+      columns: table.columns.length,
+      records: table.data?.length || 0,
+      indexes: table.indexes?.length || 0,
+      foreignKeys: table.columns.filter(col => col.foreignKey).length,
+      primaryKeys: table.columns.filter(col => col.primaryKey).length,
+      size: (table.data?.length || 0) * table.columns.length * 50
+    }));
+
+    // Get column type distribution
+    const columnTypes = schema.tables.flatMap(table => 
+      table.columns.map(col => col.type)
+    );
+    const typeDistribution = columnTypes.reduce((acc, type) => {
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Get constraint distribution
+    const constraintTypes = {
+      'Primary Keys': totalPrimaryKeys,
+      'Foreign Keys': totalForeignKeys,
+      'NOT NULL': schema.tables.reduce((sum, table) => 
+        sum + table.columns.filter(col => !col.nullable).length, 0
+      ),
+      'UNIQUE': schema.tables.reduce((sum, table) => 
+        sum + table.columns.filter(col => col.unique).length, 0
+      ),
+      'DEFAULT': schema.tables.reduce((sum, table) => 
+        sum + table.columns.filter(col => col.defaultValue).length, 0
+      )
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Database Overview */}
+        <div className="bg-white rounded-lg p-6 border border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900">Database Metadata & Statistics</h3>
+            <div className="flex items-center space-x-4 text-sm text-gray-500">
+              <span className="flex items-center">
+                <Database className="h-4 w-4 text-blue-500 mr-1" />
+                {totalTables} Tables
+              </span>
+              <span className="flex items-center">
+                <Hash className="h-4 w-4 text-green-500 mr-1" />
+                {totalColumns} Columns
+              </span>
+              <span className="flex items-center">
+                <BarChart3 className="h-4 w-4 text-purple-500 mr-1" />
+                {totalRecords.toLocaleString()} Records
+              </span>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-gray-900">{totalTables}</div>
+              <div className="text-sm text-gray-500">Total Tables</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-blue-600">{totalColumns}</div>
+              <div className="text-sm text-gray-500">Total Columns</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-green-600">{totalRecords.toLocaleString()}</div>
+              <div className="text-sm text-gray-500">Total Records</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-purple-600">{totalIndexes}</div>
+              <div className="text-sm text-gray-500">Total Indexes</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Database Information */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Database Details */}
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Database Information</h4>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-500">Database Type:</span>
+                <span className="text-sm text-gray-900">{databaseInfo.type || 'SQLite'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-500">Version:</span>
+                <span className="text-sm text-gray-900">{databaseInfo.version || 'Unknown'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-500">Encoding:</span>
+                <span className="text-sm text-gray-900">{databaseInfo.encoding || 'UTF-8'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-500">Page Size:</span>
+                <span className="text-sm text-gray-900">{databaseInfo.pageSize || 'Unknown'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-500">Journal Mode:</span>
+                <span className="text-sm text-gray-900">{databaseInfo.journalMode || 'Unknown'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-500">Foreign Keys:</span>
+                <span className="text-sm text-gray-900">
+                  {databaseInfo.foreignKeys ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-500">Synchronous:</span>
+                <span className="text-sm text-gray-900">{databaseInfo.synchronous || 'Unknown'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-500">Cache Size:</span>
+                <span className="text-sm text-gray-900">{databaseInfo.cacheSize || 'Unknown'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-500">Auto Vacuum:</span>
+                <span className="text-sm text-gray-900">{databaseInfo.autoVacuum || 'Unknown'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-500">Created:</span>
+                <span className="text-sm text-gray-900">
+                  {databaseInfo.createdAt ? new Date(databaseInfo.createdAt).toLocaleDateString() : 'Unknown'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-500">Last Modified:</span>
+                <span className="text-sm text-gray-900">
+                  {databaseInfo.updatedAt ? new Date(databaseInfo.updatedAt).toLocaleDateString() : 'Unknown'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-500">File Size:</span>
+                <span className="text-sm text-gray-900">
+                  {databaseInfo.size ? 
+                    (databaseInfo.size > 1024 * 1024 ? 
+                      `${(databaseInfo.size / (1024 * 1024)).toFixed(2)} MB` : 
+                      `${(databaseInfo.size / 1024).toFixed(2)} KB`
+                    ) : 
+                    (estimatedSize > 1024 * 1024 ? 
+                      `${(estimatedSize / (1024 * 1024)).toFixed(2)} MB` : 
+                      `${(estimatedSize / 1024).toFixed(2)} KB`
+                    )
+                  }
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Constraint Summary */}
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Constraint Summary</h4>
+            <div className="space-y-3">
+              {Object.entries(constraintTypes).map(([type, count]) => (
+                <div key={type} className="flex justify-between">
+                  <span className="text-sm text-gray-500">{type}:</span>
+                  <span className="text-sm text-gray-900">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Table Statistics */}
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900">Table Statistics</h4>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Table Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Columns
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Records
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Indexes
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Foreign Keys
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Primary Keys
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Estimated Size
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {tableStats.map((table, index) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {table.name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {table.columns}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {table.records.toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {table.indexes}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {table.foreignKeys}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {table.primaryKeys}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {table.size > 1024 ? 
+                        `${(table.size / 1024).toFixed(1)} KB` : 
+                        `${table.size} bytes`
+                      }
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Column Type Distribution */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Column Type Distribution</h4>
+            <div className="space-y-3">
+              {Object.entries(typeDistribution)
+                .sort(([,a], [,b]) => b - a)
+                .map(([type, count]) => {
+                  const percentage = (count / totalColumns) * 100;
+                  return (
+                    <div key={type} className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">{type}</span>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-24 bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-blue-600 h-2 rounded-full" 
+                            style={{ width: `${percentage}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-sm text-gray-500 w-8">{count}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* Database Health Metrics */}
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Database Health Metrics</h4>
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                  <span>Data Completeness</span>
+                  <span>{totalRecords > 0 ? '100%' : '0%'}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-green-600 h-2 rounded-full" 
+                    style={{ width: totalRecords > 0 ? '100%' : '0%' }}
+                  ></div>
+                </div>
+              </div>
+              
+              <div>
+                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                  <span>Referential Integrity</span>
+                  <span>{totalForeignKeys > 0 ? '100%' : '0%'}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full" 
+                    style={{ width: totalForeignKeys > 0 ? '100%' : '0%' }}
+                  ></div>
+                </div>
+              </div>
+              
+              <div>
+                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                  <span>Index Coverage</span>
+                  <span>{totalIndexes > 0 ? '100%' : '0%'}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-purple-600 h-2 rounded-full" 
+                    style={{ width: totalIndexes > 0 ? '100%' : '0%' }}
+                  ></div>
+                </div>
+              </div>
+              
+              <div>
+                <div className="flex justify-between text-sm text-gray-600 mb-1">
+                  <span>Primary Key Coverage</span>
+                  <span>{totalPrimaryKeys > 0 ? '100%' : '0%'}</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-red-600 h-2 rounded-full" 
+                    style={{ width: totalPrimaryKeys > 0 ? '100%' : '0%' }}
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Database Statistics */}
+        {databaseInfo.statistics && (
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Database Statistics</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="text-2xl font-bold text-blue-600">{databaseInfo.statistics.pageCount || 0}</div>
+                <div className="text-sm text-gray-500">Total Pages</div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="text-2xl font-bold text-green-600">{databaseInfo.statistics.freelistCount || 0}</div>
+                <div className="text-sm text-gray-500">Free Pages</div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="text-2xl font-bold text-purple-600">
+                  {databaseInfo.statistics.integrityCheck === 'ok' ? '✓' : '⚠'}
+                </div>
+                <div className="text-sm text-gray-500">
+                  {databaseInfo.statistics.integrityCheck === 'ok' ? 'Integrity OK' : 'Check Required'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Additional Metadata */}
+        {schema.views && schema.views.length > 0 && (
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Database Views</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {schema.views.map((view, index) => (
+                <div key={index} className="bg-gray-50 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900">{view.name}</h5>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {view.description || 'No description available'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {schema.triggers && schema.triggers.length > 0 && (
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Database Triggers</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {schema.triggers.map((trigger, index) => (
+                <div key={index} className="bg-gray-50 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900">{trigger.name}</h5>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {trigger.description || 'No description available'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {schema.functions && schema.functions.length > 0 && (
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Database Functions</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {schema.functions.map((func, index) => (
+                <div key={index} className="bg-gray-50 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900">{func.name}</h5>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {func.description || 'No description available'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {schema.procedures && schema.procedures.length > 0 && (
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Database Procedures</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {schema.procedures.map((proc, index) => (
+                <div key={index} className="bg-gray-50 rounded-lg p-4">
+                  <h5 className="font-medium text-gray-900">{proc.name}</h5>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {proc.description || 'No description available'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Render advanced constraint and index details
+  const renderAdvancedDetails = () => {
+    if (!schema) return null;
+
+    // Collect all constraints with advanced details
+    const allConstraints = schema.tables.flatMap(table => 
+      table.columns.flatMap(column => {
+        const constraints = [];
+        
+        // Primary Key constraints
+        if (column.primaryKey) {
+          constraints.push({
+            id: `pk_${table.name}_${column.name}`,
+            name: `PK_${table.name}_${column.name}`,
+            type: 'PRIMARY KEY',
+            table: table.name,
+            column: column.name,
+            enabled: column.constraints?.enabled !== false,
+            deferrable: column.deferrable,
+            initiallyDeferred: column.initiallyDeferred,
+            validated: column.validated,
+            constraintName: `PK_${table.name}_${column.name}`,
+            description: `Primary key constraint on ${table.name}.${column.name}`,
+            color: 'red'
+          });
+        }
+
+        // Foreign Key constraints
+        if (column.foreignKey) {
+          constraints.push({
+            id: `fk_${table.name}_${column.name}`,
+            name: column.foreignKey.constraintName || `FK_${table.name}_${column.name}`,
+            type: 'FOREIGN KEY',
+            table: table.name,
+            column: column.name,
+            referencedTable: column.foreignKey.tableId,
+            referencedColumn: column.foreignKey.columnId,
+            onDelete: column.foreignKey.onDelete,
+            onUpdate: column.foreignKey.onUpdate,
+            enabled: column.foreignKey.enabled !== false,
+            deferrable: column.foreignKey.deferrable,
+            initiallyDeferred: column.foreignKey.initiallyDeferred,
+            validated: column.foreignKey.validated,
+            constraintName: column.foreignKey.constraintName,
+            description: `Foreign key constraint referencing ${column.foreignKey.tableId}.${column.foreignKey.columnId}`,
+            color: 'blue'
+          });
+        }
+
+        // NOT NULL constraints
+        if (!column.nullable) {
+          constraints.push({
+            id: `nn_${table.name}_${column.name}`,
+            name: `NN_${table.name}_${column.name}`,
+            type: 'NOT NULL',
+            table: table.name,
+            column: column.name,
+            enabled: column.constraints?.enabled !== false,
+            constraintName: `NN_${table.name}_${column.name}`,
+            description: `NOT NULL constraint on ${table.name}.${column.name}`,
+            color: 'orange'
+          });
+        }
+
+        // UNIQUE constraints (only for primary keys in SQLite)
+        if (column.unique && column.primaryKey) {
+          constraints.push({
+            id: `uq_${table.name}_${column.name}`,
+            name: `UQ_${table.name}_${column.name}`,
+            type: 'UNIQUE',
+            table: table.name,
+            column: column.name,
+            enabled: column.constraints?.enabled !== false,
+            constraintName: `UQ_${table.name}_${column.name}`,
+            description: `UNIQUE constraint on ${table.name}.${column.name}`,
+            color: 'green'
+          });
+        }
+
+        // CHECK constraints (not extracted from SQLite in current implementation)
+        // SQLite doesn't expose CHECK constraints via PRAGMA, so this will be empty
+        // This is a placeholder for future enhancement
+
+        // DEFAULT constraints
+        if (column.defaultValue) {
+          constraints.push({
+            id: `df_${table.name}_${column.name}`,
+            name: `DF_${table.name}_${column.name}`,
+            type: 'DEFAULT',
+            table: table.name,
+            column: column.name,
+            defaultValue: column.defaultValue,
+            enabled: column.constraints?.enabled !== false,
+            description: `DEFAULT constraint on ${table.name}.${column.name}`,
+            color: 'cyan'
+          });
+        }
+
+        return constraints;
+      })
+    );
+
+    // Collect all indexes with advanced details
+    const allIndexes = schema.tables.flatMap(table => 
+      (table.indexes || []).map(index => ({
+        ...index,
+        table: table.name,
+        type: index.origin === 'pk' ? 'PRIMARY KEY' : 
+              index.origin === 'u' ? 'UNIQUE' : 
+              index.origin === 'c' ? 'INDEX' : 'INDEX',
+        description: `${index.origin === 'pk' ? 'PRIMARY KEY' : 
+                      index.origin === 'u' ? 'UNIQUE' : 
+                      index.origin === 'c' ? 'INDEX' : 'INDEX'} on ${table.name}`,
+        color: index.unique ? 'green' : 'blue'
+      }))
+    );
+
+    const constraintTypes = [...new Set(allConstraints.map(c => c.type))];
+    const indexTypes = [...new Set(allIndexes.map(i => i.type || 'INDEX'))];
+
+    return (
+      <div className="space-y-6">
+        {/* Overview */}
+        <div className="bg-white rounded-lg p-6 border border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900">Advanced Constraint & Index Details</h3>
+            <div className="flex items-center space-x-4 text-sm text-gray-500">
+              <span className="flex items-center">
+                <Shield className="h-4 w-4 text-red-500 mr-1" />
+                {allConstraints.length} Constraints
+              </span>
+              <span className="flex items-center">
+                <Hash className="h-4 w-4 text-blue-500 mr-1" />
+                {allIndexes.length} Indexes
+              </span>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-gray-900">{allConstraints.length}</div>
+              <div className="text-sm text-gray-500">Total Constraints</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-blue-600">{allIndexes.length}</div>
+              <div className="text-sm text-gray-500">Total Indexes</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-green-600">{constraintTypes.length}</div>
+              <div className="text-sm text-gray-500">Constraint Types</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-purple-600">{indexTypes.length}</div>
+              <div className="text-sm text-gray-500">Index Types</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Constraint Details */}
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900">Constraint Details</h4>
+          </div>
+          
+          <div className="divide-y divide-gray-200">
+            {allConstraints.map((constraint, index) => (
+              <div key={constraint.id} className="p-6 hover:bg-gray-50">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className={`w-3 h-3 rounded-full ${
+                        constraint.color === 'red' ? 'bg-red-500' :
+                        constraint.color === 'blue' ? 'bg-blue-500' :
+                        constraint.color === 'green' ? 'bg-green-500' :
+                        constraint.color === 'orange' ? 'bg-orange-500' :
+                        constraint.color === 'purple' ? 'bg-purple-500' :
+                        constraint.color === 'cyan' ? 'bg-cyan-500' : 'bg-gray-500'
+                      }`}></div>
+                      <div>
+                        <h5 className="text-lg font-medium text-gray-900">{constraint.name}</h5>
+                        <p className="text-sm text-gray-500">
+                          {constraint.table}.{constraint.column} • {constraint.type}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <p className="text-sm text-gray-600 mb-4">{constraint.description}</p>
+
+                    {/* Constraint Properties */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                      <div>
+                        <h6 className="text-sm font-medium text-gray-700 mb-2">Basic Info</h6>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Table:</span>
+                            <span className="text-gray-900 font-mono">{constraint.table}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Column:</span>
+                            <span className="text-gray-900 font-mono">{constraint.column}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Type:</span>
+                            <span className="text-gray-900">{constraint.type}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h6 className="text-sm font-medium text-gray-700 mb-2">Status</h6>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Enabled:</span>
+                            <span className={`${constraint.enabled ? 'text-green-600' : 'text-red-600'}`}>
+                              {constraint.enabled ? 'Yes' : 'No'}
+                            </span>
+                          </div>
+                          {constraint.validated !== undefined && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Validated:</span>
+                              <span className={`${constraint.validated ? 'text-green-600' : 'text-red-600'}`}>
+                                {constraint.validated ? 'Yes' : 'No'}
+                              </span>
+                            </div>
+                          )}
+                          {constraint.deferrable !== undefined && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Deferrable:</span>
+                              <span className="text-gray-900">{constraint.deferrable ? 'Yes' : 'No'}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h6 className="text-sm font-medium text-gray-700 mb-2">References</h6>
+                        <div className="space-y-1 text-xs">
+                          {constraint.referencedTable && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Ref Table:</span>
+                              <span className="text-gray-900 font-mono">{constraint.referencedTable}</span>
+                            </div>
+                          )}
+                          {constraint.referencedColumn && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">Ref Column:</span>
+                              <span className="text-gray-900 font-mono">{constraint.referencedColumn}</span>
+                            </div>
+                          )}
+                          {constraint.onDelete && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-500">On Delete:</span>
+                              <span className="text-gray-900">{constraint.onDelete}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expression for CHECK constraints */}
+                    {constraint.expression && (
+                      <div className="mt-4">
+                        <h6 className="text-sm font-medium text-gray-700 mb-2">Expression</h6>
+                        <pre className="bg-gray-100 p-3 rounded text-xs font-mono text-gray-800">
+                          {constraint.expression}
+                        </pre>
+                      </div>
+                    )}
+
+                    {/* Default value for DEFAULT constraints */}
+                    {constraint.defaultValue && (
+                      <div className="mt-4">
+                        <h6 className="text-sm font-medium text-gray-700 mb-2">Default Value</h6>
+                        <pre className="bg-gray-100 p-3 rounded text-xs font-mono text-gray-800">
+                          {constraint.defaultValue}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      constraint.color === 'red' ? 'bg-red-100 text-red-800' :
+                      constraint.color === 'blue' ? 'bg-blue-100 text-blue-800' :
+                      constraint.color === 'green' ? 'bg-green-100 text-green-800' :
+                      constraint.color === 'orange' ? 'bg-orange-100 text-orange-800' :
+                      constraint.color === 'purple' ? 'bg-purple-100 text-purple-800' :
+                      constraint.color === 'cyan' ? 'bg-cyan-100 text-cyan-800' : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {constraint.type}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Index Details */}
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900">Index Details</h4>
+          </div>
+          
+          <div className="divide-y divide-gray-200">
+            {allIndexes.map((index, indexIndex) => (
+              <div key={index.id || indexIndex} className="p-6 hover:bg-gray-50">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className={`w-3 h-3 rounded-full ${
+                        index.color === 'green' ? 'bg-green-500' :
+                        index.color === 'blue' ? 'bg-blue-500' : 'bg-gray-500'
+                      }`}></div>
+                      <div>
+                        <h5 className="text-lg font-medium text-gray-900">{index.name}</h5>
+                        <p className="text-sm text-gray-500">
+                          {index.table} • {index.type || 'INDEX'}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <p className="text-sm text-gray-600 mb-4">{index.description}</p>
+
+                    {/* Index Properties */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                      <div>
+                        <h6 className="text-sm font-medium text-gray-700 mb-2">Basic Info</h6>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Table:</span>
+                            <span className="text-gray-900 font-mono">{index.table}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Type:</span>
+                            <span className="text-gray-900">{index.type || 'INDEX'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Unique:</span>
+                            <span className={`${index.unique ? 'text-green-600' : 'text-gray-600'}`}>
+                              {index.unique ? 'Yes' : 'No'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h6 className="text-sm font-medium text-gray-700 mb-2">Columns</h6>
+                        <div className="space-y-1 text-xs">
+                          {index.columns?.map((col, colIndex) => (
+                            <div key={colIndex} className="flex justify-between">
+                              <span className="text-gray-500">Column {colIndex + 1}:</span>
+                              <span className="text-gray-900 font-mono">{col}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h6 className="text-sm font-medium text-gray-700 mb-2">Properties</h6>
+                        <div className="space-y-1 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Origin:</span>
+                            <span className="text-gray-900">{index.origin || 'Unknown'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Partial:</span>
+                            <span className="text-gray-900">{index.partial ? 'Yes' : 'No'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Created:</span>
+                            <span className="text-gray-900">{index.createdAt ? new Date(index.createdAt).toLocaleDateString() : 'Unknown'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Index Details */}
+                    <div className="mt-4">
+                      <h6 className="text-sm font-medium text-gray-700 mb-2">Index Details</h6>
+                      <div className="bg-gray-100 p-3 rounded text-xs font-mono text-gray-800">
+                        <div>Name: {index.name}</div>
+                        <div>Type: {index.type || 'btree'}</div>
+                        <div>Unique: {index.unique ? 'Yes' : 'No'}</div>
+                        <div>Partial: {index.partial ? 'Yes' : 'No'}</div>
+                        <div>Origin: {index.origin || 'Unknown'}</div>
+                        <div>Columns: {index.columns?.join(', ') || 'None'}</div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      index.unique ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {index.unique ? 'UNIQUE' : 'INDEX'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Analysis Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Constraint Type Distribution */}
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Constraint Type Distribution</h4>
+            <div className="space-y-3">
+              {constraintTypes.map(type => {
+                const count = allConstraints.filter(c => c.type === type).length;
+                const percentage = (count / allConstraints.length) * 100;
+                return (
+                  <div key={type} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">{type}</span>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-24 bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full" 
+                          style={{ width: `${percentage}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-sm text-gray-500 w-8">{count}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Index Type Distribution */}
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Index Type Distribution</h4>
+            <div className="space-y-3">
+              {indexTypes.map(type => {
+                const count = allIndexes.filter(i => (i.type || 'INDEX') === type).length;
+                const percentage = (count / allIndexes.length) * 100;
+                return (
+                  <div key={type} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">{type}</span>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-24 bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-green-600 h-2 rounded-full" 
+                          style={{ width: `${percentage}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-sm text-gray-500 w-8">{count}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Render ORM models
+  const renderORMModels = () => {
+    const ormModels = schema?.ormModels;
+    
+    if (!ormModels || !Array.isArray(ormModels) || ormModels.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <Database className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No ORM Models Found</h3>
+          <p className="text-gray-500 mb-4">
+            No ORM model definitions were detected in this project.
+          </p>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <Info className="h-5 w-5 text-blue-400" />
+              </div>
+              <div className="ml-3">
+                <h4 className="text-sm font-medium text-blue-800">ORM Detection</h4>
+                <p className="text-sm text-blue-700 mt-1">
+                  QueryFlow looks for ORM models in source code files from frameworks like:
+                  Sequelize, Prisma, TypeORM, Django, Laravel, Hibernate, Mongoose
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const models = ormModels;
+    const frameworks = [...new Set(models.map(m => m.framework))];
+    const totalRelationships = models.reduce((sum, model) => sum + (model.relationships?.length || 0), 0);
+    const totalValidations = models.reduce((sum, model) => sum + (model.validations?.length || 0), 0);
+
+    return (
+      <div className="space-y-6">
+        {/* ORM Overview */}
+        <div className="bg-white rounded-lg p-6 border border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900">ORM Models Analysis</h3>
+            <div className="flex items-center space-x-4 text-sm text-gray-500">
+              <span className="flex items-center">
+                <Database className="h-4 w-4 text-blue-500 mr-1" />
+                {models.length} Models
+              </span>
+              <span className="flex items-center">
+                <Link className="h-4 w-4 text-green-500 mr-1" />
+                {totalRelationships} Relationships
+              </span>
+              <span className="flex items-center">
+                <Shield className="h-4 w-4 text-purple-500 mr-1" />
+                {totalValidations} Validations
+              </span>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-gray-900">{models.length}</div>
+              <div className="text-sm text-gray-500">Total Models</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-blue-600">{frameworks.length}</div>
+              <div className="text-sm text-gray-500">Frameworks</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-green-600">{totalRelationships}</div>
+              <div className="text-sm text-gray-500">Relationships</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-purple-600">{totalValidations}</div>
+              <div className="text-sm text-gray-500">Validations</div>
+            </div>
+          </div>
+
+          {frameworks.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center">
+                <Code className="h-4 w-4 text-blue-500 mr-2" />
+                <span className="text-sm text-blue-800">
+                  Detected Frameworks: {frameworks.join(', ')}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Models List */}
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900">Model Definitions</h4>
+          </div>
+          
+          <div className="divide-y divide-gray-200">
+            {models.map((model, index) => (
+              <div key={model.id} className="p-6 hover:bg-gray-50">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                      <div>
+                        <h5 className="text-lg font-medium text-gray-900">{model.name}</h5>
+                        <p className="text-sm text-gray-500">
+                          {model.framework} • {model.filePath}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {model.description && (
+                      <p className="text-sm text-gray-600 mb-3">{model.description}</p>
+                    )}
+
+                    {/* Model Properties */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <h6 className="text-sm font-medium text-gray-700 mb-2">Properties</h6>
+                        <div className="space-y-1">
+                          {model.properties?.slice(0, 5).map((prop, propIndex) => (
+                            <div key={propIndex} className="flex items-center justify-between text-xs">
+                              <span className="text-gray-600">{prop.name}</span>
+                              <span className="text-gray-400">{prop.type}</span>
+                            </div>
+                          ))}
+                          {model.properties && model.properties.length > 5 && (
+                            <div className="text-xs text-gray-400">
+                              +{model.properties.length - 5} more properties
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h6 className="text-sm font-medium text-gray-700 mb-2">Relationships</h6>
+                        <div className="space-y-1">
+                          {model.relationships?.slice(0, 3).map((rel, relIndex) => (
+                            <div key={relIndex} className="flex items-center text-xs">
+                              <span className="text-gray-600">{rel.name}</span>
+                              <span className="text-gray-400 ml-2">({rel.type})</span>
+                            </div>
+                          ))}
+                          {model.relationships && model.relationships.length > 3 && (
+                            <div className="text-xs text-gray-400">
+                              +{model.relationships.length - 3} more relationships
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Model Metadata */}
+                    <div className="flex items-center space-x-4 text-xs text-gray-500">
+                      <span className="flex items-center">
+                        <FileText className="h-3 w-3 mr-1" />
+                        {model.filePath}
+                      </span>
+                      {model.tableName && (
+                        <span className="flex items-center">
+                          <Database className="h-3 w-3 mr-1" />
+                          Table: {model.tableName}
+                        </span>
+                      )}
+                      {model.validations && model.validations.length > 0 && (
+                        <span className="flex items-center">
+                          <Shield className="h-3 w-3 mr-1" />
+                          {model.validations.length} validations
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {model.framework}
+                    </span>
+                    
+                    <button
+                      onClick={() => {
+                        setSelectedORMModel(model);
+                        setShowORMModelDetails(true);
+                      }}
+                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                      View Details
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ORM Analysis */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Framework Distribution */}
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Framework Distribution</h4>
+            <div className="space-y-3">
+              {frameworks.map(framework => {
+                const count = models.filter(m => m.framework === framework).length;
+                const percentage = (count / models.length) * 100;
+                return (
+                  <div key={framework} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">{framework}</span>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-24 bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full" 
+                          style={{ width: `${percentage}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-sm text-gray-500 w-8">{count}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Relationship Analysis */}
+          <div className="bg-white rounded-lg p-6 border border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900 mb-4">Relationship Analysis</h4>
+            <div className="space-y-3">
+              {(() => {
+                const relationshipTypes = models.flatMap(m => m.relationships || [])
+                  .reduce((acc, rel) => {
+                    acc[rel.type] = (acc[rel.type] || 0) + 1;
+                    return acc;
+                  }, {} as Record<string, number>);
+                
+                return Object.entries(relationshipTypes).map(([type, count]) => (
+                  <div key={type} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">{type}</span>
+                    <span className="text-sm text-gray-500">{count}</span>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Render migration history
+  const renderMigrations = () => {
+    const migrationHistory = schema?.migrationHistory;
+    
+    if (!migrationHistory || !migrationHistory.migrations || migrationHistory.migrations.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <GitBranch className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No Migration History Found</h3>
+          <p className="text-gray-500 mb-4">
+            No migration files were detected in this project.
+          </p>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <Info className="h-5 w-5 text-blue-400" />
+              </div>
+              <div className="ml-3">
+                <h4 className="text-sm font-medium text-blue-800">Migration Detection</h4>
+                <p className="text-sm text-blue-700 mt-1">
+                  QueryFlow looks for migration files in common directories like:
+                  migrations/, db/migrate/, database/migrations/, alembic/versions/
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const migrations = migrationHistory.migrations;
+    const executedMigrations = migrations.filter(m => m.status === 'executed');
+    const pendingMigrations = migrations.filter(m => m.status === 'pending');
+    const failedMigrations = migrations.filter(m => m.status === 'failed');
+
+    return (
+      <div className="space-y-6">
+        {/* Migration Overview */}
+        <div className="bg-white rounded-lg p-6 border border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium text-gray-900">Migration History</h3>
+            <div className="flex items-center space-x-4 text-sm text-gray-500">
+              <span className="flex items-center">
+                <CheckCircle className="h-4 w-4 text-green-500 mr-1" />
+                {executedMigrations.length} Executed
+              </span>
+              <span className="flex items-center">
+                <Clock className="h-4 w-4 text-yellow-500 mr-1" />
+                {pendingMigrations.length} Pending
+              </span>
+              <span className="flex items-center">
+                <AlertTriangle className="h-4 w-4 text-red-500 mr-1" />
+                {failedMigrations.length} Failed
+              </span>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-gray-900">{migrations.length}</div>
+              <div className="text-sm text-gray-500">Total Migrations</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-green-600">{migrationHistory.framework}</div>
+              <div className="text-sm text-gray-500">Framework</div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-2xl font-bold text-blue-600">
+                {migrationHistory.lastExecuted ? 
+                  new Date(migrationHistory.lastExecuted).toLocaleDateString() : 
+                  'Never'
+                }
+              </div>
+              <div className="text-sm text-gray-500">Last Executed</div>
+            </div>
+          </div>
+
+          {migrationHistory.migrationsPath && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center">
+                <Folder className="h-4 w-4 text-blue-500 mr-2" />
+                <span className="text-sm text-blue-800">
+                  Migration Directory: {migrationHistory.migrationsPath}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Migration List */}
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h4 className="text-lg font-medium text-gray-900">Migration Timeline</h4>
+          </div>
+          
+          <div className="divide-y divide-gray-200">
+            {migrations.map((migration, index) => (
+              <div key={migration.id} className="p-6 hover:bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-3 h-3 rounded-full ${
+                        migration.status === 'executed' ? 'bg-green-500' :
+                        migration.status === 'pending' ? 'bg-yellow-500' :
+                        migration.status === 'failed' ? 'bg-red-500' : 'bg-gray-400'
+                      }`}></div>
+                      <div>
+                        <h5 className="text-sm font-medium text-gray-900">{migration.name}</h5>
+                        <p className="text-sm text-gray-500">Version: {migration.version}</p>
+                      </div>
+                    </div>
+                    
+                    {migration.description && (
+                      <p className="text-sm text-gray-600 mt-2">{migration.description}</p>
+                    )}
+                    
+                    <div className="flex items-center space-x-4 mt-3 text-xs text-gray-500">
+                      <span className="flex items-center">
+                        <FileText className="h-3 w-3 mr-1" />
+                        {migration.filename}
+                      </span>
+                      {migration.executedAt && (
+                        <span className="flex items-center">
+                          <Clock className="h-3 w-3 mr-1" />
+                          {new Date(migration.executedAt).toLocaleString()}
+                        </span>
+                      )}
+                      {migration.executionTime && (
+                        <span className="flex items-center">
+                          <Timer className="h-3 w-3 mr-1" />
+                          {migration.executionTime}ms
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      migration.status === 'executed' ? 'bg-green-100 text-green-800' :
+                      migration.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                      migration.status === 'failed' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {migration.status}
+                    </span>
+                    
+                    <button
+                      onClick={() => {
+                        setSelectedMigration(migration);
+                        setShowMigrationDetails(true);
+                      }}
+                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                      View Details
+                    </button>
+                  </div>
+                </div>
+                
+                {migration.dependencies && migration.dependencies.length > 0 && (
+                  <div className="mt-3 pl-6">
+                    <div className="text-xs text-gray-500 mb-1">Dependencies:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {migration.dependencies.map((dep, depIndex) => (
+                        <span key={depIndex} className="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-700">
+                          {dep}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Migration Actions */}
+        <div className="bg-white rounded-lg p-6 border border-gray-200">
+          <h4 className="text-lg font-medium text-gray-900 mb-4">Migration Management</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <button className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+              <GitBranch className="h-4 w-4 mr-2" />
+              Run Pending
+            </button>
+            <button className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Rollback Last
+            </button>
+            <button className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh Status
+            </button>
+            <button className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+              <Download className="h-4 w-4 mr-2" />
+              Export History
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Render constraints overview
   const renderConstraints = () => {
     if (!schema) return null;
@@ -1049,6 +2395,10 @@ export function DataValidationManager({ schema: propSchema, records: propRecords
               { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
               { id: 'rules', label: 'Rules', icon: Settings },
               { id: 'constraints', label: 'Constraints', icon: Shield },
+              { id: 'migrations', label: 'Migrations', icon: GitBranch },
+              { id: 'orm', label: 'ORM Models', icon: Database },
+              { id: 'advanced', label: 'Advanced Details', icon: Hash },
+              { id: 'metadata', label: 'Database Metadata', icon: Info },
               { id: 'report', label: 'Report', icon: FileText },
               { id: 'anomalies', label: 'Anomalies', icon: Target },
               { id: 'profiles', label: 'Profiles', icon: PieChart }
@@ -1093,12 +2443,36 @@ export function DataValidationManager({ schema: propSchema, records: propRecords
             {activeTab === 'dashboard' && renderDashboard()}
             {activeTab === 'rules' && renderRules()}
             {activeTab === 'constraints' && renderConstraints()}
+            {activeTab === 'migrations' && renderMigrations()}
+            {activeTab === 'orm' && renderORMModels()}
+            {activeTab === 'advanced' && renderAdvancedDetails()}
+            {activeTab === 'metadata' && renderDatabaseMetadata()}
             {activeTab === 'report' && renderReport()}
             {activeTab === 'anomalies' && renderAnomalies()}
             {activeTab === 'profiles' && renderProfiles()}
           </>
         )}
       </div>
+
+      {/* Migration Details Modal */}
+      <MigrationDetailsModal
+        migration={selectedMigration}
+        isOpen={showMigrationDetails}
+        onClose={() => {
+          setShowMigrationDetails(false);
+          setSelectedMigration(null);
+        }}
+      />
+
+      {/* ORM Model Details Modal */}
+      <ORMModelDetailsModal
+        model={selectedORMModel}
+        isOpen={showORMModelDetails}
+        onClose={() => {
+          setShowORMModelDetails(false);
+          setSelectedORMModel(null);
+        }}
+      />
     </div>
   );
 }

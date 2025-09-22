@@ -8,7 +8,7 @@ import { Handle, Position, NodeProps } from '@xyflow/react';
 import { Table, Column, DataType } from '@/types/database';
 import { 
   Edit, Trash2, Plus, Key, Link, Lock, Eye, EyeOff, 
-  Hash, Type, Calendar, FileText, Database, Star 
+  Hash, Type, Calendar, FileText, Database, Star, Info 
 } from 'lucide-react';
 
 interface TableNodeData {
@@ -33,6 +33,7 @@ export function TableNode(props: any) {
   const [isEditing, setIsEditing] = useState(false);
   const [tableName, setTableName] = useState(table.name);
   const [hoveredColumn, setHoveredColumn] = useState<string | null>(null);
+  const [showColumnDetails, setShowColumnDetails] = useState<Record<string, boolean>>({});
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTableName(e.target.value);
@@ -241,6 +242,24 @@ export function TableNode(props: any) {
                   <span className="text-xs">{tableIndexes.length}</span>
                 </div>
               )}
+              {table.data && table.data.length > 0 && (
+                <div className="flex items-center space-x-0.5" title="Records">
+                  <FileText className="w-3 h-3 text-orange-500" />
+                  <span className="text-xs">{table.data.length}</span>
+                </div>
+              )}
+              {table.columns.filter(col => !col.nullable).length > 0 && (
+                <div className="flex items-center space-x-0.5" title="NOT NULL Columns">
+                  <Lock className="w-3 h-3 text-red-500" />
+                  <span className="text-xs">{table.columns.filter(col => !col.nullable).length}</span>
+                </div>
+              )}
+              {table.columns.filter(col => col.unique).length > 0 && (
+                <div className="flex items-center space-x-0.5" title="Unique Columns">
+                  <Star className="w-3 h-3 text-purple-500" />
+                  <span className="text-xs">{table.columns.filter(col => col.unique).length}</span>
+                </div>
+              )}
             </div>
             
             <button
@@ -358,17 +377,17 @@ export function TableNode(props: any) {
               {showConstraints && !compactMode && (
                 <div className="flex items-center space-x-1">
                   {column.constraints?.autoIncrement && (
-                    <span className="text-xs bg-green-100 text-green-800 px-1 py-0.5 rounded border border-green-200">
+                    <span className="text-xs bg-green-100 text-green-800 px-1 py-0.5 rounded border border-green-200" title="Auto Increment">
                       AI
                     </span>
                   )}
                   {column.constraints?.check && (
-                    <span className="text-xs bg-orange-100 text-orange-800 px-1 py-0.5 rounded border border-orange-200">
+                    <span className="text-xs bg-orange-100 text-orange-800 px-1 py-0.5 rounded border border-orange-200" title="Check Constraint">
                       CHK
                     </span>
                   )}
                   {column.defaultValue && (
-                    <span className="text-xs bg-gray-100 text-gray-800 px-1 py-0.5 rounded border border-gray-200">
+                    <span className="text-xs bg-gray-100 text-gray-800 px-1 py-0.5 rounded border border-gray-200" title={`Default: ${column.defaultValue}`}>
                       DEF
                     </span>
                   )}
@@ -377,12 +396,30 @@ export function TableNode(props: any) {
                       IDX
                     </span>
                   )}
+                  {column.comment && (
+                    <span className="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded border border-blue-200" title={`Comment: ${column.comment}`}>
+                      CMNT
+                    </span>
+                  )}
                 </div>
               )}
             </div>
 
             {/* Column Actions */}
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowColumnDetails(prev => ({
+                    ...prev,
+                    [column.id]: !prev[column.id]
+                  }));
+                }}
+                className={`p-1 ${styles.mutedText} hover:text-blue-500 transition-colors`}
+                title="Toggle column details"
+              >
+                <Info className="w-3 h-3" />
+              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -395,6 +432,92 @@ export function TableNode(props: any) {
               </button>
             </div>
           </div>
+          
+          {/* Column Details Section */}
+          {showColumnDetails[column.id] && !compactMode && (
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mt-2 border border-gray-200 dark:border-gray-600">
+              <div className="space-y-2 text-xs">
+                {/* Basic Info */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">Type:</span>
+                    <span className="ml-2 font-medium">{column.type}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">Nullable:</span>
+                    <span className={`ml-2 font-medium ${column.nullable ? 'text-green-600' : 'text-red-600'}`}>
+                      {column.nullable ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                </div>
+                
+                {/* Constraints */}
+                {(column.primaryKey || column.foreignKey || column.unique || column.defaultValue || column.constraints?.autoIncrement || column.constraints?.check) && (
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">Constraints:</span>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {column.primaryKey && (
+                        <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">Primary Key</span>
+                      )}
+                      {column.foreignKey && (
+                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                          Foreign Key → {column.foreignKey.tableId}.{column.foreignKey.columnId}
+                        </span>
+                      )}
+                      {column.unique && (
+                        <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs">Unique</span>
+                      )}
+                      {column.defaultValue && (
+                        <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">
+                          Default: {column.defaultValue}
+                        </span>
+                      )}
+                      {column.constraints?.autoIncrement && (
+                        <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">Auto Increment</span>
+                      )}
+                      {column.constraints?.check && (
+                        <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs">Check Constraint</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Index Info */}
+                {column.indexed && (
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">Index:</span>
+                    <span className="ml-2 font-medium">{column.indexName || `idx_${column.name}`}</span>
+                    {column.indexType && (
+                      <span className="ml-2 text-gray-500 dark:text-gray-400">({column.indexType})</span>
+                    )}
+                  </div>
+                )}
+                
+                {/* Comment */}
+                {column.comment && (
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">Comment:</span>
+                    <span className="ml-2 font-medium">{column.comment}</span>
+                  </div>
+                )}
+                
+                {/* Statistics */}
+                {column.statistics && (
+                  <div>
+                    <span className="text-gray-500 dark:text-gray-400">Statistics:</span>
+                    <div className="mt-1 grid grid-cols-2 gap-2 text-xs">
+                      {column.statistics.distinctValues && (
+                        <div>Distinct: {column.statistics.distinctValues}</div>
+                      )}
+                      {column.statistics.nullCount !== undefined && (
+                        <div>Nulls: {column.statistics.nullCount}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         ))}
 
         {/* Add Column Button */}

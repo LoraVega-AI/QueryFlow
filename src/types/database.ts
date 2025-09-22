@@ -291,13 +291,27 @@ export interface DatabaseSchema {
     type: string; // postgresql, mysql, sqlite, etc.
     version: string;
     encoding: string;
-    collation: string;
+    collation?: string;
     timezone?: string;
     connectionString?: string;
     host?: string;
     port?: number;
     database?: string;
+    pageSize?: number;
+    userVersion?: number;
+    createdAt?: Date;
+    updatedAt?: Date;
     size?: number;
+    tablespace?: string;
+    engine?: string;
+    charset?: string;
+    rowFormat?: string;
+    autoIncrement?: number;
+    checksum?: string;
+    delayKeyWrite?: boolean;
+    temporary?: boolean;
+    partitioned?: boolean;
+    statistics?: Record<string, any>;
     maxConnections?: number;
     currentConnections?: number;
   };

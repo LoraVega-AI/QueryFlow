@@ -29,7 +29,8 @@ import {
   Plus, Save, Trash2, AlertTriangle, CheckCircle, FileText, Search, Filter, Brain, Lightbulb,
   Zap, Target, TrendingUp, Users, Clock, RefreshCw, Download, Layout, Palette, ZoomIn, ZoomOut,
   RotateCcw, Grid, Circle, Layers, Activity, Maximize, Minimize, Camera, X, Type, Shield, Lock,
-  Database, Key, Link, Hash
+  Database, Key, Link, Hash, Info, BarChart3, Settings, GitBranch, Eye, EyeOff, Star, AlertCircle,
+  ChevronDown, ChevronRight, BookOpen, Code, Globe, Server, Cpu, HardDrive, Wifi, WifiOff
 } from 'lucide-react';
 import { SchemaValidator } from '@/utils/schemaValidation';
 import { SchemaTemplateManager } from '@/utils/schemaTemplates';
@@ -111,6 +112,83 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
   const [showConstraints, setShowConstraints] = useState(true);
   const [compactMode, setCompactMode] = useState(false);
   const [showSchemaDetails, setShowSchemaDetails] = useState(true);
+  
+  // Enhanced metadata panels
+  const [showDatabaseInfo, setShowDatabaseInfo] = useState(false);
+  const [showConstraintsPanel, setShowConstraintsPanel] = useState(false);
+  const [showIndexesPanel, setShowIndexesPanel] = useState(false);
+  const [showMigrationPanel, setShowMigrationPanel] = useState(false);
+  const [showORMPanel, setShowORMPanel] = useState(false);
+  const [showMetadataPanel, setShowMetadataPanel] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    databaseInfo: true,
+    constraints: true,
+    indexes: true,
+    migrations: true,
+    orm: true,
+    metadata: true
+  });
+
+  // Helper functions for enhanced metadata
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  const getDatabaseInfo = () => {
+    if (!schema) return null;
+    return schema.databaseInfo || {
+      type: 'SQLite',
+      version: 'Unknown',
+      encoding: 'UTF-8',
+      pageSize: 4096,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+  };
+
+  const getConstraintSummary = () => {
+    if (!schema) return { primaryKeys: 0, foreignKeys: 0, notNull: 0, unique: 0, default: 0, check: 0 };
+    
+    const primaryKeys = schema.tables.reduce((sum, table) => 
+      sum + table.columns.filter(col => col.primaryKey).length, 0
+    );
+    const foreignKeys = schema.tables.reduce((sum, table) => 
+      sum + table.columns.filter(col => col.foreignKey).length, 0
+    );
+    const notNull = schema.tables.reduce((sum, table) => 
+      sum + table.columns.filter(col => !col.nullable).length, 0
+    );
+    const unique = schema.tables.reduce((sum, table) => 
+      sum + table.columns.filter(col => col.unique).length, 0
+    );
+    const default = schema.tables.reduce((sum, table) => 
+      sum + table.columns.filter(col => col.defaultValue).length, 0
+    );
+    const check = schema.tables.reduce((sum, table) => 
+      sum + table.columns.filter(col => col.constraints?.check).length, 0
+    );
+
+    return { primaryKeys, foreignKeys, notNull, unique, default, check };
+  };
+
+  const getIndexSummary = () => {
+    if (!schema) return { total: 0, unique: 0, composite: 0, partial: 0 };
+    
+    const allIndexes = schema.tables.flatMap(table => table.indexes || []);
+    const unique = allIndexes.filter(idx => idx.unique).length;
+    const composite = allIndexes.filter(idx => idx.columns && idx.columns.length > 1).length;
+    const partial = allIndexes.filter(idx => idx.partial).length;
+
+    return { 
+      total: allIndexes.length, 
+      unique, 
+      composite, 
+      partial 
+    };
+  };
   
   // Handle updating a table
   const handleUpdateTable = useCallback((updatedTable: Table) => {
@@ -988,6 +1066,78 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                   <Database className="w-4 h-4" />
                   <span className="text-xs">Details</span>
                 </button>
+                <button
+                  onClick={() => setShowDatabaseInfo(!showDatabaseInfo)}
+                  className={`flex items-center space-x-1 px-2 py-2 rounded-md transition-colors ${
+                    showDatabaseInfo 
+                      ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                  title={showDatabaseInfo ? 'Hide Database Info' : 'Show Database Info'}
+                >
+                  <Server className="w-4 h-4" />
+                  <span className="text-xs">DB Info</span>
+                </button>
+                <button
+                  onClick={() => setShowConstraintsPanel(!showConstraintsPanel)}
+                  className={`flex items-center space-x-1 px-2 py-2 rounded-md transition-colors ${
+                    showConstraintsPanel 
+                      ? 'bg-red-600 text-white hover:bg-red-700' 
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                  title={showConstraintsPanel ? 'Hide Constraints' : 'Show Constraints'}
+                >
+                  <Shield className="w-4 h-4" />
+                  <span className="text-xs">Constraints</span>
+                </button>
+                <button
+                  onClick={() => setShowIndexesPanel(!showIndexesPanel)}
+                  className={`flex items-center space-x-1 px-2 py-2 rounded-md transition-colors ${
+                    showIndexesPanel 
+                      ? 'bg-green-600 text-white hover:bg-green-700' 
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                  title={showIndexesPanel ? 'Hide Indexes' : 'Show Indexes'}
+                >
+                  <Hash className="w-4 h-4" />
+                  <span className="text-xs">Indexes</span>
+                </button>
+                <button
+                  onClick={() => setShowMigrationPanel(!showMigrationPanel)}
+                  className={`flex items-center space-x-1 px-2 py-2 rounded-md transition-colors ${
+                    showMigrationPanel 
+                      ? 'bg-purple-600 text-white hover:bg-purple-700' 
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                  title={showMigrationPanel ? 'Hide Migrations' : 'Show Migrations'}
+                >
+                  <GitBranch className="w-4 h-4" />
+                  <span className="text-xs">Migrations</span>
+                </button>
+                <button
+                  onClick={() => setShowORMPanel(!showORMPanel)}
+                  className={`flex items-center space-x-1 px-2 py-2 rounded-md transition-colors ${
+                    showORMPanel 
+                      ? 'bg-indigo-600 text-white hover:bg-indigo-700' 
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                  title={showORMPanel ? 'Hide ORM Models' : 'Show ORM Models'}
+                >
+                  <Code className="w-4 h-4" />
+                  <span className="text-xs">ORM</span>
+                </button>
+                <button
+                  onClick={() => setShowMetadataPanel(!showMetadataPanel)}
+                  className={`flex items-center space-x-1 px-2 py-2 rounded-md transition-colors ${
+                    showMetadataPanel 
+                      ? 'bg-yellow-600 text-white hover:bg-yellow-700' 
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                  title={showMetadataPanel ? 'Hide Metadata' : 'Show Metadata'}
+                >
+                  <Info className="w-4 h-4" />
+                  <span className="text-xs">Metadata</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1240,6 +1390,734 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
             </div>
           </div>
         </div>
+        )}
+
+        {/* Enhanced Database Info Panel */}
+        {showDatabaseInfo && (
+          <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col h-full">
+            <div className="p-4 border-b border-gray-700 flex-shrink-0 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Database Information</h3>
+                <p className="text-sm text-gray-400">Database metadata and statistics</p>
+              </div>
+              <button
+                onClick={() => setShowDatabaseInfo(false)}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title="Close Database Info"
+              >
+                <X className="w-5 h-5 text-gray-400 hover:text-white" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+              {(() => {
+                const dbInfo = getDatabaseInfo();
+                if (!dbInfo) return <div className="text-gray-400 text-sm text-center py-4">No database information available</div>;
+                
+                return (
+                  <div className="space-y-4">
+                    {/* Database Type & Version */}
+                    <div className="bg-gray-700 rounded-lg p-4">
+                      <div className="flex items-center space-x-2 mb-3">
+                        <Server className="w-5 h-5 text-blue-500" />
+                        <h4 className="text-md font-semibold text-white">Database Details</h4>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Type:</span>
+                          <span className="text-white">{dbInfo.type}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Version:</span>
+                          <span className="text-white">{dbInfo.version}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Encoding:</span>
+                          <span className="text-white">{dbInfo.encoding}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Page Size:</span>
+                          <span className="text-white">{dbInfo.pageSize} bytes</span>
+                        </div>
+                        {dbInfo.journalMode && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Journal Mode:</span>
+                            <span className="text-white">{dbInfo.journalMode}</span>
+                          </div>
+                        )}
+                        {dbInfo.foreignKeys !== undefined && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">Foreign Keys:</span>
+                            <span className={`${dbInfo.foreignKeys ? 'text-green-400' : 'text-red-400'}`}>
+                              {dbInfo.foreignKeys ? 'Enabled' : 'Disabled'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Database Statistics */}
+                    {dbInfo.statistics && (
+                      <div className="bg-gray-700 rounded-lg p-4">
+                        <div className="flex items-center space-x-2 mb-3">
+                          <BarChart3 className="w-5 h-5 text-green-500" />
+                          <h4 className="text-md font-semibold text-white">Statistics</h4>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-blue-400">{dbInfo.statistics.pageCount || 0}</div>
+                            <div className="text-gray-400 text-xs">Total Pages</div>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-green-400">{dbInfo.statistics.freelistCount || 0}</div>
+                            <div className="text-gray-400 text-xs">Free Pages</div>
+                          </div>
+                        </div>
+                        {dbInfo.statistics.integrityCheck && (
+                          <div className="mt-3 text-center">
+                            <div className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-xs ${
+                              dbInfo.statistics.integrityCheck === 'ok' 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              <div className={`w-2 h-2 rounded-full ${
+                                dbInfo.statistics.integrityCheck === 'ok' ? 'bg-green-500' : 'bg-red-500'
+                              }`}></div>
+                              <span>
+                                {dbInfo.statistics.integrityCheck === 'ok' ? 'Integrity OK' : 'Check Required'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Schema Overview */}
+                    <div className="bg-gray-700 rounded-lg p-4">
+                      <div className="flex items-center space-x-2 mb-3">
+                        <Database className="w-5 h-5 text-purple-500" />
+                        <h4 className="text-md font-semibold text-white">Schema Overview</h4>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-purple-400">{schema?.tables.length || 0}</div>
+                          <div className="text-gray-400 text-xs">Tables</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-blue-400">
+                            {schema?.tables.reduce((sum, table) => sum + table.columns.length, 0) || 0}
+                          </div>
+                          <div className="text-gray-400 text-xs">Columns</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-green-400">
+                            {schema?.tables.reduce((sum, table) => sum + (table.data?.length || 0), 0) || 0}
+                          </div>
+                          <div className="text-gray-400 text-xs">Records</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-yellow-400">
+                            {schema?.tables.reduce((sum, table) => sum + (table.indexes?.length || 0), 0) || 0}
+                          </div>
+                          <div className="text-gray-400 text-xs">Indexes</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* Enhanced Constraints Panel */}
+        {showConstraintsPanel && (
+          <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col h-full">
+            <div className="p-4 border-b border-gray-700 flex-shrink-0 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Constraints</h3>
+                <p className="text-sm text-gray-400">All database constraints and rules</p>
+              </div>
+              <button
+                onClick={() => setShowConstraintsPanel(false)}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title="Close Constraints"
+              >
+                <X className="w-5 h-5 text-gray-400 hover:text-white" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+              {(() => {
+                const constraints = getConstraintSummary();
+                
+                return (
+                  <div className="space-y-4">
+                    {/* Constraint Summary */}
+                    <div className="bg-gray-700 rounded-lg p-4">
+                      <div className="flex items-center space-x-2 mb-3">
+                        <Shield className="w-5 h-5 text-red-500" />
+                        <h4 className="text-md font-semibold text-white">Constraint Summary</h4>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-yellow-400">{constraints.primaryKeys}</div>
+                          <div className="text-gray-400 text-xs">Primary Keys</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-blue-400">{constraints.foreignKeys}</div>
+                          <div className="text-gray-400 text-xs">Foreign Keys</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-red-400">{constraints.notNull}</div>
+                          <div className="text-gray-400 text-xs">NOT NULL</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-purple-400">{constraints.unique}</div>
+                          <div className="text-gray-400 text-xs">UNIQUE</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-gray-400">{constraints.default}</div>
+                          <div className="text-gray-400 text-xs">DEFAULT</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-orange-400">{constraints.check}</div>
+                          <div className="text-gray-400 text-xs">CHECK</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Detailed Constraints */}
+                    {schema?.tables.map(table => {
+                      const tableConstraints = table.columns.filter(col => 
+                        col.primaryKey || col.foreignKey || !col.nullable || col.unique || col.defaultValue || col.constraints?.check
+                      );
+                      
+                      if (tableConstraints.length === 0) return null;
+                      
+                      return (
+                        <div key={table.id} className="bg-gray-700 rounded-lg p-4">
+                          <div className="flex items-center space-x-2 mb-3">
+                            <Database className="w-5 h-5 text-blue-500" />
+                            <h4 className="text-md font-semibold text-white">{table.name}</h4>
+                            <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                              {tableConstraints.length}
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            {tableConstraints.map(column => (
+                              <div key={column.id} className="bg-gray-600 rounded p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="text-white font-medium text-sm">{column.name}</div>
+                                  <div className="flex items-center space-x-1">
+                                    {column.primaryKey && (
+                                      <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">PK</span>
+                                    )}
+                                    {column.foreignKey && (
+                                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">FK</span>
+                                    )}
+                                    {!column.nullable && (
+                                      <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">NN</span>
+                                    )}
+                                    {column.unique && (
+                                      <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">UQ</span>
+                                    )}
+                                    {column.defaultValue && (
+                                      <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">DEF</span>
+                                    )}
+                                    {column.constraints?.check && (
+                                      <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">CHK</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-xs text-gray-300">
+                                  Type: {column.type}
+                                  {column.defaultValue && ` • Default: ${column.defaultValue}`}
+                                  {column.foreignKey && ` • References: ${column.foreignKey.tableId}.${column.foreignKey.columnId}`}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* Enhanced Indexes Panel */}
+        {showIndexesPanel && (
+          <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col h-full">
+            <div className="p-4 border-b border-gray-700 flex-shrink-0 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Indexes</h3>
+                <p className="text-sm text-gray-400">Database indexes and performance optimization</p>
+              </div>
+              <button
+                onClick={() => setShowIndexesPanel(false)}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title="Close Indexes"
+              >
+                <X className="w-5 h-5 text-gray-400 hover:text-white" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+              {(() => {
+                const indexSummary = getIndexSummary();
+                
+                return (
+                  <div className="space-y-4">
+                    {/* Index Summary */}
+                    <div className="bg-gray-700 rounded-lg p-4">
+                      <div className="flex items-center space-x-2 mb-3">
+                        <Hash className="w-5 h-5 text-green-500" />
+                        <h4 className="text-md font-semibold text-white">Index Summary</h4>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-green-400">{indexSummary.total}</div>
+                          <div className="text-gray-400 text-xs">Total Indexes</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-purple-400">{indexSummary.unique}</div>
+                          <div className="text-gray-400 text-xs">Unique Indexes</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-blue-400">{indexSummary.composite}</div>
+                          <div className="text-gray-400 text-xs">Composite</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-orange-400">{indexSummary.partial}</div>
+                          <div className="text-gray-400 text-xs">Partial</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Detailed Indexes */}
+                    {schema?.tables.map(table => {
+                      const tableIndexes = table.indexes || [];
+                      const columnIndexes = table.columns.filter(col => col.indexed);
+                      
+                      if (tableIndexes.length === 0 && columnIndexes.length === 0) return null;
+                      
+                      return (
+                        <div key={table.id} className="bg-gray-700 rounded-lg p-4">
+                          <div className="flex items-center space-x-2 mb-3">
+                            <Database className="w-5 h-5 text-green-500" />
+                            <h4 className="text-md font-semibold text-white">{table.name}</h4>
+                            <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                              {tableIndexes.length + columnIndexes.length}
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            {/* Table-level indexes */}
+                            {tableIndexes.map(index => (
+                              <div key={index.id} className="bg-gray-600 rounded p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="text-white font-medium text-sm">{index.name}</div>
+                                  <div className="flex items-center space-x-1">
+                                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                      {index.type || 'BTREE'}
+                                    </span>
+                                    {index.unique && (
+                                      <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">UNIQUE</span>
+                                    )}
+                                    {index.partial && (
+                                      <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">PARTIAL</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-xs text-gray-300">
+                                  Columns: {index.columns.join(', ')}
+                                </div>
+                                {index.partial && (
+                                  <div className="text-xs text-gray-400 mt-1">
+                                    WHERE {index.partial}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                            
+                            {/* Column-level indexes */}
+                            {columnIndexes.map(column => (
+                              <div key={`${column.id}-idx`} className="bg-gray-600 rounded p-3">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="text-white font-medium text-sm">{column.indexName || `idx_${column.name}`}</div>
+                                  <div className="flex items-center space-x-1">
+                                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                      {column.indexType || 'BTREE'}
+                                    </span>
+                                    {column.unique && (
+                                      <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">UNIQUE</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-xs text-gray-300">
+                                  Column: {column.name} ({column.type})
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* Enhanced Migration Panel */}
+        {showMigrationPanel && (
+          <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col h-full">
+            <div className="p-4 border-b border-gray-700 flex-shrink-0 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Migrations</h3>
+                <p className="text-sm text-gray-400">Database migration history and management</p>
+              </div>
+              <button
+                onClick={() => setShowMigrationPanel(false)}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title="Close Migrations"
+              >
+                <X className="w-5 h-5 text-gray-400 hover:text-white" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+              {schema?.migrationHistory ? (
+                <div className="space-y-4">
+                  {/* Migration Overview */}
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <GitBranch className="w-5 h-5 text-purple-500" />
+                      <h4 className="text-md font-semibold text-white">Migration Overview</h4>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-400">{schema.migrationHistory.migrations.length}</div>
+                        <div className="text-gray-400 text-xs">Total Migrations</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-400">
+                          {schema.migrationHistory.migrations.filter(m => m.status === 'executed').length}
+                        </div>
+                        <div className="text-gray-400 text-xs">Executed</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-yellow-400">
+                          {schema.migrationHistory.migrations.filter(m => m.status === 'pending').length}
+                        </div>
+                        <div className="text-gray-400 text-xs">Pending</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-400">{schema.migrationHistory.framework}</div>
+                        <div className="text-gray-400 text-xs">Framework</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Migration Timeline */}
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <Clock className="w-5 h-5 text-blue-500" />
+                      <h4 className="text-md font-semibold text-white">Migration Timeline</h4>
+                    </div>
+                    <div className="space-y-3">
+                      {schema.migrationHistory.migrations.slice(0, 10).map((migration, index) => (
+                        <div key={migration.id} className="bg-gray-600 rounded p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-white font-medium text-sm">{migration.name}</div>
+                            <div className="flex items-center space-x-1">
+                              <span className={`text-xs px-2 py-1 rounded ${
+                                migration.status === 'executed' ? 'bg-green-100 text-green-800' :
+                                migration.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-red-100 text-red-800'
+                              }`}>
+                                {migration.status}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-xs text-gray-300">
+                            {migration.timestamp && new Date(migration.timestamp).toLocaleDateString()}
+                            {migration.description && ` • ${migration.description}`}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-gray-400 text-sm text-center py-4">
+                  No migration history available
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Enhanced ORM Panel */}
+        {showORMPanel && (
+          <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col h-full">
+            <div className="p-4 border-b border-gray-700 flex-shrink-0 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">ORM Models</h3>
+                <p className="text-sm text-gray-400">Object-Relational Mapping models and relationships</p>
+              </div>
+              <button
+                onClick={() => setShowORMPanel(false)}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title="Close ORM Models"
+              >
+                <X className="w-5 h-5 text-gray-400 hover:text-white" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+              {schema?.ormModels && schema.ormModels.length > 0 ? (
+                <div className="space-y-4">
+                  {/* ORM Overview */}
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <Code className="w-5 h-5 text-indigo-500" />
+                      <h4 className="text-md font-semibold text-white">ORM Overview</h4>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-indigo-400">{schema.ormModels.length}</div>
+                        <div className="text-gray-400 text-xs">Total Models</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-400">
+                          {schema.ormModels.reduce((sum, model) => sum + (model.relationships?.length || 0), 0)}
+                        </div>
+                        <div className="text-gray-400 text-xs">Relationships</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-400">
+                          {schema.ormModels.reduce((sum, model) => sum + (model.validations?.length || 0), 0)}
+                        </div>
+                        <div className="text-gray-400 text-xs">Validations</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-400">
+                          {new Set(schema.ormModels.map(m => m.framework)).size}
+                        </div>
+                        <div className="text-gray-400 text-xs">Frameworks</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ORM Models */}
+                  <div className="space-y-3">
+                    {schema.ormModels.map(model => (
+                      <div key={model.id} className="bg-gray-700 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <div className="text-white font-medium text-sm">{model.name}</div>
+                            <div className="text-gray-400 text-xs">{model.framework} • {model.tableName || 'No table'}</div>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded">
+                              {model.framework}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {model.relationships && model.relationships.length > 0 && (
+                          <div className="mb-2">
+                            <div className="text-xs text-gray-400 mb-1">Relationships:</div>
+                            <div className="flex flex-wrap gap-1">
+                              {model.relationships.slice(0, 3).map((rel, idx) => (
+                                <span key={idx} className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                  {rel.type}
+                                </span>
+                              ))}
+                              {model.relationships.length > 3 && (
+                                <span className="text-xs text-gray-400">+{model.relationships.length - 3} more</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {model.validations && model.validations.length > 0 && (
+                          <div className="mb-2">
+                            <div className="text-xs text-gray-400 mb-1">Validations:</div>
+                            <div className="flex flex-wrap gap-1">
+                              {model.validations.slice(0, 3).map((val, idx) => (
+                                <span key={idx} className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                  {val.type}
+                                </span>
+                              ))}
+                              {model.validations.length > 3 && (
+                                <span className="text-xs text-gray-400">+{model.validations.length - 3} more</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-gray-400 text-sm text-center py-4">
+                  No ORM models found
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Enhanced Metadata Panel */}
+        {showMetadataPanel && (
+          <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col h-full">
+            <div className="p-4 border-b border-gray-700 flex-shrink-0 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Metadata</h3>
+                <p className="text-sm text-gray-400">Additional database metadata and information</p>
+              </div>
+              <button
+                onClick={() => setShowMetadataPanel(false)}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title="Close Metadata"
+              >
+                <X className="w-5 h-5 text-gray-400 hover:text-white" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+              <div className="space-y-4">
+                {/* Views */}
+                {schema?.views && schema.views.length > 0 && (
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <Eye className="w-5 h-5 text-blue-500" />
+                      <h4 className="text-md font-semibold text-white">Database Views</h4>
+                      <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                        {schema.views.length}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {schema.views.map((view, index) => (
+                        <div key={index} className="bg-gray-600 rounded p-3">
+                          <div className="text-white font-medium text-sm">{view.name}</div>
+                          <div className="text-gray-400 text-xs mt-1">
+                            {view.description || 'No description available'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Triggers */}
+                {schema?.triggers && schema.triggers.length > 0 && (
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <Zap className="w-5 h-5 text-yellow-500" />
+                      <h4 className="text-md font-semibold text-white">Database Triggers</h4>
+                      <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full">
+                        {schema.triggers.length}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {schema.triggers.map((trigger, index) => (
+                        <div key={index} className="bg-gray-600 rounded p-3">
+                          <div className="text-white font-medium text-sm">{trigger.name}</div>
+                          <div className="text-gray-400 text-xs mt-1">
+                            {trigger.description || 'No description available'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Functions */}
+                {schema?.functions && schema.functions.length > 0 && (
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <Code className="w-5 h-5 text-green-500" />
+                      <h4 className="text-md font-semibold text-white">Database Functions</h4>
+                      <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                        {schema.functions.length}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {schema.functions.map((func, index) => (
+                        <div key={index} className="bg-gray-600 rounded p-3">
+                          <div className="text-white font-medium text-sm">{func.name}</div>
+                          <div className="text-gray-400 text-xs mt-1">
+                            {func.description || 'No description available'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Procedures */}
+                {schema?.procedures && schema.procedures.length > 0 && (
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <Settings className="w-5 h-5 text-purple-500" />
+                      <h4 className="text-md font-semibold text-white">Database Procedures</h4>
+                      <span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">
+                        {schema.procedures.length}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {schema.procedures.map((proc, index) => (
+                        <div key={index} className="bg-gray-600 rounded p-3">
+                          <div className="text-white font-medium text-sm">{proc.name}</div>
+                          <div className="text-gray-400 text-xs mt-1">
+                            {proc.description || 'No description available'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Schema Statistics */}
+                <div className="bg-gray-700 rounded-lg p-4">
+                  <div className="flex items-center space-x-2 mb-3">
+                    <BarChart3 className="w-5 h-5 text-purple-500" />
+                    <h4 className="text-md font-semibold text-white">Schema Statistics</h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-purple-400">{schema?.tables.length || 0}</div>
+                      <div className="text-gray-400 text-xs">Tables</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-400">
+                        {schema?.tables.reduce((sum, table) => sum + table.columns.length, 0) || 0}
+                      </div>
+                      <div className="text-gray-400 text-xs">Columns</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-400">
+                        {schema?.tables.reduce((sum, table) => sum + (table.data?.length || 0), 0) || 0}
+                      </div>
+                      <div className="text-gray-400 text-xs">Records</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-yellow-400">
+                        {schema?.tables.reduce((sum, table) => sum + (table.indexes?.length || 0), 0) || 0}
+                      </div>
+                      <div className="text-gray-400 text-xs">Indexes</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 

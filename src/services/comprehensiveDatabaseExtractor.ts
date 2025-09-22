@@ -182,13 +182,44 @@ export class ComprehensiveDatabaseExtractor {
     const pageSize = await db.get('PRAGMA page_size');
     const encoding = await db.get('PRAGMA encoding');
     const userVersion = await db.get('PRAGMA user_version');
+    const journalMode = await db.get('PRAGMA journal_mode');
+    const synchronous = await db.get('PRAGMA synchronous');
+    const foreignKeys = await db.get('PRAGMA foreign_keys');
+    const tempStore = await db.get('PRAGMA temp_store');
+    const cacheSize = await db.get('PRAGMA cache_size');
+    const autoVacuum = await db.get('PRAGMA auto_vacuum');
+    
+    // Get database file size if possible
+    let fileSize = 0;
+    try {
+      const stats = await db.get('PRAGMA page_count');
+      fileSize = stats.page_count * pageSize.page_size;
+    } catch (error) {
+      console.warn('Could not get database file size:', error);
+    }
     
     return {
       type: 'sqlite',
       version: version.version,
       encoding: encoding.encoding,
       pageSize: pageSize.page_size,
-      userVersion: userVersion.user_version
+      userVersion: userVersion.user_version,
+      journalMode: journalMode.journal_mode,
+      synchronous: synchronous.synchronous,
+      foreignKeys: foreignKeys.foreign_keys === 1,
+      tempStore: tempStore.temp_store,
+      cacheSize: cacheSize.cache_size,
+      autoVacuum: autoVacuum.auto_vacuum,
+      size: fileSize,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      statistics: {
+        pageCount: await db.get('PRAGMA page_count').then(r => r.page_count).catch(() => 0),
+        freelistCount: await db.get('PRAGMA freelist_count').then(r => r.freelist_count).catch(() => 0),
+        integrityCheck: await db.all('PRAGMA integrity_check').then(rows => 
+          rows.length === 1 && rows[0].integrity_check === 'ok' ? 'ok' : 'error'
+        ).catch(() => 'unknown')
+      }
     };
   }
   
@@ -441,14 +472,196 @@ export class ComprehensiveDatabaseExtractor {
       tableName,
       sourceCode: content,
       relationships: this.extractRelationships(content, framework),
+      properties: this.extractProperties(content, framework),
+      validations: this.extractValidations(content, framework),
+      hooks: this.extractHooks(content, framework),
+      scopes: this.extractScopes(content, framework),
+      indexes: this.extractORMIndexes(content, framework),
       metadata: {
         extractedAt: new Date(),
         framework,
-        filename
+        filename,
+        filePath: filename
       }
     };
   }
   
+  /**
+   * Extract model properties from source code
+   */
+  static extractProperties(content: string, framework: string): any[] {
+    const properties: any[] = [];
+    
+    // Basic property extraction based on framework
+    if (framework === 'sequelize') {
+      // Extract from Sequelize model definitions
+      const fieldMatches = content.match(/define\s*\(\s*['"`]([^'"`]+)['"`]\s*,\s*\{([^}]+)\}/gs);
+      if (fieldMatches) {
+        const fieldsContent = fieldMatches[0];
+        const fieldRegex = /(\w+)\s*:\s*\{[^}]*type\s*:\s*DataTypes\.(\w+)/g;
+        let match;
+        while ((match = fieldRegex.exec(fieldsContent)) !== null) {
+          properties.push({
+            name: match[1],
+            type: match[2].toLowerCase(),
+            required: fieldsContent.includes(`${match[1]}: {`) && fieldsContent.includes('allowNull: false')
+          });
+        }
+      }
+    } else if (framework === 'prisma') {
+      // Extract from Prisma model fields
+      const fieldRegex = /(\w+)\s+(\w+)(\?)?/g;
+      let match;
+      while ((match = fieldRegex.exec(content)) !== null) {
+        properties.push({
+          name: match[1],
+          type: match[2],
+          required: !match[3]
+        });
+      }
+    } else if (framework === 'typeorm') {
+      // Extract from TypeORM entity properties
+      const fieldRegex = /@Column\([^)]*\)\s*(\w+)\s*:\s*(\w+)/g;
+      let match;
+      while ((match = fieldRegex.exec(content)) !== null) {
+        properties.push({
+          name: match[1],
+          type: match[2].toLowerCase(),
+          required: true
+        });
+      }
+    }
+    
+    return properties;
+  }
+
+  /**
+   * Extract model validations from source code
+   */
+  static extractValidations(content: string, framework: string): any[] {
+    const validations: any[] = [];
+    
+    if (framework === 'sequelize') {
+      // Extract Sequelize validations
+      const validationRegex = /validate\s*:\s*\{([^}]+)\}/g;
+      let match;
+      while ((match = validationRegex.exec(content)) !== null) {
+        const validationContent = match[1];
+        const fieldRegex = /(\w+)\s*:\s*\{([^}]+)\}/g;
+        let fieldMatch;
+        while ((fieldMatch = fieldRegex.exec(validationContent)) !== null) {
+          validations.push({
+            field: fieldMatch[1],
+            type: 'custom',
+            message: 'Validation rule',
+            options: {}
+          });
+        }
+      }
+    } else if (framework === 'laravel') {
+      // Extract Laravel validation rules
+      const validationRegex = /protected\s+\$rules\s*=\s*\[([^\]]+)\]/g;
+      let match;
+      while ((match = validationRegex.exec(content)) !== null) {
+        const rulesContent = match[1];
+        const fieldRegex = /'(\w+)'\s*=>\s*'([^']+)'/g;
+        let fieldMatch;
+        while ((fieldMatch = fieldRegex.exec(rulesContent)) !== null) {
+          validations.push({
+            field: fieldMatch[1],
+            type: 'laravel',
+            message: 'Validation rule',
+            options: { rules: fieldMatch[2] }
+          });
+        }
+      }
+    }
+    
+    return validations;
+  }
+
+  /**
+   * Extract model hooks from source code
+   */
+  static extractHooks(content: string, framework: string): any[] {
+    const hooks: any[] = [];
+    
+    if (framework === 'sequelize') {
+      // Extract Sequelize hooks
+      const hookRegex = /(beforeCreate|afterCreate|beforeUpdate|afterUpdate|beforeDestroy|afterDestroy)\s*:\s*function[^{]*\{([^}]+)\}/g;
+      let match;
+      while ((match = hookRegex.exec(content)) !== null) {
+        hooks.push({
+          name: match[1],
+          type: 'lifecycle',
+          function: match[2].trim()
+        });
+      }
+    } else if (framework === 'laravel') {
+      // Extract Laravel model events
+      const hookRegex = /protected\s+static\s+function\s+(boot|creating|created|updating|updated|deleting|deleted)\([^)]*\)\s*\{([^}]+)\}/g;
+      let match;
+      while ((match = hookRegex.exec(content)) !== null) {
+        hooks.push({
+          name: match[1],
+          type: 'lifecycle',
+          function: match[2].trim()
+        });
+      }
+    }
+    
+    return hooks;
+  }
+
+  /**
+   * Extract model scopes from source code
+   */
+  static extractScopes(content: string, framework: string): any[] {
+    const scopes: any[] = [];
+    
+    if (framework === 'laravel') {
+      // Extract Laravel scopes
+      const scopeRegex = /public\s+function\s+scope(\w+)\([^)]*\)\s*\{([^}]+)\}/g;
+      let match;
+      while ((match = scopeRegex.exec(content)) !== null) {
+        scopes.push({
+          name: match[1],
+          type: 'local',
+          function: match[2].trim()
+        });
+      }
+    }
+    
+    return scopes;
+  }
+
+  /**
+   * Extract ORM indexes from source code
+   */
+  static extractORMIndexes(content: string, framework: string): any[] {
+    const indexes: any[] = [];
+    
+    if (framework === 'sequelize') {
+      // Extract Sequelize indexes
+      const indexRegex = /indexes\s*:\s*\[([^\]]+)\]/g;
+      let match;
+      while ((match = indexRegex.exec(content)) !== null) {
+        const indexContent = match[1];
+        const fieldRegex = /fields\s*:\s*\[([^\]]+)\]/g;
+        let fieldMatch;
+        while ((fieldMatch = fieldRegex.exec(indexContent)) !== null) {
+          indexes.push({
+            name: 'index_' + Date.now(),
+            fields: fieldMatch[1].split(',').map((f: string) => f.trim().replace(/['"]/g, '')),
+            unique: indexContent.includes('unique: true')
+          });
+        }
+      }
+    }
+    
+    return indexes;
+  }
+
   /**
    * Parse Prisma schema
    */
