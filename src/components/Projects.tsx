@@ -1126,40 +1126,26 @@ export function Projects() {
                 <div className="mb-5">
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Tables ({(project.schema?.tables?.length || 0)})</div>
-                    <div className="flex items-center space-x-2">
-                      {project.hasForeignKeys && (
-                        <span className="px-2 py-1 bg-purple-100 text-purple-600 rounded-full" title="Has foreign keys">
-                          🔗
-                        </span>
-                      )}
-                      {project.hasIndexes && (
-                        <span className="px-2 py-1 bg-orange-100 text-orange-600 rounded-full" title="Has indexes">
-                          📇
-                        </span>
-                      )}
+                    <div className="flex items-center space-x-1">
+                      <button
+                        onClick={() => {
+                          // Link functionality - could be for sharing or connecting
+                          navigator.clipboard.writeText(window.location.href);
+                          showNotification('info', 'Project link copied to clipboard');
+                        }}
+                        className="p-1.5 bg-purple-100 text-purple-600 rounded-full hover:bg-purple-200 transition-colors duration-200"
+                        title="Copy project link"
+                      >
+                        <Link className="w-3 h-3" />
+                      </button>
                       
-                      {/* Action Icons */}
-                      <div className="flex items-center space-x-1">
-                        <button
-                          onClick={() => {
-                            // Link functionality - could be for sharing or connecting
-                            navigator.clipboard.writeText(window.location.href);
-                            showNotification('info', 'Project link copied to clipboard');
-                          }}
-                          className="p-1.5 bg-purple-100 text-purple-600 rounded-full hover:bg-purple-200 transition-colors duration-200"
-                          title="Copy project link"
-                        >
-                          <Link className="w-3 h-3" />
-                        </button>
-                        
-                        <button
-                          onClick={() => handleExportProject(project)}
-                          className="p-1.5 bg-orange-100 text-orange-600 rounded-full hover:bg-orange-200 transition-colors duration-200"
-                          title="Export database info"
-                        >
-                          <Printer className="w-3 h-3" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleExportProject(project)}
+                        className="p-1.5 bg-orange-100 text-orange-600 rounded-full hover:bg-orange-200 transition-colors duration-200"
+                        title="Export database info"
+                      >
+                        <Printer className="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
                   <div className="space-y-2">
