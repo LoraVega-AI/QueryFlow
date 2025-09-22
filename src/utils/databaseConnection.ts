@@ -648,6 +648,23 @@ class ApplicationDataManager {
     await this.appDb.run('DELETE FROM projects WHERE id = ?', projectId);
   }
 
+  async clearAllProjects(): Promise<void> {
+    if (!this.appDb) await this.initialize();
+    if (!this.appDb) return; // SQLite not available
+
+    console.log('🗑️ Clearing all projects from database...');
+    
+    // Delete all projects
+    const projectResult = await this.appDb.run('DELETE FROM projects');
+    console.log('✅ Deleted projects:', projectResult.changes);
+    
+    // Delete all project databases
+    const dbResult = await this.appDb.run('DELETE FROM project_databases');
+    console.log('✅ Deleted project databases:', dbResult.changes);
+    
+    console.log('🎉 All projects cleared successfully!');
+  }
+
   // Database operations
   async saveProjectDatabase(projectId: string, database: any): Promise<void> {
     if (!this.appDb) await this.initialize();
