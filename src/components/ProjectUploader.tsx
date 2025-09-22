@@ -325,62 +325,79 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
   const renderUploadArea = () => {
     if (uploadState.status === 'idle') {
       return (
-        <div className="text-center py-12">
-          <div className="mb-6">
-            <div className="w-16 h-16 mx-auto bg-orange-100 rounded-full flex items-center justify-center mb-4">
-              <Database className="w-8 h-8 text-orange-600" />
+        <div className="text-center py-16">
+          <div className="mb-8">
+            <div className="w-20 h-20 mx-auto bg-gradient-to-br from-orange-100 to-orange-200 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+              <Database className="w-10 h-10 text-orange-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-2xl font-bold text-gray-900 mb-3">
               Upload Database Files or Project Archives
             </h3>
-            <p className="text-gray-600 mb-4">
+            <p className="text-lg text-gray-600 mb-6">
               Drag and drop SQLite database files, zip archives, or click to select
             </p>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <div className="flex items-start space-x-2">
-                <div className="w-5 h-5 text-blue-500 mt-0.5">💡</div>
-                <div className="text-left text-sm text-blue-800">
-                  <p className="font-medium mb-1">What happens when you upload:</p>
-                  <ul className="list-disc list-inside space-y-1 text-blue-700">
-                    <li>Zip files are automatically extracted to subdirectories</li>
-                    <li>Database files are detected and processed</li>
-                    <li>Project structure is analyzed for type detection</li>
-                    <li>All databases are converted to SQLite format</li>
-                    <li>Project is created and saved to QueryFlow</li>
-                    <li>Database becomes available in Schema Designer</li>
-                    <li>You can query and edit data immediately</li>
-                  </ul>
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 mb-8 shadow-sm">
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 text-blue-500 mt-0.5 text-xl">💡</div>
+                <div className="text-left">
+                  <p className="font-semibold text-blue-900 mb-3 text-lg">What happens when you upload:</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-blue-800">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                      <span>Zip files are automatically extracted</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                      <span>Database files are detected and processed</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                      <span>Project structure is analyzed</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                      <span>All databases converted to SQLite</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                      <span>Project saved to QueryFlow</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                      <span>Available in Schema Designer</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex flex-col sm:flex-row gap-3">
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button
                 onClick={openFileDialog}
-                className="inline-flex items-center px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
+                className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-orange-600 to-orange-700 text-white rounded-2xl hover:from-orange-700 hover:to-orange-800 transition-all duration-200 font-semibold text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
-                <Database className="w-5 h-5 mr-2" />
+                <Database className="w-6 h-6 mr-3" />
                 Select Any Files
               </button>
               <button
                 onClick={() => zipInputRef.current?.click()}
-                className="inline-flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-2xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-semibold text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
-                <FileText className="w-5 h-5 mr-2" />
+                <FileText className="w-6 h-6 mr-3" />
                 Select Zip Files Only
               </button>
             </div>
 
-            <div className="text-sm text-gray-500">
-              <div className="font-medium mb-1">Supported formats:</div>
-              <div className="flex flex-wrap justify-center gap-2">
+            <div className="text-sm text-gray-600">
+              <div className="font-semibold mb-3 text-gray-800">Supported formats:</div>
+              <div className="flex flex-wrap justify-center gap-3">
                 {['.db', '.sqlite', '.sqlite3', '.db3', '.s3db', '.sl3', '.zip'].map(ext => (
-                  <span key={ext} className={`px-2 py-1 rounded text-xs ${
+                  <span key={ext} className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
                     ext === '.zip'
-                      ? 'bg-orange-100 text-orange-700'
-                      : 'bg-gray-100 text-gray-700'
+                      ? 'bg-gradient-to-r from-orange-100 to-orange-200 text-orange-800 border border-orange-300 shadow-sm'
+                      : 'bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 border border-gray-300 shadow-sm'
                   }`}>
                     {ext}
                   </span>
@@ -395,97 +412,102 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
     if (uploadState.status === 'completed' && uploadState.result) {
       const { result } = uploadState;
       return (
-        <div className="text-center py-8">
-          <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center mb-4">
-            <CheckCircle className="w-8 h-8 text-green-600" />
+        <div className="text-center py-12">
+          <div className="w-20 h-20 mx-auto bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+            <CheckCircle className="w-10 h-10 text-green-600" />
           </div>
 
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">
             Database Uploaded Successfully!
           </h3>
 
-          <div className="bg-gray-50 rounded-lg p-4 mb-4">
-            <div className="flex items-center justify-center mb-3">
-              <Database className="w-6 h-6 mr-2 text-green-500" />
-              <span className="font-medium text-lg">
+          <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
+            <div className="flex items-center justify-center mb-4">
+              <Database className="w-8 h-8 mr-3 text-green-500" />
+              <span className="font-bold text-xl text-gray-900">
                 {result.projectName}
               </span>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Project Type:</span>
-                <span className="font-medium">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="flex justify-between items-center p-3 bg-white rounded-xl">
+                <span className="text-gray-600 font-medium">Project Type:</span>
+                <span className="font-bold text-gray-900">
                   {PROJECT_TYPE_NAMES[result.projectType as ProjectType] || result.projectType}
                 </span>
               </div>
               
-              <div className="flex justify-between">
-                <span className="text-gray-600">Databases Found:</span>
-                <span className="font-medium text-green-600">
+              <div className="flex justify-between items-center p-3 bg-white rounded-xl">
+                <span className="text-gray-600 font-medium">Databases Found:</span>
+                <span className="font-bold text-green-600 text-lg">
                   {result.databases.length}
                 </span>
               </div>
               
               {result.databases.length > 0 && (
-                <div className="mt-2">
-                  <div className="text-gray-600 text-xs mb-1">Database Details:</div>
-                  {result.databases.map((db, index) => (
-                    <div key={index} className="text-xs bg-gray-100 rounded px-2 py-1 mb-1">
-                      <div className="flex justify-between">
-                        <span className="font-medium">{db.name}</span>
-                        <span className="text-gray-500">{db.type}</span>
+                <div className="md:col-span-2 mt-4">
+                  <div className="text-gray-700 font-semibold mb-3">Database Details:</div>
+                  <div className="space-y-2">
+                    {result.databases.map((db, index) => (
+                      <div key={index} className="bg-white rounded-xl p-4 border border-gray-200">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="font-bold text-gray-900">{db.name}</span>
+                          <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">{db.type}</span>
+                        </div>
+                        {(db as any).tableCount !== undefined && (
+                          <div className="text-gray-600 text-sm">
+                            {(db as any).tableCount} tables
+                            {(db as any).totalRows !== undefined && ` • ${(db as any).totalRows} rows`}
+                          </div>
+                        )}
+                        {(db as any).extractionMetadata && (
+                          <div className="text-gray-500 text-xs mt-1">
+                            Extracted from {(db as any).extractionMetadata.frameworks?.join(', ')} 
+                            ({(db as any).extractionMetadata.confidence}% confidence)
+                          </div>
+                        )}
                       </div>
-                      {(db as any).tableCount !== undefined && (
-                        <div className="text-gray-600">
-                          {(db as any).tableCount} tables
-                          {(db as any).totalRows !== undefined && `, ${(db as any).totalRows} rows`}
-                        </div>
-                      )}
-                      {(db as any).extractionMetadata && (
-                        <div className="text-gray-600">
-                          Extracted from {(db as any).extractionMetadata.frameworks?.join(', ')} 
-                          ({(db as any).extractionMetadata.confidence}% confidence)
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-            <div className="flex items-center justify-center space-x-2 text-green-800">
-              <CheckCircle className="w-4 h-4" />
-              <span className="font-medium">Ready to use!</span>
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-6 mb-6 shadow-sm">
+            <div className="flex items-center justify-center space-x-3 text-green-800 mb-2">
+              <CheckCircle className="w-6 h-6" />
+              <span className="font-bold text-lg">Ready to use!</span>
             </div>
-            <p className="text-sm text-green-700 mt-1">
+            <p className="text-green-700 font-medium">
               Your database is now available in the Projects tab and Schema Designer
             </p>
           </div>
 
-          <p className="text-sm text-gray-600">
-            Connecting to QueryFlow...
-          </p>
+          <div className="flex items-center justify-center space-x-2 text-gray-600">
+            <Loader className="w-4 h-4 animate-spin" />
+            <span className="font-medium">Connecting to QueryFlow...</span>
+          </div>
         </div>
       );
     }
 
     if (uploadState.status === 'error') {
       return (
-        <div className="text-center py-8">
-          <div className="w-16 h-16 mx-auto bg-red-100 rounded-full flex items-center justify-center mb-4">
-            <XCircle className="w-8 h-8 text-red-600" />
+        <div className="text-center py-12">
+          <div className="w-20 h-20 mx-auto bg-gradient-to-br from-red-100 to-red-200 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+            <XCircle className="w-10 h-10 text-red-600" />
           </div>
 
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">
             Upload Failed
           </h3>
 
-          <p className="text-red-600 mb-4">
-            {uploadState.error}
-          </p>
+          <div className="bg-gradient-to-r from-red-50 to-red-100 border border-red-200 rounded-2xl p-6 mb-6 shadow-sm">
+            <p className="text-red-800 font-medium text-lg">
+              {uploadState.error}
+            </p>
+          </div>
 
           <button
             onClick={() => setUploadState({
@@ -494,8 +516,9 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
               message: 'Ready to upload project',
               files: []
             })}
-            className="inline-flex items-center px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+            className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-orange-600 to-orange-700 text-white rounded-2xl hover:from-orange-700 hover:to-orange-800 transition-all duration-200 font-semibold text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
           >
+            <Upload className="w-6 h-6 mr-3" />
             Try Again
           </button>
         </div>
@@ -504,63 +527,66 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
 
     // Processing state
     return (
-      <div className="text-center py-8">
-        <div className="w-16 h-16 mx-auto bg-orange-100 rounded-full flex items-center justify-center mb-4">
-          <Loader className="w-8 h-8 text-orange-600 animate-spin" />
+      <div className="text-center py-12">
+        <div className="w-20 h-20 mx-auto bg-gradient-to-br from-orange-100 to-orange-200 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+          <Loader className="w-10 h-10 text-orange-600 animate-spin" />
         </div>
 
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        <h3 className="text-2xl font-bold text-gray-900 mb-4">
           {uploadState.message}
         </h3>
 
-        <div className="w-full max-w-xs mx-auto mb-4">
-          <div className="bg-gray-200 rounded-full h-2">
+        <div className="w-full max-w-md mx-auto mb-6">
+          <div className="bg-gray-200 rounded-full h-3 shadow-inner">
             <div
-              className="bg-orange-600 h-2 rounded-full transition-all duration-300"
+              className="bg-gradient-to-r from-orange-500 to-orange-600 h-3 rounded-full transition-all duration-500 shadow-sm"
               style={{ width: `${uploadState.progress}%` }}
             />
           </div>
-          <div className="text-sm text-gray-600 mt-1">
+          <div className="text-lg text-gray-700 mt-3 font-semibold">
             {uploadState.progress}% complete
           </div>
         </div>
 
-        <div className="text-sm text-gray-600">
-          Found {uploadState.files.length} files
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center justify-center space-x-2 text-blue-800">
+            <Database className="w-5 h-5" />
+            <span className="font-medium">Processing {uploadState.files.length} files</span>
+          </div>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-hidden border border-gray-200">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-8 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
           <div className="flex items-center">
-            <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
-              <Database className="w-5 h-5 text-orange-600" />
+            <div className="w-12 h-12 bg-gradient-to-br from-orange-100 to-orange-200 rounded-2xl flex items-center justify-center mr-4 shadow-lg">
+              <Database className="w-6 h-6 text-orange-600" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h2 className="text-2xl font-bold text-gray-900">
                 Upload Database
               </h2>
-              <p className="text-sm text-gray-600">
+              <p className="text-gray-600 font-medium">
                 Upload SQLite database files to QueryFlow
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
             <button
               onClick={() => setShowOptions(!showOptions)}
-              className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+              className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-all duration-200"
             >
               <Settings className="w-5 h-5" />
             </button>
             <button
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+              className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-all duration-200"
             >
               <X className="w-5 h-5" />
             </button>
@@ -569,11 +595,11 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
 
         {/* Options Panel */}
         {showOptions && (
-          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-            <h4 className="font-medium text-gray-900 mb-3">Upload Options</h4>
-            <div className="grid grid-cols-2 gap-4">
+          <div className="px-8 py-6 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+            <h4 className="font-bold text-gray-900 mb-4 text-lg">Upload Options</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Max Depth
                 </label>
                 <input
@@ -583,13 +609,13 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
                     ...prev,
                     maxDepth: parseInt(e.target.value) || 5
                   }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-200 bg-white"
                   min="1"
                   max="10"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Scan Timeout (ms)
                 </label>
                 <input
@@ -599,13 +625,13 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
                     ...prev,
                     scanTimeout: parseInt(e.target.value) || 30000
                   }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-200 bg-white"
                   min="5000"
                   max="120000"
                 />
               </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Ignore Patterns
                 </label>
                 <input
@@ -615,7 +641,7 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
                     ...prev,
                     ignorePatterns: e.target.value.split(',').map(s => s.trim()).filter(s => s)
                   }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-200 bg-white"
                   placeholder="node_modules, .git, dist"
                 />
               </div>
@@ -625,12 +651,12 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
 
         {/* Upload Area */}
         <div
-          className={`p-6 ${
+          className={`p-8 ${
             uploadState.status === 'idle'
-              ? `border-2 border-dashed transition-colors ${
+              ? `border-2 border-dashed transition-all duration-300 ${
                   isDragOver
-                    ? 'border-orange-400 bg-orange-50'
-                    : 'border-gray-300 hover:border-gray-400'
+                    ? 'border-orange-400 bg-gradient-to-br from-orange-50 to-orange-100 shadow-lg'
+                    : 'border-gray-300 hover:border-orange-300 hover:bg-gray-50'
                 }`
               : ''
           }`}
@@ -642,15 +668,15 @@ export function ProjectUploader({ onProjectDetected, onClose }: ProjectUploaderP
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
-          <div className="flex items-center space-x-4 text-sm text-gray-600">
-            <span className="flex items-center">
-              <Database className="w-4 h-4 mr-1" />
+        <div className="px-8 py-6 bg-gradient-to-r from-gray-50 to-gray-100 border-t border-gray-200 flex items-center justify-between">
+          <div className="flex items-center space-x-6 text-sm text-gray-600">
+            <span className="flex items-center font-medium">
+              <Database className="w-5 h-5 mr-2 text-orange-500" />
               Supports SQLite databases
             </span>
           </div>
 
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-gray-500 font-medium">
             Database files are stored securely in QueryFlow
           </div>
         </div>
