@@ -40,7 +40,7 @@ import { useRealtimeUpdates } from '../hooks/useRealtimeUpdates';
 import { useSessionManager } from '../hooks/useSessionManager';
 
 export function Projects() {
-  const { connectDatabase } = useDatabase();
+  const { connectDatabase, getConnectionInfo } = useDatabase();
   const [projects, setProjects] = useState<Project[]>([]);
   const [syncingProject, setSyncingProject] = useState<string | null>(null);
   const [notification, setNotification] = useState<{
@@ -143,7 +143,18 @@ export function Projects() {
           });
         }
         
-        setProjects(allProjects);
+        // Check if any project is currently connected in the database context
+        const currentConnection = getConnectionInfo();
+        
+        // Update project status based on active connection
+        const updatedProjects = allProjects.map(project => {
+          if (currentConnection && currentConnection.projectId === project.id) {
+            return { ...project, status: 'connected' as const };
+          }
+          return project;
+        });
+        
+        setProjects(updatedProjects);
         setLastRefresh(new Date());
         console.log('✅ Projects component: Projects loaded via API');
       } else {
@@ -156,7 +167,7 @@ export function Projects() {
         setIsRefreshing(false);
       }
     }
-  }, []);
+  }, [getConnectionInfo]);
 
   // Helper function to show notifications
   const showNotification = useCallback((type: 'success' | 'error' | 'info' | 'warning', message: string, duration: number = 5000) => {
@@ -268,6 +279,19 @@ export function Projects() {
       projectsManager.removeEventListener('project_sync_error', handleSyncError);
     };
   }, [loadProjects, showNotification]);
+
+  // Update project status when database connection changes
+  useEffect(() => {
+    const currentConnection = getConnectionInfo();
+    if (currentConnection) {
+      setProjects(prev => prev.map(project => {
+        if (currentConnection.projectId === project.id) {
+          return { ...project, status: 'connected' as const };
+        }
+        return project;
+      }));
+    }
+  }, [getConnectionInfo]);
 
   // Auto-refresh every 30 seconds (fallback when real-time is not available)
   useEffect(() => {
