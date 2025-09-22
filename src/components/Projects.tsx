@@ -24,7 +24,9 @@ import {
   List,
   X,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Link,
+  Printer
 } from 'lucide-react';
 import { projectsManager } from '../utils/projectsManager';
 import { Project } from '../types/project';
@@ -764,6 +766,57 @@ export function Projects() {
     });
   }, []);
 
+  // Export project database info
+  const handleExportProject = useCallback((project: Project) => {
+    try {
+      const exportData = {
+        projectInfo: {
+          name: project.name,
+          technology: project.technology,
+          status: project.status,
+          totalTables: project.totalTables || 0,
+          totalRows: project.totalRows || 0,
+          hasForeignKeys: project.hasForeignKeys || false,
+          hasIndexes: project.hasIndexes || false,
+          lastSynced: project.lastSynced,
+          exportedAt: new Date().toISOString()
+        },
+        tables: project.schema?.tables?.map((table: any) => ({
+          name: table.name,
+          rowCount: table.rowCount || 0,
+          columnCount: table.columns?.length || 0,
+          columns: table.columns?.map((col: any) => ({
+            name: col.name,
+            type: col.type || 'TEXT',
+            nullable: col.nullable,
+            primaryKey: col.primaryKey,
+            unique: col.unique,
+            autoIncrement: col.autoIncrement,
+            defaultValue: col.defaultValue
+          })) || [],
+          foreignKeys: table.foreignKeys || [],
+          indexes: table.indexes || []
+        })) || []
+      };
+
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${project.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_database_export.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showNotification('success', `Database info exported for "${project.name}"`);
+    } catch (error) {
+      showNotification('error', `Failed to export project: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [showNotification]);
+
   return (
     <div className="h-full flex flex-col">
       {/* Header - Fixed */}
@@ -1073,7 +1126,7 @@ export function Projects() {
                 <div className="mb-5">
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Tables ({(project.schema?.tables?.length || 0)})</div>
-                    <div className="flex items-center space-x-1 text-xs">
+                    <div className="flex items-center space-x-2">
                       {project.hasForeignKeys && (
                         <span className="px-2 py-1 bg-purple-100 text-purple-600 rounded-full" title="Has foreign keys">
                           🔗
@@ -1084,6 +1137,29 @@ export function Projects() {
                           📇
                         </span>
                       )}
+                      
+                      {/* Action Icons */}
+                      <div className="flex items-center space-x-1">
+                        <button
+                          onClick={() => {
+                            // Link functionality - could be for sharing or connecting
+                            navigator.clipboard.writeText(window.location.href);
+                            showNotification('info', 'Project link copied to clipboard');
+                          }}
+                          className="p-1.5 bg-purple-100 text-purple-600 rounded-full hover:bg-purple-200 transition-colors duration-200"
+                          title="Copy project link"
+                        >
+                          <Link className="w-3 h-3" />
+                        </button>
+                        
+                        <button
+                          onClick={() => handleExportProject(project)}
+                          className="p-1.5 bg-orange-100 text-orange-600 rounded-full hover:bg-orange-200 transition-colors duration-200"
+                          title="Export database info"
+                        >
+                          <Printer className="w-3 h-3" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                   <div className="space-y-2">
