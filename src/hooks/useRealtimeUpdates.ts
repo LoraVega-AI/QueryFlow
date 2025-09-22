@@ -55,18 +55,23 @@ export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
   }, []);
 
   const handleError = useCallback((error: Event) => {
-    console.error('Real-time connection error:', {
-      type: error.type,
+    const errorInfo = {
+      type: error?.type || 'unknown',
       timestamp: new Date().toISOString(),
-      isConnected: isConnectedRef.current
-    });
+      isConnected: isConnectedRef.current,
+      errorObject: error,
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      errorStack: error instanceof Error ? error.stack : undefined
+    };
+    
+    console.error('Real-time connection error:', errorInfo);
     onError?.(error);
   }, [onError]);
 
   // Connect to real-time updates
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!isConnectedRef.current && typeof window !== 'undefined') {
-      realtimeService.connect();
+      await realtimeService.connect();
     }
   }, []);
 
@@ -98,7 +103,9 @@ export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
   // Auto-connect if enabled
   useEffect(() => {
     if (autoConnect && typeof window !== 'undefined') {
-      connect();
+      connect().catch(error => {
+        console.error('Auto-connect failed:', error);
+      });
     }
 
     return () => {

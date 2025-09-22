@@ -8,13 +8,15 @@ export interface RealtimeMessage {
 }
 
 export interface RealtimeService {
-  connect: () => void;
+  connect: () => Promise<void>;
   disconnect: () => void;
   isConnected: () => boolean;
   onMessage: (callback: (message: RealtimeMessage) => void) => void;
   onConnect: (callback: () => void) => void;
   onDisconnect: (callback: () => void) => void;
   onError: (callback: (error: Event) => void) => void;
+  testConnection: () => Promise<boolean>;
+  getConnectionStatus: () => any;
 }
 
 class RealtimeServiceImpl implements RealtimeService {
@@ -29,9 +31,11 @@ class RealtimeServiceImpl implements RealtimeService {
   private isManualDisconnect = false;
   private reconnectTimeout: NodeJS.Timeout | null = null;
 
-  constructor(private url: string = '/api/realtime/events') {}
+  constructor(private url: string = '/api/realtime/events') {
+    console.log('RealtimeService initialized with URL:', this.url);
+  }
 
-  connect(): void {
+  async connect(): Promise<void> {
     // Check if we're in a browser environment
     if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
       console.warn('EventSource not available in this environment');
@@ -43,8 +47,24 @@ class RealtimeServiceImpl implements RealtimeService {
       return;
     }
 
+    // Clean up existing connection
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+    }
+
     try {
       console.log('Connecting to real-time service:', this.url);
+      console.log('Current window location:', typeof window !== 'undefined' ? window.location.href : 'N/A');
+      console.log('Full URL will be:', typeof window !== 'undefined' ? new URL(this.url, window.location.origin).href : this.url);
+      
+      // Test connection first
+      const isAvailable = await this.testConnection();
+      if (!isAvailable) {
+        console.warn('Real-time endpoint not available, skipping connection');
+        return;
+      }
+      
       this.eventSource = new EventSource(this.url);
       this.setupEventListeners();
     } catch (error) {
@@ -78,6 +98,38 @@ class RealtimeServiceImpl implements RealtimeService {
     this.errorCallbacks.push(callback);
   }
 
+  // Test if the endpoint is available
+  async testConnection(): Promise<boolean> {
+    try {
+      console.log('Testing real-time endpoint availability...');
+      const response = await fetch(this.url, {
+        method: 'HEAD',
+        cache: 'no-cache'
+      });
+      console.log('Connection test response:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Connection test failed:', error);
+      return false;
+    }
+  }
+
+  // Get detailed connection status
+  getConnectionStatus() {
+    return {
+      isConnected: this.isConnected(),
+      readyState: this.eventSource?.readyState,
+      url: this.eventSource?.url,
+      reconnectAttempts: this.reconnectAttempts,
+      isManualDisconnect: this.isManualDisconnect,
+      hasEventSource: !!this.eventSource
+    };
+  }
+
   private setupEventListeners(): void {
     if (!this.eventSource) return;
 
@@ -103,13 +155,29 @@ class RealtimeServiceImpl implements RealtimeService {
     };
 
     this.eventSource.onerror = (error) => {
-      console.error('Real-time connection error:', {
-        type: error.type,
+      const errorDetails = {
+        type: error?.type || 'unknown',
         readyState: this.eventSource?.readyState,
         url: this.eventSource?.url,
         reconnectAttempts: this.reconnectAttempts,
-        isManualDisconnect: this.isManualDisconnect
-      });
+        isManualDisconnect: this.isManualDisconnect,
+        errorObject: error,
+        timestamp: new Date().toISOString(),
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A',
+        connectionState: typeof navigator !== 'undefined' ? navigator.connection?.effectiveType : 'N/A'
+      };
+      
+      console.error('Real-time connection error:', errorDetails);
+      
+      // Log additional debugging information
+      if (this.eventSource) {
+        console.error('EventSource state:', {
+          readyState: this.eventSource.readyState,
+          url: this.eventSource.url,
+          withCredentials: this.eventSource.withCredentials
+        });
+      }
+      
       this.handleError(error);
       
       if (!this.isManualDisconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
@@ -147,12 +215,15 @@ class RealtimeServiceImpl implements RealtimeService {
 
   private handleError(error: Event): void {
     const errorInfo = {
-      type: error.type,
+      type: error?.type || 'unknown',
       readyState: this.eventSource?.readyState,
       url: this.eventSource?.url,
       reconnectAttempts: this.reconnectAttempts,
       isManualDisconnect: this.isManualDisconnect,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      errorObject: error,
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      errorStack: error instanceof Error ? error.stack : undefined
     };
     
     // Only log warnings for non-critical errors

@@ -195,10 +195,15 @@ export function Projects() {
   }, [loadProjects, showNotification]);
 
   const handleRealtimeError = useCallback((error: Event) => {
-    console.error('Real-time connection error:', {
-      type: error.type,
-      timestamp: new Date().toISOString()
-    });
+    const errorInfo = {
+      type: error?.type || 'unknown',
+      timestamp: new Date().toISOString(),
+      errorObject: error,
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      errorStack: error instanceof Error ? error.stack : undefined
+    };
+    
+    console.error('Real-time connection error:', errorInfo);
     setRealtimeConnected(false);
     showNotification('error', 'Real-time connection lost. Using fallback polling.');
   }, [showNotification]);
@@ -1127,18 +1132,6 @@ export function Projects() {
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Tables ({(project.schema?.tables?.length || 0)})</div>
                     <div className="flex items-center space-x-1">
-                      <button
-                        onClick={() => {
-                          // Link functionality - could be for sharing or connecting
-                          navigator.clipboard.writeText(window.location.href);
-                          showNotification('info', 'Project link copied to clipboard');
-                        }}
-                        className="p-1.5 bg-purple-100 text-purple-600 rounded-full hover:bg-purple-200 transition-colors duration-200"
-                        title="Copy project link"
-                      >
-                        <Link className="w-3 h-3" />
-                      </button>
-                      
                       <button
                         onClick={() => handleExportProject(project)}
                         className="p-1.5 bg-orange-100 text-orange-600 rounded-full hover:bg-orange-200 transition-colors duration-200"

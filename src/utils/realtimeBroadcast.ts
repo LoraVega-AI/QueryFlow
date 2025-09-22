@@ -21,11 +21,13 @@ export function broadcastMessage(message: any) {
 // Add connection to the set
 export function addConnection(controller: ReadableStreamDefaultController) {
   connections.add(controller);
+  console.log('Real-time connection added. Total connections:', connections.size);
 }
 
 // Remove connection from the set
 export function removeConnection(controller: ReadableStreamDefaultController) {
   connections.delete(controller);
+  console.log('Real-time connection removed. Total connections:', connections.size);
 }
 
 // Get connection count
