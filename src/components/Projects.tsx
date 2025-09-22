@@ -929,7 +929,7 @@ export function Projects() {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400 text-gray-900"
                 >
                   <option value="all">All ({statusCounts.all})</option>
                   <option value="connected">Connected ({statusCounts.connected})</option>
@@ -945,7 +945,7 @@ export function Projects() {
                 <select
                   value={technologyFilter}
                   onChange={(e) => setTechnologyFilter(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400 text-gray-900"
                 >
                   <option value="all">All Technologies</option>
                   {availableTechnologies.map(tech => (
@@ -960,7 +960,7 @@ export function Projects() {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400 text-gray-900"
                 >
                   <option value="name">Name</option>
                   <option value="lastSynced">Last Synced</option>
