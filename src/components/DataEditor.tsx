@@ -86,6 +86,26 @@ export function DataEditor({ schema: propSchema }: DataEditorProps) {
     setError(null);
 
     try {
+      // First, try to use extracted data from the current project
+      if (currentProject && selectedTable.data && Array.isArray(selectedTable.data)) {
+        console.log('📊 Using extracted table data for:', selectedTable.name);
+        console.log('📊 Found', selectedTable.data.length, 'extracted records');
+        
+        // Convert extracted data to DatabaseRecord format
+        const loadedRecords: DatabaseRecord[] = selectedTable.data.map((row, index) => ({
+          id: `record_${selectedTable.name}_${index}`,
+          tableId: selectedTable.id,
+          data: row
+        }));
+
+        setRecords(loadedRecords);
+        console.log('✅ Loaded', loadedRecords.length, 'records from extracted data');
+        return;
+      }
+      
+      // Fallback: Try to query from database if no extracted data available
+      console.log('🔄 No extracted data found, attempting database query for:', selectedTable.name);
+      
       // Initialize database and create tables
       await dbManager.initialize();
       await dbManager.createTablesFromSchema(schema);
@@ -104,13 +124,14 @@ export function DataEditor({ schema: propSchema }: DataEditorProps) {
       }));
 
       setRecords(loadedRecords);
+      console.log('✅ Loaded', loadedRecords.length, 'records from database query');
     } catch (error: any) {
       console.error('Error loading records:', error);
       setError(error.message || 'Failed to load records');
     } finally {
       setIsLoading(false);
     }
-  }, [selectedTable, schema]);
+  }, [selectedTable, schema, currentProject]);
 
   // Real-time streaming functions
   const enableRealtimeStreaming = useCallback(async () => {

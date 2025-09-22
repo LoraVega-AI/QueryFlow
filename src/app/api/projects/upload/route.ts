@@ -91,11 +91,13 @@ export async function POST(request: NextRequest) {
     const databaseFiles = await extractDatabaseFiles(uploadDir);
     console.log('📊 Found database files:', databaseFiles.length);
 
-    // Log database file details
+    // Log database file details with data extraction info
     if (databaseFiles.length > 0) {
       console.log('🗃️ Database files found:');
       databaseFiles.forEach((db, index) => {
+        const totalDataRows = db.tables?.reduce((sum: number, table: any) => sum + (table.data?.length || 0), 0) || 0;
         console.log(`  ${index + 1}. ${db.name} (${db.type}) - ${db.status}`);
+        console.log(`      Tables: ${db.tables?.length || 0}, Total Data Rows Extracted: ${totalDataRows}`);
       });
     }
 
@@ -105,11 +107,28 @@ export async function POST(request: NextRequest) {
     console.log('📁 All files count:', allFiles.length);
     console.log('📁 Upload directory:', uploadDir);
     
-    // Use simple extraction instead of complex DatabaseDefinitionExtractor
+    // Extract database definitions from source code
     const { extractDatabaseDefinitionsFromSourceCode } = await import('./simpleExtraction.js');
     const sourceCodeDatabases = await extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir);
     console.log('📊 Found source code databases:', sourceCodeDatabases.length);
     console.log('📊 Source code databases details:', sourceCodeDatabases.map(db => ({ name: db.name, type: db.type, tables: db.tables?.length || 0 })));
+
+    // Extract migration history and ORM models
+    console.log('🔍 Extracting migration history and ORM models...');
+    const { ComprehensiveDatabaseExtractor } = await import('@/services/comprehensiveDatabaseExtractor');
+    
+    const migrationHistory = await ComprehensiveDatabaseExtractor.extractMigrationHistory(uploadDir);
+    const ormModels = await ComprehensiveDatabaseExtractor.extractORMModels(uploadDir);
+    
+    console.log(`📋 Found migration history: ${migrationHistory ? 'Yes' : 'No'}`);
+    console.log(`📋 Found ORM models: ${ormModels.length}`);
+    
+    if (migrationHistory) {
+      console.log(`   📄 ${migrationHistory.migrations.length} migrations (${migrationHistory.framework})`);
+    }
+    if (ormModels.length > 0) {
+      console.log(`   🏗️ ORM models: ${ormModels.map(m => `${m.name} (${m.framework})`).join(', ')}`);
+    }
 
     // Combine both actual database files and extracted definitions
     const allDatabases = [...databaseFiles, ...sourceCodeDatabases];
@@ -132,13 +151,24 @@ export async function POST(request: NextRequest) {
     const allRelationships = allDatabases.flatMap(db => db.schema?.relationships || []);
     const allIndexes = allDatabases.flatMap(db => db.schema?.indexes || []);
     
-    // Create comprehensive schema
+    // Create comprehensive schema with enhanced metadata
     const mergedSchema = {
       id: `schema_${Date.now()}`,
       name: `${projectName || 'Uploaded Project'} Schema`,
       tables: allTables,
       relationships: allRelationships,
       indexes: allIndexes,
+      migrationHistory,
+      ormModels,
+      databaseInfo: allDatabases[0]?.schema?.databaseInfo || {
+        type: 'mixed',
+        version: 'unknown',
+        encoding: 'UTF-8'
+      },
+      views: allDatabases.flatMap(db => db.schema?.views || []),
+      triggers: allDatabases.flatMap(db => db.schema?.triggers || []),
+      functions: allDatabases.flatMap(db => db.schema?.functions || []),
+      procedures: allDatabases.flatMap(db => db.schema?.procedures || []),
       createdAt: new Date(),
       updatedAt: new Date(),
       version: 1
@@ -420,7 +450,7 @@ async function analyzeDatabaseFile(filePath: string, uploadDir: string): Promise
 
 async function testDatabaseFile(filePath: string): Promise<{ success: boolean; tables?: any[]; schema?: any }> {
   try {
-    console.log(`🧪 Testing database file: ${filePath}`);
+    console.log(`🧪 Testing database file with comprehensive extraction: ${filePath}`);
     
     // Check if file exists and is readable
     const fileStats = await stat(filePath);
@@ -431,100 +461,33 @@ async function testDatabaseFile(filePath: string): Promise<{ success: boolean; t
       return { success: false };
     }
     
-    // Test database file directly using sqlite3
-    console.log('🔌 Loading SQLite modules...');
-    const sqlite3 = require('sqlite3');
-    const { open } = require('sqlite');
+    // Use comprehensive database extractor
+    console.log('🔍 Starting comprehensive database extraction...');
+    const { ComprehensiveDatabaseExtractor } = await import('@/services/comprehensiveDatabaseExtractor');
     
-    console.log('🔓 Opening database...');
-    console.log('🔓 Database file path:', filePath);
-    console.log('🔓 File exists:', require('fs').existsSync(filePath));
+    const extractionResult = await ComprehensiveDatabaseExtractor.extractSQLiteDatabase(filePath);
+    console.log('✅ Comprehensive extraction completed');
+    console.log(`📊 Extracted ${extractionResult.tables.length} tables with full metadata`);
     
-    const db = await open({
-      filename: filePath,
-      driver: sqlite3.Database
-    });
+    // Use the comprehensive extraction result
+    const schemaTables = extractionResult.tables;
     
-    console.log('✅ Database opened successfully');
-    
-    // Get table names
-    console.log('📋 Getting table names...');
-    const tables = await db.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
-    console.log(`📊 Found ${tables.length} tables:`, tables.map((t: any) => t.name));
-    
-    // Get table info for each table
-    const schemaTables = [];
-    for (const table of tables) {
-      console.log(`🔍 Analyzing table: ${table.name}`);
-      const columns = await db.all(`PRAGMA table_info(${table.name})`);
-      console.log(`📝 Table ${table.name} has ${columns.length} columns:`, columns.map((c: any) => c.name));
-      
-      // Get row count
-      let rowCount = 0;
-      try {
-        const countResult = await db.get(`SELECT COUNT(*) as count FROM ${table.name}`);
-        rowCount = countResult.count;
-      } catch (countError) {
-        console.warn(`Could not get row count for table ${table.name}:`, countError);
-      }
-      
-      // Get foreign key information
-      const foreignKeys = await db.all(`PRAGMA foreign_key_list(${table.name})`);
-      console.log(`🔗 Table ${table.name} has ${foreignKeys.length} foreign keys`);
-      
-      // Get indexes
-      const indexes = await db.all(`PRAGMA index_list(${table.name})`);
-      console.log(`📇 Table ${table.name} has ${indexes.length} indexes`);
-      
-      schemaTables.push({
-        id: `table_${table.name}_${Date.now()}`,
-        name: table.name,
-        rowCount: rowCount,
-        columns: columns.map((col: any, index: number) => ({
-          id: `col_${col.name}_${index}`,
-          name: col.name,
-          type: col.type,
-          nullable: !col.notnull,
-          primaryKey: col.pk === 1,
-          defaultValue: col.dflt_value,
-          unique: false, // SQLite doesn't expose this in PRAGMA table_info
-          autoIncrement: col.type.toUpperCase().includes('INTEGER') && col.pk === 1
-        })),
-        relationships: foreignKeys.map((fk: any, index: number) => ({
-          id: `fk_${table.name}_${index}`,
-          fromColumn: fk.from,
-          toTable: fk.table,
-          toColumn: fk.to,
-          onUpdate: fk.on_update,
-          onDelete: fk.on_delete
-        })),
-        indexes: indexes.map((idx: any, index: number) => ({
-          id: `idx_${idx.name}_${index}`,
-          name: idx.name,
-          unique: idx.unique === 1,
-          type: 'btree' // SQLite default
-        })),
-        position: { x: schemaTables.length * 200, y: schemaTables.length * 100 },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-    }
-    
-    // Create comprehensive schema object
+    // Create comprehensive schema object with enhanced metadata
     const schema = {
       id: `schema_${Date.now()}`,
       name: `Database Schema`,
       tables: schemaTables,
-      relationships: schemaTables.flatMap(table => table.relationships),
-      indexes: schemaTables.flatMap(table => table.indexes),
+      relationships: schemaTables.flatMap(table => table.relationships || []),
+      indexes: extractionResult.indexes || [],
+      views: extractionResult.views || [],
+      triggers: extractionResult.triggers || [],
+      databaseInfo: extractionResult.databaseInfo,
       createdAt: new Date(),
       updatedAt: new Date(),
       version: 1
     };
     
-    console.log('🔒 Closing database...');
-    await db.close();
-    console.log('✅ Database closed successfully');
+    console.log('✅ Comprehensive database extraction completed successfully');
     
     return {
       success: true,

@@ -150,9 +150,16 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
             continue;
           }
 
-          // Get record count from project database
-          const result = await executeProjectQuery(`SELECT COUNT(*) as count FROM "${table.name}"`);
-          const recordCount = result.rows[0]?.count || 0;
+          // Get record count - try extracted data first, then query
+          let recordCount = 0;
+          if (table.data && Array.isArray(table.data)) {
+            recordCount = table.data.length;
+            console.log(`📊 Analytics: Using extracted data count for ${table.name}: ${recordCount} records`);
+          } else {
+            const result = await executeProjectQuery(`SELECT COUNT(*) as count FROM "${table.name}"`);
+            recordCount = result.rows[0]?.count || 0;
+            console.log(`📊 Analytics: Using query count for ${table.name}: ${recordCount} records`);
+          }
 
           stats.push({
             tableName: table.name,
@@ -164,10 +171,11 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
           });
         } catch (err) {
           console.warn(`Failed to get stats for table ${table.name}:`, err);
-          // Table might not exist or be empty
+          // Table might not exist or be empty - try extracted data as fallback
+          const recordCount = table.data && Array.isArray(table.data) ? table.data.length : 0;
           stats.push({
             tableName: table.name,
-            recordCount: 0,
+            recordCount: recordCount,
             columnCount: table.columns.length,
             primaryKeys: table.columns.filter(col => col.primaryKey).length,
             foreignKeys: 0,

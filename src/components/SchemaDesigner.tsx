@@ -110,6 +110,7 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
   const [showColumnTypes, setShowColumnTypes] = useState(true);
   const [showConstraints, setShowConstraints] = useState(true);
   const [compactMode, setCompactMode] = useState(false);
+  const [showSchemaDetails, setShowSchemaDetails] = useState(true);
   
   // Handle updating a table
   const handleUpdateTable = useCallback((updatedTable: Table) => {
@@ -975,6 +976,18 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                   <CheckCircle className="w-4 h-4" />
                   <span className="text-xs">Validate</span>
                 </button>
+                <button
+                  onClick={() => setShowSchemaDetails(!showSchemaDetails)}
+                  className={`flex items-center space-x-1 px-2 py-2 rounded-md transition-colors ${
+                    showSchemaDetails 
+                      ? 'bg-orange-600 text-white hover:bg-orange-700' 
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                  title={showSchemaDetails ? 'Hide Schema Details' : 'Show Schema Details'}
+                >
+                  <Database className="w-4 h-4" />
+                  <span className="text-xs">Details</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1043,18 +1056,28 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
         </div>
 
         {/* Schema Information Panel */}
-        <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col">
-          <div className="p-4 border-b border-gray-700">
-            <h3 className="text-lg font-semibold text-white mb-2">Schema Details</h3>
-            <p className="text-sm text-gray-400">Primary keys, foreign keys, and indexes</p>
-          </div>
+        {showSchemaDetails && (
+          <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col h-full">
+            <div className="p-4 border-b border-gray-700 flex-shrink-0 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Schema Details</h3>
+                <p className="text-sm text-gray-400">Primary keys, foreign keys, and indexes</p>
+              </div>
+              <button
+                onClick={() => setShowSchemaDetails(false)}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title="Close Schema Details"
+              >
+                <X className="w-5 h-5 text-gray-400 hover:text-white" />
+              </button>
+            </div>
           
-          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ maxHeight: 'calc(100vh - 200px)' }}>
             {/* Primary Keys Section */}
             <div>
               <div className="flex items-center space-x-2 mb-3">
                 <Key className="w-5 h-5 text-yellow-500" />
-                <h4 className="text-md font-semibold text-white">Primary Keys</h4>
+                <h4 className="text-md font-semibold text-white" title="Primary Keys uniquely identify each row in a table and cannot be null or duplicated">Primary Keys</h4>
                 <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full">
                   {schema?.tables.flatMap(table => table.columns.filter(col => col.primaryKey)).length || 0}
                 </span>
@@ -1094,7 +1117,7 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
             <div>
               <div className="flex items-center space-x-2 mb-3">
                 <Link className="w-5 h-5 text-blue-500" />
-                <h4 className="text-md font-semibold text-white">Foreign Keys</h4>
+                <h4 className="text-md font-semibold text-white" title="Foreign Keys create relationships between tables by referencing the primary key of another table">Foreign Keys</h4>
                 <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
                   {schema?.tables.flatMap(table => table.columns.filter(col => col.foreignKey)).length || 0}
                 </span>
@@ -1146,7 +1169,7 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
             <div>
               <div className="flex items-center space-x-2 mb-3">
                 <Hash className="w-5 h-5 text-green-500" />
-                <h4 className="text-md font-semibold text-white">Indexes</h4>
+                <h4 className="text-md font-semibold text-white" title="Indexes improve database query performance by creating fast lookup structures on columns">Indexes</h4>
                 <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
                   {(schema?.tables.flatMap(table => table.indexes || []).length || 0) + 
                    (schema?.tables.flatMap(table => table.columns.filter(col => col.indexed)).length || 0)}
@@ -1217,6 +1240,7 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Table Editor Modal */}

@@ -11,9 +11,14 @@ export interface Column {
   foreignKey?: {
     tableId: string;
     columnId: string;
+    constraintName?: string;
     relationshipType: 'one-to-one' | 'one-to-many' | 'many-to-many' | 'self-referencing';
-    onDelete?: 'CASCADE' | 'SET NULL' | 'RESTRICT' | 'NO ACTION';
-    onUpdate?: 'CASCADE' | 'SET NULL' | 'RESTRICT' | 'NO ACTION';
+    onDelete?: 'CASCADE' | 'SET NULL' | 'RESTRICT' | 'NO ACTION' | 'SET DEFAULT';
+    onUpdate?: 'CASCADE' | 'SET NULL' | 'RESTRICT' | 'NO ACTION' | 'SET DEFAULT';
+    deferrable?: boolean;
+    initiallyDeferred?: boolean;
+    enabled?: boolean;
+    validated?: boolean;
   };
   unique?: boolean;
   autoIncrement?: boolean;
@@ -22,9 +27,21 @@ export interface Column {
   indexName?: string;
   constraints?: {
     unique?: boolean;
+    uniqueName?: string;
     check?: string;
+    checkName?: string;
+    checkExpression?: string;
     index?: boolean;
     autoIncrement?: boolean;
+    autoIncrementStart?: number;
+    autoIncrementIncrement?: number;
+    autoIncrementMinValue?: number;
+    autoIncrementMaxValue?: number;
+    autoIncrementCycle?: boolean;
+    // Constraint states
+    enabled?: boolean;
+    deferrable?: boolean;
+    initiallyDeferred?: boolean;
     // Length constraints for string types
     maxLength?: number;
     minLength?: number;
@@ -48,6 +65,17 @@ export interface Column {
     charset?: string;
     collation?: string;
   };
+  // Enhanced metadata
+  comment?: string;
+  description?: string;
+  statistics?: {
+    distinctValues?: number;
+    nullValues?: number;
+    avgLength?: number;
+    minValue?: any;
+    maxValue?: any;
+    mostCommonValues?: Array<{ value: any; frequency: number }>;
+  };
   documentation?: string;
   tags?: string[];
 }
@@ -66,6 +94,46 @@ export interface Table {
   version?: number;
   createdAt?: Date;
   updatedAt?: Date;
+  data?: any[]; // Actual table data/records extracted from database
+  // Enhanced metadata
+  comment?: string;
+  description?: string;
+  schema?: string;
+  catalog?: string;
+  tablespace?: string;
+  engine?: string; // MySQL engine (InnoDB, MyISAM, etc.)
+  charset?: string;
+  collation?: string;
+  rowFormat?: string;
+  autoIncrement?: number;
+  checksum?: boolean;
+  delayKeyWrite?: boolean;
+  temporary?: boolean;
+  partitioned?: boolean;
+  statistics?: {
+    rowCount?: number;
+    dataLength?: number;
+    indexLength?: number;
+    avgRowLength?: number;
+    autoIncrementValue?: number;
+    checkTime?: Date;
+    createTime?: Date;
+    updateTime?: Date;
+  };
+  primaryKeys?: string[]; // Composite primary key columns
+  constraints?: Array<{
+    name: string;
+    type: 'PRIMARY' | 'FOREIGN' | 'UNIQUE' | 'CHECK' | 'EXCLUDE';
+    columns: string[];
+    expression?: string;
+    enabled?: boolean;
+    deferrable?: boolean;
+    initiallyDeferred?: boolean;
+    referencedTable?: string;
+    referencedColumns?: string[];
+    onDelete?: string;
+    onUpdate?: string;
+  }>;
 }
 
 export interface TableIndex {
@@ -73,8 +141,21 @@ export interface TableIndex {
   name: string;
   columns: string[];
   unique: boolean;
-  type: 'btree' | 'hash' | 'gin' | 'gist';
+  type: 'btree' | 'hash' | 'gin' | 'gist' | 'spgist' | 'brin';
   partial?: string;
+  expression?: string; // For expression-based indexes
+  covering?: string[]; // Covering/included columns
+  clustered?: boolean;
+  fillfactor?: number;
+  condition?: string; // WHERE clause for partial indexes
+  method?: string; // Index access method
+  tablespace?: string;
+  comment?: string;
+  size?: number;
+  pages?: number;
+  tuples?: number;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface TableTrigger {
@@ -95,6 +176,100 @@ export interface BusinessRule {
   enabled: boolean;
 }
 
+// Migration history interfaces
+export interface Migration {
+  id: string;
+  version: string;
+  name: string;
+  filename: string;
+  executedAt?: Date;
+  rollbackFile?: string;
+  dependencies?: string[];
+  framework: 'alembic' | 'rails' | 'laravel' | 'django' | 'typeorm' | 'prisma' | 'sequelize';
+  up?: string; // Up migration SQL/code
+  down?: string; // Down migration SQL/code
+  checksum?: string;
+  executionTime?: number;
+  status: 'pending' | 'executed' | 'failed' | 'rolled_back';
+  description?: string;
+  author?: string;
+  batch?: number; // For Laravel-style batch migrations
+}
+
+export interface MigrationHistory {
+  migrations: Migration[];
+  currentVersion?: string;
+  framework: string;
+  migrationsTable?: string;
+  migrationsPath?: string;
+  lastExecuted?: Date;
+}
+
+// ORM mapping interfaces
+export interface ORMModel {
+  id: string;
+  name: string;
+  filename: string;
+  framework: 'sequelize' | 'prisma' | 'typeorm' | 'django' | 'laravel' | 'hibernate' | 'mongoose';
+  tableName?: string;
+  primaryKey?: string | string[];
+  timestamps?: boolean;
+  softDeletes?: boolean;
+  fillable?: string[];
+  guarded?: string[];
+  hidden?: string[];
+  casts?: Record<string, string>;
+  relationships?: ORMRelationship[];
+  scopes?: ORMScope[];
+  hooks?: ORMHook[];
+  validations?: ORMValidation[];
+  indexes?: ORMIndex[];
+  metadata?: Record<string, any>;
+  sourceCode?: string;
+}
+
+export interface ORMRelationship {
+  id: string;
+  type: 'hasOne' | 'hasMany' | 'belongsTo' | 'belongsToMany' | 'morphTo' | 'morphOne' | 'morphMany';
+  relatedModel: string;
+  foreignKey?: string;
+  localKey?: string;
+  pivotTable?: string;
+  pivotColumns?: string[];
+  constraints?: {
+    onDelete?: string;
+    onUpdate?: string;
+  };
+  eager?: boolean;
+  cascade?: boolean;
+}
+
+export interface ORMScope {
+  name: string;
+  type: 'local' | 'global';
+  parameters?: string[];
+  query?: string;
+}
+
+export interface ORMHook {
+  event: 'beforeCreate' | 'afterCreate' | 'beforeUpdate' | 'afterUpdate' | 'beforeDelete' | 'afterDelete';
+  method: string;
+  async?: boolean;
+}
+
+export interface ORMValidation {
+  field: string;
+  rules: string[];
+  messages?: Record<string, string>;
+}
+
+export interface ORMIndex {
+  name?: string;
+  columns: string[];
+  unique?: boolean;
+  type?: string;
+}
+
 export interface DatabaseSchema {
   id: string;
   name: string;
@@ -109,6 +284,55 @@ export interface DatabaseSchema {
   collaborators?: Collaborator[];
   permissions?: SchemaPermissions;
   metadata?: SchemaMetadata;
+  // Enhanced metadata
+  migrationHistory?: MigrationHistory;
+  ormModels?: ORMModel[];
+  databaseInfo?: {
+    type: string; // postgresql, mysql, sqlite, etc.
+    version: string;
+    encoding: string;
+    collation: string;
+    timezone?: string;
+    connectionString?: string;
+    host?: string;
+    port?: number;
+    database?: string;
+    size?: number;
+    maxConnections?: number;
+    currentConnections?: number;
+  };
+  sequences?: Array<{
+    name: string;
+    startValue: number;
+    increment: number;
+    minValue?: number;
+    maxValue?: number;
+    cycle: boolean;
+    cache?: number;
+    ownedBy?: string;
+  }>;
+  views?: Array<{
+    name: string;
+    definition: string;
+    columns: string[];
+    dependencies: string[];
+    materialized?: boolean;
+    updatable?: boolean;
+  }>;
+  functions?: Array<{
+    name: string;
+    parameters: Array<{ name: string; type: string; mode: 'IN' | 'OUT' | 'INOUT' }>;
+    returnType: string;
+    language: string;
+    body: string;
+    volatility: 'VOLATILE' | 'STABLE' | 'IMMUTABLE';
+  }>;
+  procedures?: Array<{
+    name: string;
+    parameters: Array<{ name: string; type: string; mode: 'IN' | 'OUT' | 'INOUT' }>;
+    language: string;
+    body: string;
+  }>;
 }
 
 export interface SchemaBranch {
