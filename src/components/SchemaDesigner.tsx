@@ -29,7 +29,7 @@ import {
   Plus, Save, Trash2, AlertTriangle, CheckCircle, FileText, Search, Filter, Brain, Lightbulb,
   Zap, Target, TrendingUp, Users, Clock, RefreshCw, Download, Layout, Palette, ZoomIn, ZoomOut,
   RotateCcw, Grid, Circle, Layers, Activity, Maximize, Minimize, Camera, X, Type, Shield, Lock,
-  Database
+  Database, Key, Link, Hash
 } from 'lucide-react';
 import { SchemaValidator } from '@/utils/schemaValidation';
 import { SchemaTemplateManager } from '@/utils/schemaTemplates';
@@ -1012,32 +1012,211 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
         )}
       </div>
 
-      {/* React Flow Canvas */}
-      <div className="flex-1 relative bg-gray-900">
-        <ReactFlow
-          nodes={memoizedNodes}
-          edges={memoizedEdges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onNodeClick={handleNodeClick}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          fitView
-          attributionPosition="bottom-left"
-          deleteKeyCode={null}
-          multiSelectionKeyCode={null}
-          nodesDraggable={true}
-          nodesConnectable={true}
-          elementsSelectable={true}
-          proOptions={{ hideAttribution: true }}
-          minZoom={0.1}
-          maxZoom={2}
-          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-        >
-          <Controls />
-          <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#374151" />
-        </ReactFlow>
+      {/* Main Content Area */}
+      <div className="flex-1 flex bg-gray-900">
+        {/* React Flow Canvas */}
+        <div className="flex-1 relative">
+          <ReactFlow
+            nodes={memoizedNodes}
+            edges={memoizedEdges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={handleNodeClick}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+            attributionPosition="bottom-left"
+            deleteKeyCode={null}
+            multiSelectionKeyCode={null}
+            nodesDraggable={true}
+            nodesConnectable={true}
+            elementsSelectable={true}
+            proOptions={{ hideAttribution: true }}
+            minZoom={0.1}
+            maxZoom={2}
+            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+          >
+            <Controls />
+            <Background variant={BackgroundVariant.Dots} gap={12} size={1} color="#374151" />
+          </ReactFlow>
+        </div>
+
+        {/* Schema Information Panel */}
+        <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col">
+          <div className="p-4 border-b border-gray-700">
+            <h3 className="text-lg font-semibold text-white mb-2">Schema Details</h3>
+            <p className="text-sm text-gray-400">Primary keys, foreign keys, and indexes</p>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            {/* Primary Keys Section */}
+            <div>
+              <div className="flex items-center space-x-2 mb-3">
+                <Key className="w-5 h-5 text-yellow-500" />
+                <h4 className="text-md font-semibold text-white">Primary Keys</h4>
+                <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full">
+                  {schema?.tables.flatMap(table => table.columns.filter(col => col.primaryKey)).length || 0}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {schema?.tables.map(table => 
+                  table.columns.filter(col => col.primaryKey).map(column => (
+                    <div key={`${table.id}-${column.id}`} className="bg-gray-700 rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-white font-medium text-sm">{column.name}</div>
+                          <div className="text-gray-400 text-xs">{table.name}</div>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                            {column.type}
+                          </span>
+                          {column.autoIncrement && (
+                            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                              AI
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+                {(!schema?.tables.flatMap(table => table.columns.filter(col => col.primaryKey)).length) && (
+                  <div className="text-gray-400 text-sm text-center py-4">
+                    No primary keys found
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Foreign Keys Section */}
+            <div>
+              <div className="flex items-center space-x-2 mb-3">
+                <Link className="w-5 h-5 text-blue-500" />
+                <h4 className="text-md font-semibold text-white">Foreign Keys</h4>
+                <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                  {schema?.tables.flatMap(table => table.columns.filter(col => col.foreignKey)).length || 0}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {schema?.tables.map(table => 
+                  table.columns.filter(col => col.foreignKey).map(column => {
+                    const targetTable = schema?.tables.find(t => t.id === column.foreignKey?.tableId);
+                    const targetColumn = targetTable?.columns.find(c => c.id === column.foreignKey?.columnId);
+                    return (
+                      <div key={`${table.id}-${column.id}`} className="bg-gray-700 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <div className="text-white font-medium text-sm">{column.name}</div>
+                            <div className="text-gray-400 text-xs">{table.name}</div>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                              {column.type}
+                            </span>
+                            <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                              {column.foreignKey?.relationshipType || 'FK'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-300">
+                          → {targetTable?.name}.{targetColumn?.name}
+                        </div>
+                        {(column.foreignKey?.onDelete || column.foreignKey?.onUpdate) && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            {column.foreignKey?.onDelete && `ON DELETE ${column.foreignKey.onDelete}`}
+                            {column.foreignKey?.onDelete && column.foreignKey?.onUpdate && ' • '}
+                            {column.foreignKey?.onUpdate && `ON UPDATE ${column.foreignKey.onUpdate}`}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+                {(!schema?.tables.flatMap(table => table.columns.filter(col => col.foreignKey)).length) && (
+                  <div className="text-gray-400 text-sm text-center py-4">
+                    No foreign keys found
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Indexes Section */}
+            <div>
+              <div className="flex items-center space-x-2 mb-3">
+                <Hash className="w-5 h-5 text-green-500" />
+                <h4 className="text-md font-semibold text-white">Indexes</h4>
+                <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                  {(schema?.tables.flatMap(table => table.indexes || []).length || 0) + 
+                   (schema?.tables.flatMap(table => table.columns.filter(col => col.indexed)).length || 0)}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {/* Table-level indexes */}
+                {schema?.tables.map(table => 
+                  (table.indexes || []).map(index => (
+                    <div key={`${table.id}-${index.id}`} className="bg-gray-700 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <div className="text-white font-medium text-sm">{index.name}</div>
+                          <div className="text-gray-400 text-xs">{table.name}</div>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                            {index.type}
+                          </span>
+                          {index.unique && (
+                            <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                              UNIQUE
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-300">
+                        Columns: {index.columns.join(', ')}
+                      </div>
+                      {index.partial && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          WHERE {index.partial}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+                
+                {/* Column-level indexes */}
+                {schema?.tables.map(table => 
+                  table.columns.filter(col => col.indexed).map(column => (
+                    <div key={`${table.id}-${column.id}-idx`} className="bg-gray-700 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <div className="text-white font-medium text-sm">{column.indexName || `idx_${column.name}`}</div>
+                          <div className="text-gray-400 text-xs">{table.name}.{column.name}</div>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                            {column.indexType || 'B-tree'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-300">
+                        Single column index
+                      </div>
+                    </div>
+                  ))
+                )}
+                
+                {(!schema?.tables.flatMap(table => table.indexes || []).length && 
+                  !schema?.tables.flatMap(table => table.columns.filter(col => col.indexed)).length) && (
+                  <div className="text-gray-400 text-sm text-center py-4">
+                    No indexes found
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Table Editor Modal */}

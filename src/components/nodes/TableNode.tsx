@@ -181,6 +181,9 @@ export function TableNode(props: any) {
   const primaryKeyColumns = table.columns.filter((col: any) => col.primaryKey);
   const foreignKeyColumns = table.columns.filter((col: any) => col.foreignKey);
   const requiredColumns = table.columns.filter((col: any) => !col.nullable);
+  const indexedColumns = table.columns.filter((col: any) => col.indexed);
+  const uniqueColumns = table.columns.filter((col: any) => col.constraints?.unique);
+  const tableIndexes = table.indexes || [];
 
   return (
     <div className={`rounded-lg transition-all duration-200 min-w-[250px] max-w-[400px] ${styles.container}`}>
@@ -213,17 +216,29 @@ export function TableNode(props: any) {
           <div className="flex items-center space-x-1">
             {/* Table Statistics */}
             <div className="flex items-center space-x-1 mr-2 opacity-75">
-              <span className="text-xs">{table.columns.length}</span>
+              <span className="text-xs" title="Total columns">{table.columns.length}</span>
               {primaryKeyColumns.length > 0 && (
-                <div className="flex items-center space-x-0.5">
-                  <Key className="w-3 h-3" />
+                <div className="flex items-center space-x-0.5" title="Primary Keys">
+                  <Key className="w-3 h-3 text-yellow-500" />
                   <span className="text-xs">{primaryKeyColumns.length}</span>
                 </div>
               )}
               {foreignKeyColumns.length > 0 && (
-                <div className="flex items-center space-x-0.5">
-                  <Link className="w-3 h-3" />
+                <div className="flex items-center space-x-0.5" title="Foreign Keys">
+                  <Link className="w-3 h-3 text-blue-500" />
                   <span className="text-xs">{foreignKeyColumns.length}</span>
+                </div>
+              )}
+              {indexedColumns.length > 0 && (
+                <div className="flex items-center space-x-0.5" title="Indexed Columns">
+                  <Hash className="w-3 h-3 text-green-500" />
+                  <span className="text-xs">{indexedColumns.length}</span>
+                </div>
+              )}
+              {tableIndexes.length > 0 && (
+                <div className="flex items-center space-x-0.5" title="Table Indexes">
+                  <Database className="w-3 h-3 text-purple-500" />
+                  <span className="text-xs">{tableIndexes.length}</span>
                 </div>
               )}
             </div>
@@ -295,26 +310,34 @@ export function TableNode(props: any) {
 
             {/* Column Content */}
             <div className="flex-1 flex items-center space-x-2 min-w-0">
-              {/* Column Icons */}
-              <div className="flex items-center space-x-0.5">
-                {column.primaryKey && (
-                  <Key className="w-3 h-3 text-yellow-600" />
-                )}
-                {column.foreignKey && (
-                  <Link className="w-3 h-3 text-blue-600" />
-                )}
-                {!column.nullable && (
-                  <Lock className="w-3 h-3 text-red-600" />
-                )}
-                {column.constraints?.unique && (
-                  <Star className="w-3 h-3 text-purple-600" />
-                )}
-                {column.indexed && (
-                  <div title={`Indexed (${column.indexType || 'B-tree'})`}>
-                    <Hash className="w-3 h-3 text-green-600" />
-                  </div>
-                )}
-              </div>
+            {/* Column Icons */}
+            <div className="flex items-center space-x-0.5">
+              {column.primaryKey && (
+                <div title="Primary Key" className="flex items-center">
+                  <Key className="w-3 h-3 text-yellow-500" />
+                </div>
+              )}
+              {column.foreignKey && (
+                <div title={`Foreign Key → ${column.foreignKey.tableId}.${column.foreignKey.columnId}`} className="flex items-center">
+                  <Link className="w-3 h-3 text-blue-500" />
+                </div>
+              )}
+              {!column.nullable && (
+                <div title="NOT NULL" className="flex items-center">
+                  <Lock className="w-3 h-3 text-red-500" />
+                </div>
+              )}
+              {column.constraints?.unique && (
+                <div title="Unique Constraint" className="flex items-center">
+                  <Star className="w-3 h-3 text-purple-500" />
+                </div>
+              )}
+              {column.indexed && (
+                <div title={`Indexed (${column.indexType || 'B-tree'}) - ${column.indexName || 'idx_' + column.name}`} className="flex items-center">
+                  <Hash className="w-3 h-3 text-green-500" />
+                </div>
+              )}
+            </div>
 
               {/* Column Name */}
               <span className={`text-sm font-medium ${styles.text} min-w-0 flex-1 truncate`}>
@@ -395,9 +418,37 @@ export function TableNode(props: any) {
         <div className={`px-3 py-2 text-xs ${styles.mutedText} border-t border-gray-600`}>
           <div className="flex justify-between items-center">
             <span>{table.columns.length} columns</span>
-            <div className="flex space-x-3">
-              <span>{primaryKeyColumns.length} PK</span>
-              <span>{foreignKeyColumns.length} FK</span>
+            <div className="flex space-x-2 flex-wrap">
+              {primaryKeyColumns.length > 0 && (
+                <span className="flex items-center space-x-1">
+                  <Key className="w-3 h-3 text-yellow-500" />
+                  <span>{primaryKeyColumns.length} PK</span>
+                </span>
+              )}
+              {foreignKeyColumns.length > 0 && (
+                <span className="flex items-center space-x-1">
+                  <Link className="w-3 h-3 text-blue-500" />
+                  <span>{foreignKeyColumns.length} FK</span>
+                </span>
+              )}
+              {indexedColumns.length > 0 && (
+                <span className="flex items-center space-x-1">
+                  <Hash className="w-3 h-3 text-green-500" />
+                  <span>{indexedColumns.length} IDX</span>
+                </span>
+              )}
+              {tableIndexes.length > 0 && (
+                <span className="flex items-center space-x-1">
+                  <Database className="w-3 h-3 text-purple-500" />
+                  <span>{tableIndexes.length} TIDX</span>
+                </span>
+              )}
+              {uniqueColumns.length > 0 && (
+                <span className="flex items-center space-x-1">
+                  <Star className="w-3 h-3 text-purple-500" />
+                  <span>{uniqueColumns.length} UNQ</span>
+                </span>
+              )}
               <span>{requiredColumns.length} Required</span>
             </div>
           </div>

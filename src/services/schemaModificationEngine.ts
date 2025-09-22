@@ -1,5 +1,5 @@
 // Production Schema Modification Engine
-// Safely applies AI recommendations to actual database schemas with transaction safety
+// Safely applies AI recommendations to actual database schemas with transaction safetybnnpm 
 
 import { DatabaseSchema, Table, Column, DataType } from '@/types/database';
 import { ProductionRecommendation } from './productionAISchemaAnalyzer';
@@ -17,7 +17,7 @@ export interface SchemaModificationResult {
 
 export interface AppliedChange {
   type: 'add_column' | 'modify_column' | 'add_index' | 'add_constraint' | 'create_table' | 'modify_table';
-  target: string; // table.column or table name
+  target: string; // table.column or table namenpm run d
   before: any;
   after: any;
   sql: string;

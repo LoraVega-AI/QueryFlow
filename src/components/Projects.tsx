@@ -849,42 +849,45 @@ export function Projects() {
   return (
     <div className="h-full flex flex-col">
       {/* Header - Fixed */}
-      <div className="flex-shrink-0 p-6 pb-4">
+      <div className="flex-shrink-0 p-8 pb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Projects</h1>
-            <p className="text-gray-600">
+            <h1 className="text-3xl font-bold text-gray-900 mb-3">Projects</h1>
+            <p className="text-lg text-gray-600 mb-4">
               Manage and sync your database projects. Each project contains its own embedded database.
             </p>
-            <div className="flex items-center gap-4 mt-1">
+            <div className="flex items-center gap-6">
               {lastRefresh && (
-                <p className="text-xs text-gray-500">
-                  Last updated: {lastRefresh.toLocaleTimeString()}
-                </p>
+                <div className="flex items-center gap-2 bg-gray-100 px-3 py-2 rounded-xl">
+                  <RefreshCw className="w-4 h-4 text-gray-500" />
+                  <p className="text-sm text-gray-600 font-medium">
+                    Last updated: {lastRefresh.toLocaleTimeString()}
+                  </p>
+                </div>
               )}
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${realtimeConnected ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-                <span className="text-xs text-gray-500">
+              <div className="flex items-center gap-2 bg-gradient-to-r from-green-50 to-emerald-50 px-3 py-2 rounded-xl border border-green-200">
+                <div className={`w-3 h-3 rounded-full ${realtimeConnected ? 'bg-green-500' : 'bg-yellow-500'} shadow-sm`}></div>
+                <span className="text-sm text-gray-700 font-medium">
                   {realtimeConnected ? 'Real-time connected' : 'Polling mode'}
                 </span>
               </div>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
             <button
               onClick={() => setShowProjectUploader(true)}
               data-upload-trigger
-              className="inline-flex items-center px-4 py-2 bg-orange-600 text-white text-sm rounded hover:bg-orange-700 transition-colors"
+              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-orange-600 to-orange-700 text-white text-sm font-semibold rounded-xl hover:from-orange-700 hover:to-orange-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
             >
-              <Upload className="w-4 h-4 mr-2" />
+              <Upload className="w-5 h-5 mr-2" />
               Upload Project
             </button>
             <button
               onClick={() => loadProjects(true)}
               disabled={isRefreshing}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-semibold rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none"
             >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
@@ -892,68 +895,68 @@ export function Projects() {
       </div>
 
       {/* Search and Filter Controls - Fixed */}
-      <div className="flex-shrink-0 px-6 pb-4">
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
+      <div className="flex-shrink-0 px-8 pb-6">
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-lg p-8">
           {/* Search Bar */}
-          <div className="flex items-center space-x-4 mb-4">
+          <div className="flex items-center space-x-4 mb-6">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
                 placeholder="Search projects by name, description, or technology..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 focus:bg-white"
+                className="w-full pl-12 pr-12 py-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 focus:bg-white text-lg font-medium shadow-sm"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200 p-1 rounded-full hover:bg-gray-100"
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200 p-2 rounded-full hover:bg-gray-100"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </button>
               )}
             </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`inline-flex items-center px-4 py-3 border rounded-xl transition-all duration-200 font-medium ${
+              className={`inline-flex items-center px-6 py-4 border rounded-2xl transition-all duration-200 font-semibold text-lg ${
                 showFilters 
-                  ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-sm' 
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400'
+                  ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300 text-blue-700 shadow-lg' 
+                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 shadow-sm hover:shadow-md'
               }`}
             >
-              <Filter className="w-4 h-4 mr-2" />
+              <Filter className="w-5 h-5 mr-2" />
               Filters
-              {showFilters ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />}
+              {showFilters ? <ChevronUp className="w-5 h-5 ml-2" /> : <ChevronDown className="w-5 h-5 ml-2" />}
             </button>
-            <div className="flex items-center space-x-1 bg-gray-100 rounded-xl p-1">
+            <div className="flex items-center space-x-1 bg-gray-100 rounded-2xl p-1 shadow-sm">
               <button
                 onClick={() => setViewMode('grid')}
-                className={`p-2 rounded-lg transition-all duration-200 ${viewMode === 'grid' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`p-3 rounded-xl transition-all duration-200 ${viewMode === 'grid' ? 'bg-white text-blue-700 shadow-lg' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
                 title="Grid view"
               >
-                <Grid className="w-4 h-4" />
+                <Grid className="w-5 h-5" />
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`p-2 rounded-lg transition-all duration-200 ${viewMode === 'list' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`p-3 rounded-xl transition-all duration-200 ${viewMode === 'list' ? 'bg-white text-blue-700 shadow-lg' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
                 title="List view"
               >
-                <List className="w-4 h-4" />
+                <List className="w-5 h-5" />
               </button>
             </div>
           </div>
 
           {/* Advanced Filters */}
           {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-6 border-t border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-8 border-t border-gray-200">
               {/* Status Filter */}
               <div>
-                <label className="block text-sm font-semibold text-gray-800 mb-3">Status</label>
+                <label className="block text-lg font-bold text-gray-800 mb-4">Status</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400 text-gray-900"
+                  className="w-full px-4 py-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400 text-gray-900 font-medium shadow-sm"
                 >
                   <option value="all">All ({statusCounts.all})</option>
                   <option value="connected">Connected ({statusCounts.connected})</option>
@@ -965,11 +968,11 @@ export function Projects() {
 
               {/* Technology Filter */}
               <div>
-                <label className="block text-sm font-semibold text-gray-800 mb-3">Technology</label>
+                <label className="block text-lg font-bold text-gray-800 mb-4">Technology</label>
                 <select
                   value={technologyFilter}
                   onChange={(e) => setTechnologyFilter(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400 text-gray-900"
+                  className="w-full px-4 py-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400 text-gray-900 font-medium shadow-sm"
                 >
                   <option value="all">All Technologies</option>
                   {availableTechnologies.map(tech => (
@@ -980,11 +983,11 @@ export function Projects() {
 
               {/* Sort By */}
               <div>
-                <label className="block text-sm font-semibold text-gray-800 mb-3">Sort By</label>
+                <label className="block text-lg font-bold text-gray-800 mb-4">Sort By</label>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400 text-gray-900"
+                  className="w-full px-4 py-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400 text-gray-900 font-medium shadow-sm"
                 >
                   <option value="name">Name</option>
                   <option value="lastSynced">Last Synced</option>
@@ -995,28 +998,28 @@ export function Projects() {
 
               {/* Sort Order */}
               <div>
-                <label className="block text-sm font-semibold text-gray-800 mb-3">Order</label>
-                <div className="flex space-x-2">
+                <label className="block text-lg font-bold text-gray-800 mb-4">Order</label>
+                <div className="flex space-x-3">
                   <button
                     onClick={() => setSortOrder('asc')}
-                    className={`flex-1 inline-flex items-center justify-center px-4 py-3 border rounded-xl transition-all duration-200 font-medium ${
+                    className={`flex-1 inline-flex items-center justify-center px-4 py-4 border rounded-2xl transition-all duration-200 font-semibold ${
                       sortOrder === 'asc' 
-                        ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-sm' 
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400'
+                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300 text-blue-700 shadow-lg' 
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 shadow-sm hover:shadow-md'
                     }`}
                   >
-                    <SortAsc className="w-4 h-4 mr-2" />
+                    <SortAsc className="w-5 h-5 mr-2" />
                     Asc
                   </button>
                   <button
                     onClick={() => setSortOrder('desc')}
-                    className={`flex-1 inline-flex items-center justify-center px-4 py-3 border rounded-xl transition-all duration-200 font-medium ${
+                    className={`flex-1 inline-flex items-center justify-center px-4 py-4 border rounded-2xl transition-all duration-200 font-semibold ${
                       sortOrder === 'desc' 
-                        ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-sm' 
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400'
+                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300 text-blue-700 shadow-lg' 
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 shadow-sm hover:shadow-md'
                     }`}
                   >
-                    <SortDesc className="w-4 h-4 mr-2" />
+                    <SortDesc className="w-5 h-5 mr-2" />
                     Desc
                   </button>
                 </div>
@@ -1026,16 +1029,16 @@ export function Projects() {
 
           {/* Filter Summary */}
           {(searchQuery || statusFilter !== 'all' || technologyFilter !== 'all') && (
-            <div className="flex items-center justify-between mt-6 pt-6 border-t border-gray-200">
-              <div className="flex items-center space-x-3">
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <span className="text-sm font-medium text-gray-700">
+            <div className="flex items-center justify-between mt-8 pt-8 border-t border-gray-200">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-3 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 rounded-2xl border border-blue-200">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full shadow-sm"></div>
+                  <span className="text-lg font-bold text-gray-800">
                     Showing {filteredAndSortedProjects.length} of {projects.length} projects
                   </span>
                 </div>
                 {(searchQuery || statusFilter !== 'all' || technologyFilter !== 'all') && (
-                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                  <span className="text-sm text-gray-600 bg-gray-100 px-4 py-2 rounded-2xl font-medium border border-gray-200">
                     filtered by {[
                       searchQuery && 'search',
                       statusFilter !== 'all' && 'status',
@@ -1046,7 +1049,7 @@ export function Projects() {
               </div>
               <button
                 onClick={clearFilters}
-                className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors duration-200 px-3 py-1 rounded-lg hover:bg-blue-50"
+                className="text-lg font-bold text-blue-600 hover:text-blue-800 transition-all duration-200 px-6 py-3 rounded-2xl hover:bg-blue-50 border border-blue-200 hover:border-blue-300 shadow-sm hover:shadow-md"
               >
                 Clear all filters
               </button>
@@ -1057,93 +1060,100 @@ export function Projects() {
 
       {/* Notification */}
       {notification && (
-        <div className={`mb-6 mx-6 p-5 rounded-xl flex items-center space-x-3 shadow-sm ${
-          notification.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' :
-          notification.type === 'error' ? 'bg-red-50 text-red-800 border border-red-200' :
-          notification.type === 'warning' ? 'bg-yellow-50 text-yellow-800 border border-yellow-200' :
-          'bg-blue-50 text-blue-800 border border-blue-200'
+        <div className={`mb-8 mx-8 p-6 rounded-2xl flex items-center space-x-4 shadow-lg border-2 ${
+          notification.type === 'success' ? 'bg-gradient-to-r from-green-50 to-emerald-50 text-green-800 border-green-200' :
+          notification.type === 'error' ? 'bg-gradient-to-r from-red-50 to-rose-50 text-red-800 border-red-200' :
+          notification.type === 'warning' ? 'bg-gradient-to-r from-yellow-50 to-amber-50 text-yellow-800 border-yellow-200' :
+          'bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-800 border-blue-200'
         }`}>
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-            notification.type === 'success' ? 'bg-green-100' :
-            notification.type === 'error' ? 'bg-red-100' :
-            notification.type === 'warning' ? 'bg-yellow-100' :
-            'bg-blue-100'
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-sm ${
+            notification.type === 'success' ? 'bg-gradient-to-br from-green-100 to-green-200' :
+            notification.type === 'error' ? 'bg-gradient-to-br from-red-100 to-red-200' :
+            notification.type === 'warning' ? 'bg-gradient-to-br from-yellow-100 to-yellow-200' :
+            'bg-gradient-to-br from-blue-100 to-blue-200'
           }`}>
-            {notification.type === 'success' && <CheckCircle className="w-5 h-5 text-green-600" />}
-            {notification.type === 'error' && <AlertTriangle className="w-5 h-5 text-red-600" />}
-            {notification.type === 'warning' && <AlertTriangle className="w-5 h-5 text-yellow-600" />}
-            {notification.type === 'info' && <RefreshCw className="w-5 h-5 animate-spin text-blue-600" />}
+            {notification.type === 'success' && <CheckCircle className="w-6 h-6 text-green-600" />}
+            {notification.type === 'error' && <AlertTriangle className="w-6 h-6 text-red-600" />}
+            {notification.type === 'warning' && <AlertTriangle className="w-6 h-6 text-yellow-600" />}
+            {notification.type === 'info' && <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />}
           </div>
-          <span className="flex-1 font-medium">{notification.message}</span>
+          <span className="flex-1 font-bold text-lg">{notification.message}</span>
           <button
             onClick={() => setNotification(null)}
-            className="ml-2 text-gray-400 hover:text-gray-600 transition-colors duration-200 p-1 rounded-full hover:bg-gray-100"
+            className="ml-2 text-gray-400 hover:text-gray-600 transition-all duration-200 p-2 rounded-xl hover:bg-gray-100 shadow-sm"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
       )}
 
       {/* Scrollable Projects Container */}
-      <div className="flex-1 overflow-hidden px-6">
+      <div className="flex-1 overflow-hidden px-8">
         <div className="h-full overflow-y-auto">
           {filteredAndSortedProjects.length > 0 ? (
-            <div className={`${viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-4'}`}>
+            <div className={`${viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8' : 'space-y-6'}`}>
               {filteredAndSortedProjects.map((project) => (
                 <div
                   key={project.id}
-                  className={`bg-white rounded-xl border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all duration-200 ${
+                  className={`bg-white rounded-2xl border border-gray-200 hover:shadow-2xl hover:border-gray-300 transition-all duration-300 transform hover:-translate-y-1 ${
                     viewMode === 'list' ? 'flex' : ''
                   }`}
                 >
-                  <div className={`${viewMode === 'list' ? 'flex-1 p-6' : 'p-6'}`}>
+                  <div className={`${viewMode === 'list' ? 'flex-1 p-8' : 'p-8'}`}>
               {/* Header */}
-              <div className="flex items-start justify-between mb-5">
+              <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center">
-                  <div className="text-3xl mr-4">{project.icon}</div>
+                  <div className="text-4xl mr-5">{project.icon}</div>
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-1">{project.name}</h3>
-                    <p className="text-sm font-medium text-gray-600">{project.technology}</p>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">{project.name}</h3>
+                    <p className="text-lg font-semibold text-gray-600">{project.technology}</p>
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
                   {/* Technology Icon */}
                   {project.technology?.toLowerCase().includes('node') && (
-                    <div className="w-6 h-6 bg-green-100 rounded flex items-center justify-center">
-                      <span className="text-xs text-green-600">JS</span>
+                    <div className="w-8 h-8 bg-gradient-to-br from-green-100 to-green-200 rounded-xl flex items-center justify-center shadow-sm">
+                      <span className="text-sm font-bold text-green-600">JS</span>
                     </div>
                   )}
                   {project.technology?.toLowerCase().includes('django') && (
-                    <Github className="w-4 h-4 text-gray-400" />
+                    <div className="w-8 h-8 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center shadow-sm">
+                      <Github className="w-5 h-5 text-gray-600" />
+                    </div>
                   )}
                   {project.technology?.toLowerCase().includes('php') && (
-                    <div className="text-lg">🐘</div>
+                    <div className="w-8 h-8 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl flex items-center justify-center shadow-sm">
+                      <span className="text-lg">🐘</span>
+                    </div>
                   )}
 
                   {/* Status */}
-                  <div className={`flex items-center px-3 py-1.5 rounded-full text-xs font-semibold ${getStatusColor(project.status)}`}>
+                  <div className={`flex items-center px-4 py-2 rounded-2xl text-sm font-bold shadow-sm ${getStatusColor(project.status)}`}>
                     {getStatusIcon(project.status)}
-                    <span className="ml-1.5">{getStatusText(project.status)}</span>
+                    <span className="ml-2">{getStatusText(project.status)}</span>
                   </div>
                 </div>
               </div>
 
               {/* Description */}
-              <p className="text-sm text-gray-600 mb-5 line-clamp-2 leading-relaxed">
+              <p className="text-lg text-gray-600 mb-6 line-clamp-2 leading-relaxed">
                 {project.description}
               </p>
 
               {/* Stats */}
-              <div className="flex items-center justify-between text-xs text-gray-500 mb-5">
-                <span>Last synced: {formatLastSynced(project.lastSynced)}</span>
-                <div className="flex items-center space-x-2">
+              <div className="flex items-center justify-between text-sm text-gray-500 mb-6">
+                <div className="flex items-center space-x-2 bg-gray-100 px-3 py-2 rounded-xl">
+                  <RefreshCw className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium">Last synced: {formatLastSynced(project.lastSynced)}</span>
+                </div>
+                <div className="flex items-center space-x-3">
                   {project.totalTables !== undefined && (
-                    <span className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
+                    <span className="px-4 py-2 bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 rounded-2xl text-sm font-bold shadow-sm border border-blue-200">
                       {project.totalTables} tables
                     </span>
                   )}
                   {project.totalRows !== undefined && (
-                    <span className="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
+                    <span className="px-4 py-2 bg-gradient-to-r from-green-100 to-green-200 text-green-800 rounded-2xl text-sm font-bold shadow-sm border border-green-200">
                       {(project.totalRows || 0).toLocaleString()} rows
                     </span>
                   )}
@@ -1373,10 +1383,10 @@ export function Projects() {
 
                     {/* Actions */}
                     <div className={`flex items-center ${viewMode === 'list' ? 'justify-end' : 'justify-between'}`}>
-                      <div className="flex space-x-2">
+                      <div className="flex space-x-3">
                         <button
                           onClick={() => handleOpenProject(project.id)}
-                          className="inline-flex items-center px-4 py-2 bg-orange-600 text-white text-sm font-semibold rounded-xl hover:bg-orange-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                          className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-orange-600 to-orange-700 text-white text-sm font-bold rounded-2xl hover:from-orange-700 hover:to-orange-800 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none"
                           disabled={syncingProject === project.id}
                           title={project.status === 'connected' ? 'Open project in query editor' : 'Project not connected - sync first'}
                         >
@@ -1392,18 +1402,18 @@ export function Projects() {
                             handleSync(project.id);
                           }}
                           disabled={syncingProject === project.id}
-                          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+                          className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-bold rounded-2xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none"
                           title={syncingProject === project.id ? 'Syncing...' : 'Sync project databases'}
                         >
-                          <RefreshCw className={`w-4 h-4 mr-2 ${syncingProject === project.id ? 'animate-spin' : ''}`} />
+                          <RefreshCw className={`w-5 h-5 mr-2 ${syncingProject === project.id ? 'animate-spin' : ''}`} />
                           {syncingProject === project.id ? 'Syncing' : 'Sync'}
                         </button>
                         <button
                           onClick={() => handleDeleteProject(project.id)}
-                          className="inline-flex items-center px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-xl hover:bg-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                          className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white text-sm font-bold rounded-2xl hover:from-red-700 hover:to-red-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                           title="Delete project"
                         >
-                          <Trash2 className="w-4 h-4 mr-2" />
+                          <Trash2 className="w-5 h-5 mr-2" />
                           Delete
                         </button>
                       </div>
@@ -1414,14 +1424,14 @@ export function Projects() {
             </div>
           ) : (
             /* Empty State */
-            <div className="text-center py-16">
-              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <FolderOpen className="w-10 h-10 text-gray-400" />
+            <div className="text-center py-20">
+              <div className="w-24 h-24 bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-lg">
+                <FolderOpen className="w-12 h-12 text-gray-500" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">
+              <h3 className="text-3xl font-bold text-gray-900 mb-4">
                 {projects.length === 0 ? 'No projects found' : 'No projects match your filters'}
               </h3>
-              <p className="text-gray-600 mb-6 max-w-md mx-auto leading-relaxed">
+              <p className="text-xl text-gray-600 mb-8 max-w-lg mx-auto leading-relaxed">
                 {projects.length === 0 
                   ? 'Get started by creating your first project.' 
                   : 'Try adjusting your search or filter criteria.'
@@ -1430,7 +1440,7 @@ export function Projects() {
               {projects.length > 0 && (
                 <button
                   onClick={clearFilters}
-                  className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                  className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-2xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                 >
                   Clear all filters
                 </button>
@@ -1442,17 +1452,17 @@ export function Projects() {
 
       {/* Current Project Info - Fixed at bottom */}
       {projectsManager.getCurrentProject() && (
-        <div className="flex-shrink-0 px-6 pb-6">
-          <div className="p-5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl shadow-sm">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                <Server className="w-5 h-5 text-blue-600" />
+        <div className="flex-shrink-0 px-8 pb-8">
+          <div className="p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl shadow-lg">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl flex items-center justify-center shadow-sm">
+                <Server className="w-6 h-6 text-blue-600" />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-blue-900 mb-1">
+                <h4 className="text-lg font-bold text-blue-900 mb-2">
                   Currently Active: {projectsManager.getCurrentProject()?.name}
                 </h4>
-                <p className="text-sm text-blue-700 leading-relaxed">
+                <p className="text-lg text-blue-700 leading-relaxed font-medium">
                   All database operations are now using this project's embedded databases.
                 </p>
               </div>
