@@ -329,34 +329,34 @@ export function TableNode(props: any) {
 
             {/* Column Content */}
             <div className="flex-1 flex items-center space-x-2 min-w-0">
-            {/* Column Icons */}
-            <div className="flex items-center space-x-0.5">
-              {column.primaryKey && (
-                <div title="Primary Key" className="flex items-center">
-                  <Key className="w-3 h-3 text-yellow-500" />
-                </div>
-              )}
-              {column.foreignKey && (
-                <div title={`Foreign Key → ${column.foreignKey.tableId}.${column.foreignKey.columnId}`} className="flex items-center">
-                  <Link className="w-3 h-3 text-blue-500" />
-                </div>
-              )}
-              {!column.nullable && (
-                <div title="NOT NULL" className="flex items-center">
-                  <Lock className="w-3 h-3 text-red-500" />
-                </div>
-              )}
-              {column.constraints?.unique && (
-                <div title="Unique Constraint" className="flex items-center">
-                  <Star className="w-3 h-3 text-purple-500" />
-                </div>
-              )}
-              {column.indexed && (
-                <div title={`Indexed (${column.indexType || 'B-tree'}) - ${column.indexName || 'idx_' + column.name}`} className="flex items-center">
-                  <Hash className="w-3 h-3 text-green-500" />
-                </div>
-              )}
-            </div>
+              {/* Column Icons */}
+              <div className="flex items-center space-x-0.5">
+                {column.primaryKey && (
+                  <div title="Primary Key" className="flex items-center">
+                    <Key className="w-3 h-3 text-yellow-500" />
+                  </div>
+                )}
+                {column.foreignKey && (
+                  <div title={`Foreign Key → ${column.foreignKey.tableId}.${column.foreignKey.columnId}`} className="flex items-center">
+                    <Link className="w-3 h-3 text-blue-500" />
+                  </div>
+                )}
+                {!column.nullable && (
+                  <div title="NOT NULL" className="flex items-center">
+                    <Lock className="w-3 h-3 text-red-500" />
+                  </div>
+                )}
+                {column.constraints?.unique && (
+                  <div title="Unique Constraint" className="flex items-center">
+                    <Star className="w-3 h-3 text-purple-500" />
+                  </div>
+                )}
+                {column.indexed && (
+                  <div title={`Indexed (${column.indexType || 'B-tree'}) - ${column.indexName || 'idx_' + column.name}`} className="flex items-center">
+                    <Hash className="w-3 h-3 text-green-500" />
+                  </div>
+                )}
+              </div>
 
               {/* Column Name */}
               <span className={`text-sm font-medium ${styles.text} min-w-0 flex-1 truncate`}>
@@ -431,10 +431,9 @@ export function TableNode(props: any) {
                 <Trash2 className="w-3 h-3" />
               </button>
             </div>
-          </div>
-          
-          {/* Column Details Section */}
-          {showColumnDetails[column.id] && !compactMode && (
+            
+            {/* Column Details Section */}
+            {showColumnDetails[column.id] && !compactMode && (
             <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 mt-2 border border-gray-200 dark:border-gray-600">
               <div className="space-y-2 text-xs">
                 {/* Basic Info */}
@@ -518,6 +517,7 @@ export function TableNode(props: any) {
               </div>
             </div>
           )}
+          </div>
         ))}
 
         {/* Add Column Button */}

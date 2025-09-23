@@ -150,7 +150,7 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
   };
 
   const getConstraintSummary = () => {
-    if (!schema) return { primaryKeys: 0, foreignKeys: 0, notNull: 0, unique: 0, default: 0, check: 0 };
+    if (!schema) return { primaryKeys: 0, foreignKeys: 0, notNull: 0, unique: 0, defaultValues: 0, check: 0 };
     
     const primaryKeys = schema.tables.reduce((sum, table) => 
       sum + table.columns.filter(col => col.primaryKey).length, 0
@@ -164,14 +164,14 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
     const unique = schema.tables.reduce((sum, table) => 
       sum + table.columns.filter(col => col.unique).length, 0
     );
-    const default = schema.tables.reduce((sum, table) => 
+    const defaultValues = schema.tables.reduce((sum, table) => 
       sum + table.columns.filter(col => col.defaultValue).length, 0
     );
     const check = schema.tables.reduce((sum, table) => 
       sum + table.columns.filter(col => col.constraints?.check).length, 0
     );
 
-    return { primaryKeys, foreignKeys, notNull, unique, default, check };
+    return { primaryKeys, foreignKeys, notNull, unique, defaultValues, check };
   };
 
   const getIndexSummary = () => {
@@ -1577,7 +1577,7 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                           <div className="text-gray-400 text-xs">UNIQUE</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-2xl font-bold text-gray-400">{constraints.default}</div>
+                          <div className="text-2xl font-bold text-gray-400">{constraints.defaultValues}</div>
                           <div className="text-gray-400 text-xs">DEFAULT</div>
                         </div>
                         <div className="text-center">
