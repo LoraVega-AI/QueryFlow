@@ -136,18 +136,32 @@ export interface Table {
   }>;
 }
 
+export interface IndexColumnDetail {
+  name: string;
+  position: number;
+  type?: string;
+  notNull?: boolean;
+  collation?: string;
+  direction?: 'ASC' | 'DESC';
+}
+
 export interface TableIndex {
   id: string;
   name: string;
+  tableName?: string;
   columns: string[];
+  columnDetails?: IndexColumnDetail[];
   unique: boolean;
   type: 'btree' | 'hash' | 'gin' | 'gist' | 'spgist' | 'brin';
-  partial?: string;
+  partial?: boolean;  // Is this a partial index
+  composite?: boolean;  // Multiple columns
+  origin?: 'pk' | 'u' | 'c' | 'index'; // Primary key, unique constraint, check constraint, or regular index
   expression?: string; // For expression-based indexes
-  covering?: string[]; // Covering/included columns
+  whereClause?: string | null; // WHERE clause for partial indexes in original form
+  covering?: boolean | string[]; // Covering/included columns
   clustered?: boolean;
   fillfactor?: number;
-  condition?: string; // WHERE clause for partial indexes
+  condition?: string; // WHERE clause for partial indexes (processed)
   method?: string; // Index access method
   tablespace?: string;
   comment?: string;
@@ -156,6 +170,11 @@ export interface TableIndex {
   tuples?: number;
   createdAt?: Date;
   updatedAt?: Date;
+  statistics?: {
+    rowEstimate?: number;
+    pagesFetched?: number;
+    avgQueryTime?: number;
+  };
 }
 
 export interface TableTrigger {
