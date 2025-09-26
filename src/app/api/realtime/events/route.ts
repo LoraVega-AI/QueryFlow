@@ -1,95 +1,111 @@
-// Server-Sent Events API for Real-time Project Updates
-// Provides real-time updates for project changes
+// Real-time events API endpoint for Server-Sent Events
+// GET /api/realtime/events
 
 import { NextRequest } from 'next/server';
 import { addConnection, removeConnection } from '@/utils/realtimeBroadcast';
 
 export async function GET(request: NextRequest) {
-  console.log('Real-time events endpoint called:', {
-    url: request.url,
-    headers: Object.fromEntries(request.headers.entries()),
-    timestamp: new Date().toISOString()
+  console.log('🔌 Real-time events endpoint called');
+  
+  // Set up Server-Sent Events headers
+  const headers = new Headers({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control',
   });
 
-  // Create a readable stream for Server-Sent Events
+  // Create a readable stream for SSE
   const stream = new ReadableStream({
     start(controller) {
-      console.log('Real-time connection started');
+      console.log('📡 New real-time connection established');
       
-      // Add this connection to the set
+      // Add this connection to the broadcast system
       addConnection(controller);
       
       // Send initial connection message
-      const welcomeMessage = {
+      const initialMessage = {
         type: 'connected',
-        data: { message: 'Connected to real-time updates' },
+        data: {
+          message: 'Real-time connection established',
+          timestamp: Date.now()
+        },
         timestamp: Date.now()
       };
       
       try {
-        controller.enqueue(new TextEncoder().encode(
-          `data: ${JSON.stringify(welcomeMessage)}\n\n`
-        ));
-        console.log('Welcome message sent to client');
+        controller.enqueue(
+          new TextEncoder().encode(`data: ${JSON.stringify(initialMessage)}\n\n`)
+        );
       } catch (error) {
-        console.error('Failed to send welcome message:', error);
+        console.error('Failed to send initial message:', error);
       }
       
-      // Send ping every 30 seconds to keep connection alive
-      const pingInterval = setInterval(() => {
-        try {
-          const pingMessage = {
-            type: 'ping',
-            data: { message: 'ping' },
-            timestamp: Date.now()
-          };
-          
-          controller.enqueue(new TextEncoder().encode(
-            `data: ${JSON.stringify(pingMessage)}\n\n`
-          ));
-          console.log('Ping sent to client');
-        } catch (error) {
-          console.error('Failed to send ping:', error);
-          clearInterval(pingInterval);
-          removeConnection(controller);
-        }
-      }, 30000);
-      
-      // Clean up on close
+      // Handle client disconnect
       request.signal.addEventListener('abort', () => {
-        console.log('Real-time connection aborted');
-        clearInterval(pingInterval);
+        console.log('📡 Real-time connection closed by client');
         removeConnection(controller);
+        
         try {
           controller.close();
-          console.log('Real-time connection closed');
         } catch (error) {
-          console.log('Connection already closed:', error);
+          console.error('Error closing controller:', error);
         }
       });
       
-      // Store controller reference for cancel
-      (controller as any).__pingInterval = pingInterval;
+      // Keep connection alive with periodic heartbeat
+      const heartbeatInterval = setInterval(() => {
+        try {
+          const heartbeat = {
+            type: 'heartbeat',
+            data: {
+              timestamp: Date.now(),
+              connections: getConnectionCount()
+            },
+            timestamp: Date.now()
+          };
+          
+          controller.enqueue(
+            new TextEncoder().encode(`data: ${JSON.stringify(heartbeat)}\n\n`)
+          );
+        } catch (error) {
+          console.error('Failed to send heartbeat:', error);
+          clearInterval(heartbeatInterval);
+          removeConnection(controller);
+        }
+      }, 30000); // Send heartbeat every 30 seconds
+      
+      // Clean up interval when connection closes
+      request.signal.addEventListener('abort', () => {
+        clearInterval(heartbeatInterval);
+      });
     },
     
-    cancel(controller) {
-      console.log('Real-time connection cancelled');
-      removeConnection(controller);
-      if ((controller as any).__pingInterval) {
-        clearInterval((controller as any).__pingInterval);
-        console.log('Ping interval cleared');
-      }
+    cancel() {
+      console.log('📡 Real-time connection cancelled');
+      // Clean up connection when cancelled
     }
   });
 
-  return new Response(stream, {
+  return new Response(stream, { headers });
+}
+
+// Handle OPTIONS request for CORS
+export async function OPTIONS(request: NextRequest) {
+  return new Response(null, {
+    status: 200,
     headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET',
-      'Access-Control-Allow-Headers': 'Cache-Control'
-    }
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Cache-Control',
+    },
   });
+}
+
+// Helper function to get connection count
+function getConnectionCount(): number {
+  // This would normally be imported from the broadcast utility
+  // For now, we'll return a placeholder
+  return 1;
 }

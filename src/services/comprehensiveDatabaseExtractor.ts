@@ -5,6 +5,8 @@ import { DatabaseSchema, Table, Column, TableIndex, Migration, MigrationHistory,
 import { readdir, readFile, stat } from 'fs/promises';
 import path from 'path';
 
+// We've added properties, methods, and managers to the ORMModel interface in database.ts
+
 export class ComprehensiveDatabaseExtractor {
   
   /**
@@ -36,7 +38,7 @@ export class ComprehensiveDatabaseExtractor {
         console.log('🔍 Querying for database tables...');
         const tables = await db.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
         console.log(`📊 Found ${tables.length} tables for comprehensive extraction`);
-        console.log(`📊 Tables: ${tables.map(t => t.name).join(', ')}`);
+        console.log(`📊 Tables: ${tables.map((t: any) => t.name).join(', ')}`);
         
         const enhancedTables = [];
         
@@ -155,9 +157,9 @@ export class ComprehensiveDatabaseExtractor {
           name: index.name,
           unique: index.unique === 1,
           columns: indexInfo.map((col: any) => col.name),
-          type: 'btree', // SQLite default
+          type: 'btree' as const, // SQLite default
           partial: index.partial === 1,
-          origin: index.origin, // c=CREATE INDEX, u=UNIQUE, pk=PRIMARY KEY
+          origin: (index.origin === 'pk' ? 'pk' : index.origin === 'u' ? 'u' : index.origin === 'c' ? 'c' : 'index') as 'pk' | 'u' | 'c' | 'index', // c=CREATE INDEX, u=UNIQUE, pk=PRIMARY KEY
           createdAt: new Date()
         });
       }
@@ -183,8 +185,8 @@ export class ComprehensiveDatabaseExtractor {
       
       // Calculate column statistics from data
       const columnValues = tableData.map((row: any) => row[col.name]);
-      const nullValues = columnValues.filter(v => v === null || v === undefined).length;
-      const nonNullValues = columnValues.filter(v => v !== null && v !== undefined);
+      const nullValues = columnValues.filter((v: any) => v === null || v === undefined).length;
+      const nonNullValues = columnValues.filter((v: any) => v !== null && v !== undefined);
       const distinctValues = new Set(nonNullValues).size;
       
       return {
@@ -216,9 +218,9 @@ export class ComprehensiveDatabaseExtractor {
           distinctValues,
           nullValues,
           avgLength: nonNullValues.length > 0 ? 
-            nonNullValues.reduce((sum, val) => sum + String(val).length, 0) / nonNullValues.length : 0,
-          minValue: nonNullValues.length > 0 ? Math.min(...nonNullValues.filter(v => typeof v === 'number')) : undefined,
-          maxValue: nonNullValues.length > 0 ? Math.max(...nonNullValues.filter(v => typeof v === 'number')) : undefined
+            nonNullValues.reduce((sum: number, val: any) => sum + String(val).length, 0) / nonNullValues.length : 0,
+          minValue: nonNullValues.length > 0 ? Math.min(...nonNullValues.filter((v: any) => typeof v === 'number')) : undefined,
+          maxValue: nonNullValues.length > 0 ? Math.max(...nonNullValues.filter((v: any) => typeof v === 'number')) : undefined
         }
       };
     });
@@ -244,7 +246,7 @@ export class ComprehensiveDatabaseExtractor {
     };
     
     } catch (error) {
-      console.error(`❌ Error extracting table ${tableName}:`, error);
+      console.error(`❌ Error extracting table ${tableName}:`, error as Error);
       
       // Return minimal table structure to avoid complete failure
       return {
@@ -259,7 +261,7 @@ export class ComprehensiveDatabaseExtractor {
           createTime: new Date(),
           updateTime: new Date()
         },
-        error: `Failed to extract table: ${error.message}`,
+        error: `Failed to extract table: ${(error as Error).message}`,
         position: { x: 0, y: 0 },
         createdAt: new Date(),
         updatedAt: new Date()
@@ -307,9 +309,9 @@ export class ComprehensiveDatabaseExtractor {
       createdAt: new Date(),
       updatedAt: new Date(),
       statistics: {
-        pageCount: await db.get('PRAGMA page_count').then(r => r.page_count).catch(() => 0),
-        freelistCount: await db.get('PRAGMA freelist_count').then(r => r.freelist_count).catch(() => 0),
-        integrityCheck: await db.all('PRAGMA integrity_check').then(rows => 
+        pageCount: await db.get('PRAGMA page_count').then((r: any) => r.page_count).catch(() => 0),
+        freelistCount: await db.get('PRAGMA freelist_count').then((r: any) => r.freelist_count).catch(() => 0),
+        integrityCheck: await db.all('PRAGMA integrity_check').then((rows: any) => 
           rows.length === 1 && rows[0].integrity_check === 'ok' ? 'ok' : 'error'
         ).catch(() => 'unknown')
       }
@@ -343,7 +345,7 @@ export class ComprehensiveDatabaseExtractor {
         const indexInfo = await db.all(`PRAGMA index_info(${index.name})`);
         
         // Determine if this is a primary key, unique constraint, or regular index
-        let origin = 'index';
+        let origin: 'index' | 'pk' | 'u' | 'c' = 'index';
         if (index.name.startsWith('sqlite_autoindex_')) {
           origin = 'pk'; // Likely a primary key index
         } else if (index.name.startsWith('idx_') || index.name.startsWith('index_')) {
@@ -385,7 +387,7 @@ export class ComprehensiveDatabaseExtractor {
         }
         
         // Create enhanced index object
-        const enhancedIndex: TableIndex = {
+        const enhancedIndex = {
           id: `idx_${index.name}`,
           name: index.name,
           tableName: index.tbl_name,
@@ -403,7 +405,7 @@ export class ComprehensiveDatabaseExtractor {
           ...sqlAnalysis
         };
         
-        enhancedIndexes.push(enhancedIndex);
+        enhancedIndexes.push(enhancedIndex as TableIndex);
         console.log(`✅ Enhanced index extracted: ${index.name} (${enhancedIndex.composite ? 'composite' : 'single'}, ${enhancedIndex.unique ? 'unique' : 'non-unique'})`);
         
       } catch (error) {
@@ -426,7 +428,7 @@ export class ComprehensiveDatabaseExtractor {
           const existingPkIndex = enhancedIndexes.some(idx => 
             idx.tableName === table.name && 
             idx.origin === 'pk' &&
-            pkColumns.every(pkCol => idx.columns.includes(pkCol))
+            pkColumns.every((pkCol: string) => idx.columns.includes(pkCol))
           );
           
           if (!existingPkIndex) {
@@ -437,23 +439,23 @@ export class ComprehensiveDatabaseExtractor {
               name: `pk_${table.name}`,
               tableName: table.name,
               columns: pkColumns,
-              columnDetails: pkColumns.map(name => {
+              columnDetails: pkColumns.map((name: string) => {
                 const col = tableInfo.find((c: any) => c.name === name);
                 return {
-                  name,
+                  name: name as string,
                   position: col?.cid || 0,
                   type: col?.type,
                   notNull: col?.notnull === 1
                 };
               }),
               unique: true,
-              type: 'btree',
+              type: 'btree' as const,
               origin: 'pk',
               composite: pkColumns.length > 1,
               partial: false,
               expression: `PRIMARY KEY (${pkColumns.join(', ')})`,
               createdAt: new Date()
-            });
+            } as TableIndex);
           }
         }
       }
@@ -462,7 +464,7 @@ export class ComprehensiveDatabaseExtractor {
     }
     
     console.log(`📊 Total enhanced indexes extracted: ${enhancedIndexes.length}`);
-    return enhancedIndexes;
+    return enhancedIndexes as TableIndex[];
   }
   
   /**
@@ -563,66 +565,617 @@ export class ComprehensiveDatabaseExtractor {
   }
   
   /**
-   * Extract migration history from project files
+   * Extract migration history from project files using comprehensive content-based detection
    */
   static async extractMigrationHistory(projectPath: string): Promise<MigrationHistory | null> {
-    console.log('🔍 Searching for migration files in:', projectPath);
+    console.log('🔍 Searching for migration files using comprehensive content-based detection in:', projectPath);
+    console.log('🔍 Project path details:', {
+      path: projectPath,
+      exists: require('fs').existsSync(projectPath),
+      isDirectory: require('fs').existsSync(projectPath) ? require('fs').statSync(projectPath).isDirectory() : false
+    });
     
-    // Enhanced migration directories list with Django-specific paths
-    const migrationDirs = [
-      'migrations', 'db/migrate', 'database/migrations', 
-      'alembic/versions', 'migration', 'migrate',
-      // Django-specific migration directories
-      'app/migrations', 'core/migrations', 'api/migrations',
-      'users/migrations', 'accounts/migrations', 'blog/migrations',
-      'posts/migrations', 'comments/migrations', 'products/migrations',
-      // Look for migrations folders in any app directory
-      'app', 'apps', 'src', 'django_project'
+    // Use enhanced content-based scanning that searches ALL directories
+    const migrations = await this.scanForMigrationFiles(projectPath);
+    
+    if (migrations && migrations.migrations.length > 0) {
+      console.log(`✅ Found ${migrations.migrations.length} migration files using content detection`);
+      console.log(`📊 Migration summary:`, {
+        totalMigrations: migrations.migrations.length,
+        frameworks: [...new Set(migrations.migrations.map(m => m.framework))],
+        primaryFramework: migrations.framework,
+        migrationsByFramework: migrations.migrations.reduce((acc, m) => {
+          acc[m.framework] = (acc[m.framework] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>)
+      });
+      return migrations;
+    }
+    
+    console.log('❌ No migration files found using content-based detection');
+    return null;
+  }
+  
+  /**
+   * Content-based migration file scanner that searches for migration code patterns
+   */
+  private static async scanForMigrationFiles(projectPath: string): Promise<MigrationHistory | null> {
+    const allMigrations: Migration[] = [];
+    const scannedFiles = new Set<string>(); // Avoid duplicate processing
+    
+    try {
+      await this.scanDirectoryRecursively(projectPath, allMigrations, scannedFiles);
+      
+      if (allMigrations.length > 0) {
+        // Sort migrations by version/timestamp if available
+        allMigrations.sort((a, b) => {
+          const aVersion = a.version || '0';
+          const bVersion = b.version || '0';
+          return aVersion.localeCompare(bVersion, undefined, { numeric: true });
+        });
+        
+        return {
+          migrations: allMigrations,
+          totalCount: allMigrations.length,
+          lastMigration: allMigrations[allMigrations.length - 1],
+          framework: this.determinePrimaryFramework(allMigrations)
+        };
+      }
+    } catch (error) {
+      console.log(`❌ Error during content-based migration scanning:`, error);
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Recursively scan directory for migration files based on content - AGGRESSIVE SCANNING
+   */
+  private static async scanDirectoryRecursively(
+    dirPath: string, 
+    migrations: Migration[], 
+    scannedFiles: Set<string>,
+    depth: number = 0
+  ): Promise<void> {
+    // Prevent infinite recursion but allow deeper scanning for migrations
+    if (depth > 15) return;
+    
+    console.log(`🔍 Scanning directory at depth ${depth}: ${dirPath}`);
+    
+    // Minimal ignore list - only skip truly irrelevant directories
+    const ignoreDirs = [
+      'node_modules', '.git', '.svn', '.hg', 
+      'coverage', '.nyc_output', 'logs', 'tmp', 'temp',
+      '__pycache__', '.pytest_cache', '.mypy_cache'
     ];
     
-    // First try direct migration directories
-    for (const dir of migrationDirs) {
-      const migrationPath = path.join(projectPath, dir);
-      try {
-        const stats = await stat(migrationPath);
-        if (stats.isDirectory()) {
-          console.log(`📁 Found potential migration directory: ${migrationPath}`);
-          
-          // For Django, check if this is a migrations directory or if it contains migrations subdirectories
-          if (dir === 'migrations' || dir.endsWith('/migrations')) {
-            console.log(`📁 Direct migration directory found: ${migrationPath}`);
-            const migrations = await this.parseMigrationDirectory(migrationPath);
-            if (migrations && migrations.migrations.length > 0) {
-              console.log(`✅ Found ${migrations.migrations.length} migrations in ${migrationPath}`);
-              return migrations;
-            }
-          } else {
-            // Check if this directory contains migrations subdirectories (Django apps structure)
-            const subDirs = await readdir(migrationPath);
-            for (const subDir of subDirs) {
-              const subDirPath = path.join(migrationPath, subDir);
-              const migrationsPath = path.join(subDirPath, 'migrations');
-              
-              try {
-                const subDirStats = await stat(migrationsPath);
-                if (subDirStats.isDirectory()) {
-                  console.log(`📁 Found Django app migrations directory: ${migrationsPath}`);
-                  const migrations = await this.parseMigrationDirectory(migrationsPath);
-                  if (migrations && migrations.migrations.length > 0) {
-                    console.log(`✅ Found ${migrations.migrations.length} migrations in ${migrationsPath}`);
-                    return migrations;
-                  }
-                }
-              } catch (error) {
-                // Migrations subdirectory doesn't exist, continue
-              }
+    try {
+      const entries = await readdir(dirPath, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        
+        // Skip ignored directories
+        if (entry.isDirectory()) {
+          if (ignoreDirs.includes(entry.name) || entry.name.startsWith('.')) {
+            continue;
+          }
+          await this.scanDirectoryRecursively(fullPath, migrations, scannedFiles, depth + 1);
+        } else if (entry.isFile()) {
+          // Check if file might contain migration code
+          if (this.isPotentialMigrationFile(entry.name)) {
+            const relativePath = path.relative(dirPath, fullPath);
+            if (!scannedFiles.has(relativePath)) {
+              scannedFiles.add(relativePath);
+              await this.analyzeFileForMigration(fullPath, migrations);
             }
           }
         }
-      } catch (error) {
-        // Directory doesn't exist, continue
-        console.log(`❌ Directory not found: ${migrationPath}`);
       }
+    } catch (error) {
+      // Skip directories we can't read
+      console.log(`⚠️ Could not scan directory ${dirPath}:`, error instanceof Error ? error.message : String(error));
+    }
+  }
+  
+  /**
+   * Check if a file might contain migration code - AGGRESSIVE DETECTION
+   */
+  private static isPotentialMigrationFile(filename: string): boolean {
+    const ext = path.extname(filename).toLowerCase();
+    const name = filename.toLowerCase();
+    
+    // Expanded file extensions that might contain migration code
+    const migrationExtensions = [
+      '.py', '.php', '.js', '.ts', '.rb', '.sql', '.tsx', '.jsx',
+      '.java', '.go', '.rs', '.kt', '.cs', '.scala', '.clj',
+      '.prisma', '.yml', '.yaml', '.json'
+    ];
+    if (!migrationExtensions.includes(ext)) return false;
+    
+    // Very minimal skip list - only skip clearly non-migration files
+    const skipPatterns = [
+      'package.json', 'composer.json', 'tsconfig.json',
+      'readme', 'license', 'dockerfile'
+    ];
+    
+    // Only skip if filename exactly matches skip patterns
+    if (skipPatterns.some(pattern => name === pattern || name === pattern + ext)) return false;
+    
+    // AGGRESSIVE: Check ALL files with valid extensions for migration content
+    console.log(`🔍 Checking potential migration file: ${filename}`);
+    return true;
+  }
+  
+  /**
+   * Analyze a file to determine if it contains migration code
+   */
+  private static async analyzeFileForMigration(filePath: string, migrations: Migration[]): Promise<void> {
+    try {
+      const content = await readFile(filePath, 'utf-8');
+      const filename = path.basename(filePath);
+      
+      // Check for migration content patterns
+      const migrationPatterns = this.getMigrationContentPatterns();
+      
+      for (const pattern of migrationPatterns) {
+        if (pattern.test(content)) {
+          console.log(`📋 Found migration content in: ${filePath}`);
+          
+          const framework = this.detectMigrationFramework(filename, content);
+          const migration = await this.createMigrationFromFile(filePath, content, framework);
+          
+          if (migration) {
+            migrations.push(migration);
+          }
+          break; // Found migration content, no need to check other patterns
+                  }
+                }
+              } catch (error) {
+      // Skip files we can't read
+      console.log(`⚠️ Could not analyze file ${filePath}:`, error instanceof Error ? error.message : String(error));
+    }
+  }
+  
+  /**
+   * Get comprehensive migration content patterns for ALL frameworks - ENHANCED
+   */
+  private static getMigrationContentPatterns(): RegExp[] {
+    return [
+      // Django patterns (Enhanced)
+      /from django\.db import migrations/i,
+      /class Migration\(migrations\.Migration\)/i,
+      /operations\s*=\s*\[/i,
+      /dependencies\s*=\s*\[/i,
+      /migrations\.CreateModel/i,
+      /migrations\.DeleteModel/i,
+      /migrations\.AddField/i,
+      /migrations\.RemoveField/i,
+      
+      // Laravel patterns (Enhanced)
+      /use Illuminate\\Database\\Migrations\\Migration/i,
+      /use Illuminate\\Database\\Schema\\Blueprint/i,
+      /Schema::create\s*\(/i,
+      /Schema::table\s*\(/i,
+      /Schema::drop\s*\(/i,
+      /public function up\s*\(\)/i,
+      /public function down\s*\(\)/i,
+      /\$table->create/i,
+      /Blueprint\s*\$table/i,
+      
+      // Rails patterns (Enhanced)
+      /class\s+\w+Migration\s+<\s+ActiveRecord::Migration/i,
+      /def\s+up\s*$/i,
+      /def\s+down\s*$/i,
+      /def\s+change\s*$/i,
+      /create_table\s*:/i,
+      /add_column\s*:/i,
+      /remove_column\s*:/i,
+      /add_index\s*:/i,
+      /drop_table\s*:/i,
+      
+      // Sequelize patterns (Enhanced)
+      /module\.exports\s*=\s*\{/i,
+      /up:\s*async\s*\(/i,
+      /down:\s*async\s*\(/i,
+      /queryInterface\.createTable/i,
+      /queryInterface\.dropTable/i,
+      /queryInterface\.addColumn/i,
+      /queryInterface\.removeColumn/i,
+      /queryInterface\.addIndex/i,
+      /Sequelize\.DataTypes/i,
+      
+      // TypeORM patterns (Enhanced)
+      /import.*Migration.*from.*typeorm/i,
+      /export class.*Migration.*implements Migration/i,
+      /public async up\s*\(/i,
+      /public async down\s*\(/i,
+      /QueryRunner/i,
+      /createTable\s*\(/i,
+      /dropTable\s*\(/i,
+      
+      // Prisma patterns (Enhanced)
+      /--\s*CreateTable/i,
+      /--\s*AlterTable/i,
+      /--\s*DropTable/i,
+      /generator client/i,
+      /datasource db/i,
+      /model\s+\w+\s*\{/i,
+      
+      // Alembic patterns (Enhanced)
+      /from alembic import/i,
+      /def upgrade\s*\(/i,
+      /def downgrade\s*\(/i,
+      /op\.create_table/i,
+      /op\.drop_table/i,
+      /op\.add_column/i,
+      /op\.alter_column/i,
+      
+      // Knex.js patterns
+      /exports\.up\s*=\s*function/i,
+      /exports\.down\s*=\s*function/i,
+      /knex\.schema\.createTable/i,
+      /knex\.schema\.dropTable/i,
+      
+      // Flyway patterns
+      /--\s*Flyway migration/i,
+      /V\d+__\w+\.sql/i,
+      
+      // Liquibase patterns
+      /--changeset/i,
+      /--rollback/i,
+      /<changeSet/i,
+      /<rollback>/i,
+      
+      // Entity Framework patterns
+      /public.*Migration/i,
+      /Up\(\s*\)/i,
+      /Down\(\s*\)/i,
+      /migrationBuilder\./i,
+      
+      // Generic SQL migration patterns (Enhanced)
+      /CREATE\s+TABLE\s+\w+/i,
+      /ALTER\s+TABLE\s+\w+/i,
+      /DROP\s+TABLE\s+\w+/i,
+      /CREATE\s+INDEX\s+\w+/i,
+      /DROP\s+INDEX\s+\w+/i,
+      /CREATE\s+UNIQUE\s+INDEX/i,
+      /ADD\s+CONSTRAINT/i,
+      /DROP\s+CONSTRAINT/i,
+      /ADD\s+COLUMN/i,
+      /DROP\s+COLUMN/i,
+      /MODIFY\s+COLUMN/i,
+      
+      // Database-specific patterns
+      /BEGIN\s+TRANSACTION/i,
+      /COMMIT\s+TRANSACTION/i,
+      /ROLLBACK\s+TRANSACTION/i,
+      
+      // Generic migration patterns (Enhanced)
+      /migration/i,
+      /migrate/i,
+      /upgrade/i,
+      /downgrade/i,
+      /version\s*[0-9]/i,
+      /schema\s*change/i,
+      /database\s*update/i,
+      /db\s*migration/i,
+      /sql\s*script/i
+    ];
+  }
+  
+  /**
+   * Create a Migration object from file content
+   */
+  private static async createMigrationFromFile(
+    filePath: string, 
+    content: string, 
+    framework: Migration['framework']
+  ): Promise<Migration | null> {
+    try {
+      const filename = path.basename(filePath);
+      const stats = await stat(filePath);
+      
+      // Extract version based on framework
+      let version = this.extractVersionFromContent(filename, content, framework);
+      
+      // Extract name from filename or content
+      let name = this.extractNameFromContent(filename, content, framework);
+      
+      // Extract description from content
+      let description = this.extractDescriptionFromContent(content, framework);
+      
+      return {
+        id: `${framework}_${filename}_${Date.now()}`,
+        filename,
+        version: version || 'unknown',
+        name: name || filename,
+        description: description || 'Migration file detected by content analysis',
+        framework,
+        filePath,
+        size: stats.size,
+        createdAt: stats.birthtime,
+        modifiedAt: stats.mtime,
+        content: content.substring(0, 1000), // Store first 1000 chars for preview
+        dependencies: this.extractDependenciesFromContent(content, framework),
+        operations: this.extractOperationsFromContent(content, framework),
+        status: 'pending' as const
+      };
+    } catch (error) {
+      console.log(`❌ Error creating migration from file ${filePath}:`, error);
+      return null;
+    }
+  }
+  
+  /**
+   * Determine the primary framework from a list of migrations
+   */
+  private static determinePrimaryFramework(migrations: Migration[]): string {
+    const frameworkCounts = migrations.reduce((counts, migration) => {
+      counts[migration.framework] = (counts[migration.framework] || 0) + 1;
+      return counts;
+    }, {} as Record<string, number>);
+    
+    const primaryFramework = Object.entries(frameworkCounts)
+      .sort(([,a], [,b]) => b - a)[0]?.[0];
+    
+    return primaryFramework || 'mixed';
+  }
+  
+  /**
+   * Check if a directory path is a direct migration directory
+   */
+  private static isDirectMigrationDirectory(dirPath: string): boolean {
+    const directMigrationPatterns = [
+      'migrations', 'db/migrations', 'db/migrate', 'database/migrations',
+      'migration', 'migrate', 'alembic/versions'
+    ];
+    
+    return directMigrationPatterns.some(pattern => 
+      dirPath === pattern || dirPath.endsWith('/' + pattern)
+    );
+  }
+  
+  /**
+   * Extract version from content based on framework
+   */
+  private static extractVersionFromContent(filename: string, content: string, framework: Migration['framework']): string | null {
+    switch (framework) {
+      case 'django':
+        // Django: 0001_initial.py -> 0001
+        const djangoMatch = filename.match(/^(\d{4})_/);
+        return djangoMatch ? djangoMatch[1] : null;
+        
+      case 'laravel':
+        // Laravel: 2024_01_01_000001_create_table.php -> 2024_01_01_000001
+        const laravelMatch = filename.match(/^(\d{4}_\d{2}_\d{2}_\d{6})_/);
+        return laravelMatch ? laravelMatch[1] : null;
+        
+      case 'rails':
+        // Rails: 20240101000001_create_users.rb -> 20240101000001
+        const railsMatch = filename.match(/^(\d{14})_/);
+        return railsMatch ? railsMatch[1] : null;
+        
+      case 'sequelize':
+      case 'typeorm':
+        // Node.js: 001_create_users.js -> 001
+        const nodeMatch = filename.match(/^(\d+)_/);
+        return nodeMatch ? nodeMatch[1] : null;
+        
+      default:
+        // Try to extract any version-like pattern
+        const versionMatch = content.match(/version\s*[:\s=]\s*['"]?([^'"\s]+)['"]?/i);
+        return versionMatch ? versionMatch[1] : null;
+    }
+  }
+  
+  /**
+   * Extract name from content based on framework
+   */
+  private static extractNameFromContent(filename: string, content: string, framework: Migration['framework']): string | null {
+    // Remove file extension
+    const baseName = path.basename(filename, path.extname(filename));
+    
+    switch (framework) {
+      case 'django':
+        // Django: 0001_initial.py -> initial
+        const djangoMatch = baseName.match(/^\d{4}_(.+)$/);
+        return djangoMatch ? djangoMatch[1].replace(/_/g, ' ') : baseName;
+        
+      case 'laravel':
+        // Laravel: 2024_01_01_000001_create_users_table.php -> create_users_table
+        const laravelMatch = baseName.match(/^\d{4}_\d{2}_\d{2}_\d{6}_(.+)$/);
+        return laravelMatch ? laravelMatch[1].replace(/_/g, ' ') : baseName;
+        
+      case 'rails':
+        // Rails: 20240101000001_create_users.rb -> create_users
+        const railsMatch = baseName.match(/^\d{14}_(.+)$/);
+        return railsMatch ? railsMatch[1].replace(/_/g, ' ') : baseName;
+        
+      default:
+        // Try to extract from class names or comments
+        const classMatch = content.match(/class\s+(\w+Migration)/i);
+        if (classMatch) return classMatch[1].replace(/([A-Z])/g, ' $1').trim();
+        
+        // Try to extract from comments
+        const commentMatch = content.match(/\/\*\*?\s*(.+?)\s*\*\//s);
+        if (commentMatch) return commentMatch[1].trim();
+        
+        return baseName.replace(/_/g, ' ');
+    }
+  }
+  
+  /**
+   * Extract description from content
+   */
+  private static extractDescriptionFromContent(content: string, framework: Migration['framework']): string | null {
+    // Look for docstrings, comments, or descriptions
+    const patterns = [
+      /\/\*\*?\s*(.+?)\s*\*\//s, // /* comment */
+      /\/\/\s*(.+)$/m, // // comment
+      /#\s*(.+)$/m, // # comment
+      /""".*?"""/s, // """ docstring """
+      /'''.*?'''/s, // ''' docstring '''
+      /\/\*\*?\s*@description\s+(.+?)(?:\*\/|$)/s, // @description
+      /\/\*\*?\s*@param\s+\w+\s+(.+?)(?:\*\/|$)/s // @param description
+    ];
+    
+    for (const pattern of patterns) {
+      const match = content.match(pattern);
+      if (match && match[1].trim().length > 10) {
+        return match[1].trim();
+      }
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Extract dependencies from content
+   */
+  private static extractDependenciesFromContent(content: string, framework: Migration['framework']): string[] {
+    const dependencies: string[] = [];
+    
+    switch (framework) {
+      case 'django':
+        // Django dependencies
+        const djangoDepMatch = content.match(/dependencies\s*=\s*\[(.*?)\]/s);
+        if (djangoDepMatch) {
+          const depMatches = djangoDepMatch[1].match(/['"]([^'"]+)['"]/g);
+          if (depMatches) {
+            dependencies.push(...depMatches.map(dep => dep.replace(/['"]/g, '')));
+          }
+        }
+        break;
+        
+      case 'laravel':
+        // Laravel dependencies (less common, but check for references)
+        const laravelDepMatch = content.match(/extends\s+Migration\s*\{/);
+        if (laravelDepMatch) {
+          // Look for references to other migration files
+          const refMatches = content.match(/\$this->call\s*\(\s*['"]([^'"]+)['"]\s*\)/g);
+          if (refMatches) {
+            dependencies.push(...refMatches.map(ref => ref.match(/['"]([^'"]+)['"]/)?.[1] || ''));
+          }
+        }
+        break;
+        
+      default:
+        // Generic dependency extraction
+        const depMatches = content.match(/(?:depends?|requires?|imports?)\s*[:\s=]\s*['"]([^'"]+)['"]/gi);
+        if (depMatches) {
+          dependencies.push(...depMatches.map(dep => dep.match(/['"]([^'"]+)['"]/)?.[1] || ''));
+        }
+    }
+    
+    return dependencies.filter(dep => dep && dep.length > 0);
+  }
+  
+  /**
+   * Extract operations from content
+   */
+  private static extractOperationsFromContent(content: string, framework: Migration['framework']): string[] {
+    const operations: string[] = [];
+    
+    switch (framework) {
+      case 'django':
+        // Django operations
+        const djangoOpsMatch = content.match(/operations\s*=\s*\[(.*?)\]/s);
+        if (djangoOpsMatch) {
+          const opMatches = djangoOpsMatch[1].match(/migrations\.(\w+)/g);
+          if (opMatches) {
+            operations.push(...opMatches.map(op => op.replace('migrations.', '')));
+          }
+        }
+        break;
+        
+      case 'laravel':
+        // Laravel operations
+        const laravelOps = [
+          'Schema::create', 'Schema::table', 'Schema::drop', 'Schema::dropIfExists',
+          'Schema::rename', 'Schema::hasTable', 'Schema::hasColumn'
+        ];
+        laravelOps.forEach(op => {
+          if (content.includes(op)) {
+            operations.push(op.replace('Schema::', ''));
+          }
+        });
+        break;
+        
+      case 'rails':
+        // Rails operations
+        const railsOps = [
+          'create_table', 'drop_table', 'add_column', 'remove_column',
+          'rename_column', 'add_index', 'remove_index', 'add_foreign_key'
+        ];
+        railsOps.forEach(op => {
+          if (content.includes(op)) {
+            operations.push(op);
+          }
+        });
+        break;
+        
+      default:
+        // Generic operation extraction
+        const genericOps = [
+          'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'CREATE INDEX',
+          'DROP INDEX', 'ADD COLUMN', 'DROP COLUMN', 'RENAME COLUMN'
+        ];
+        genericOps.forEach(op => {
+          if (content.toUpperCase().includes(op)) {
+            operations.push(op);
+          }
+        });
+    }
+    
+    return operations;
+  }
+  
+  /**
+   * Find migration directories nested within app directories
+   */
+  private static async findNestedMigrationDirectories(basePath: string): Promise<MigrationHistory | null> {
+    try {
+      const entries = await readdir(basePath);
+      const allMigrations: Migration[] = [];
+      
+      for (const entry of entries) {
+        const entryPath = path.join(basePath, entry);
+        const entryStats = await stat(entryPath);
+        
+        if (entryStats.isDirectory()) {
+          // Check for common migration subdirectory patterns
+          const migrationSubdirs = ['migrations', 'migrate', 'migration'];
+          
+          for (const subdir of migrationSubdirs) {
+            const migrationPath = path.join(entryPath, subdir);
+            try {
+              const migrationStats = await stat(migrationPath);
+              if (migrationStats.isDirectory()) {
+                console.log(`📁 Found nested migration directory: ${migrationPath}`);
+                const migrations = await this.parseMigrationDirectory(migrationPath);
+                if (migrations && migrations.migrations.length > 0) {
+                  console.log(`✅ Found ${migrations.migrations.length} migrations in ${migrationPath}`);
+                  allMigrations.push(...migrations.migrations);
+          }
+        }
+      } catch (error) {
+              // Migration subdirectory doesn't exist, continue
+            }
+          }
+        }
+      }
+      
+      if (allMigrations.length > 0) {
+        return {
+          migrations: allMigrations,
+          totalCount: allMigrations.length,
+          lastMigration: allMigrations[allMigrations.length - 1],
+          framework: 'mixed' // Will be determined by individual migrations
+        };
+      }
+    } catch (error) {
+      console.log(`❌ Error scanning nested directories in ${basePath}:`, error);
     }
     
     return null;
@@ -694,7 +1247,7 @@ export class ComprehensiveDatabaseExtractor {
           name = this.extractTypeORMMigrationName(file);
           break;
         default:
-          name = this.extractNameFromFilename(file);
+          name = this.extractNameFromContent(file, content, framework) || file;
       }
       console.log(`📊 Migration name: ${name}`);
       
@@ -714,7 +1267,7 @@ export class ComprehensiveDatabaseExtractor {
           description = this.extractTypeORMMigrationDescription(content);
           break;
         default:
-          description = this.extractDescriptionFromContent(content);
+          description = this.extractDescriptionFromContent(content, framework);
       }
       console.log(`📊 Migration description: ${description}`);
       
@@ -731,7 +1284,7 @@ export class ComprehensiveDatabaseExtractor {
         up: content,
         status,
         executedAt: stats.mtime,
-        description,
+        description: description || undefined,
         // Add Django-specific fields if applicable
         ...(framework === 'django' && {
           dependencies: this.extractDjangoDependencies(content),
@@ -754,93 +1307,319 @@ export class ComprehensiveDatabaseExtractor {
    * Extract ORM models from source code
    */
   static async extractORMModels(projectPath: string): Promise<ORMModel[]> {
-    console.log('🔍 Searching for ORM models in:', projectPath);
+    console.log('🔍 Searching for ORM models using comprehensive content-based detection in:', projectPath);
+    console.log('🔍 Project path details:', {
+      path: projectPath,
+      exists: require('fs').existsSync(projectPath),
+      isDirectory: require('fs').existsSync(projectPath) ? require('fs').statSync(projectPath).isDirectory() : false
+    });
     
-    // Enhanced model directories list with Django-specific paths
-    const modelDirs = [
-      'models', 'app/models', 'src/models', 'database/models',
-      'app/Models', 'src/entities', 'entities',
-      // Django-specific model files
-      'models.py', 'app/models.py', 'core/models.py',
-      // Django app directories
-      'app', 'apps', 'src', 'core', 'api',
-      'users', 'accounts', 'blog', 'posts', 'products'
+    // Use enhanced content-based scanning that searches ALL directories for ORM model code
+    const ormModels = await this.scanForORMModels(projectPath);
+    
+    if (ormModels && ormModels.length > 0) {
+      console.log(`✅ Found ${ormModels.length} ORM models using content detection`);
+      console.log(`📊 ORM Model summary:`, {
+        totalModels: ormModels.length,
+        frameworks: [...new Set(ormModels.map(m => m.framework))],
+        modelsByFramework: ormModels.reduce((acc, m) => {
+          acc[m.framework] = (acc[m.framework] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>)
+      });
+      return ormModels;
+    }
+    
+    console.log('❌ No ORM models found using content-based detection');
+    return [];
+  }
+  
+  /**
+   * Content-based ORM model scanner that searches for ORM model code patterns
+   */
+  private static async scanForORMModels(projectPath: string): Promise<ORMModel[]> {
+    const allModels: ORMModel[] = [];
+    const scannedFiles = new Set<string>(); // Avoid duplicate processing
+    
+    try {
+      await this.scanDirectoryRecursivelyForORM(projectPath, allModels, scannedFiles);
+      
+      if (allModels.length > 0) {
+        // Sort models by framework and name
+        allModels.sort((a, b) => {
+          if (a.framework !== b.framework) {
+            return a.framework.localeCompare(b.framework);
+          }
+          return a.name.localeCompare(b.name);
+        });
+        }
+      } catch (error) {
+      console.log(`❌ Error during content-based ORM scanning:`, error);
+    }
+    
+    return allModels;
+  }
+  
+  /**
+   * Recursively scan directory for ORM model files based on content - AGGRESSIVE SCANNING
+   */
+  private static async scanDirectoryRecursivelyForORM(
+    dirPath: string, 
+    models: ORMModel[], 
+    scannedFiles: Set<string>,
+    depth: number = 0
+  ): Promise<void> {
+    // Prevent infinite recursion but allow deep scanning for models
+    if (depth > 15) return;
+    
+    console.log(`🔍 Scanning directory for ORM models at depth ${depth}: ${dirPath}`);
+    
+    // Minimal ignore list - only skip truly irrelevant directories
+    const ignoreDirs = [
+      'node_modules', '.git', '.svn', '.hg', 
+      'coverage', '.nyc_output', 'logs', 'tmp', 'temp',
+      '__pycache__', '.pytest_cache', '.mypy_cache'
     ];
     
-    const ormModels: ORMModel[] = [];
-    
-    // First check for direct model files (Django style)
-    for (const modelFile of ['models.py', 'app/models.py', 'core/models.py']) {
-      const modelFilePath = path.join(projectPath, modelFile);
-      try {
-        const stats = await stat(modelFilePath);
-        if (stats.isFile()) {
-          console.log(`📄 Found Django models file: ${modelFilePath}`);
-          const content = await readFile(modelFilePath, 'utf-8');
-          const djangoModels = this.parseDjangoModelsFile(modelFilePath, content);
-          if (djangoModels.length > 0) {
-            console.log(`✅ Extracted ${djangoModels.length} Django models from ${modelFilePath}`);
-            ormModels.push(...djangoModels);
-          }
-        }
-      } catch (error) {
-        // File doesn't exist, continue
-      }
-    }
-    
-    // Then check for model directories
-    for (const dir of modelDirs) {
-      const modelPath = path.join(projectPath, dir);
-      try {
-        const stats = await stat(modelPath);
-        if (stats.isDirectory()) {
-          console.log(`📁 Found potential model directory: ${modelPath}`);
-          
-          // Check if this is a Django app directory with models.py
-          const djangoModelPath = path.join(modelPath, 'models.py');
-          try {
-            const modelStats = await stat(djangoModelPath);
-            if (modelStats.isFile()) {
-              console.log(`📄 Found Django app models file: ${djangoModelPath}`);
-              const content = await readFile(djangoModelPath, 'utf-8');
-              const djangoModels = this.parseDjangoModelsFile(djangoModelPath, content);
-              if (djangoModels.length > 0) {
-                console.log(`✅ Extracted ${djangoModels.length} Django models from ${djangoModelPath}`);
-                ormModels.push(...djangoModels);
-              }
-              continue; // Skip regular directory parsing for this Django app
-            }
-          } catch (error) {
-            // models.py doesn't exist, continue with regular directory parsing
-          }
-          
-          // Regular model directory parsing
-          const models = await this.parseModelDirectory(modelPath);
-          if (models.length > 0) {
-            console.log(`✅ Extracted ${models.length} models from ${modelPath}`);
-            ormModels.push(...models);
-          }
-        }
-      } catch (error) {
-        // Directory doesn't exist, continue
-        console.log(`❌ Directory not found: ${modelPath}`);
-      }
-    }
-    
-    // Also check for Prisma schema
-    const prismaSchema = path.join(projectPath, 'prisma', 'schema.prisma');
     try {
-      const stats = await stat(prismaSchema);
-      if (stats.isFile()) {
-        console.log('📄 Found Prisma schema');
-        const prismaModels = await this.parsePrismaSchema(prismaSchema);
-        ormModels.push(...prismaModels);
+      const entries = await readdir(dirPath, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        
+        // Skip ignored directories
+        if (entry.isDirectory()) {
+          if (ignoreDirs.includes(entry.name) || entry.name.startsWith('.')) {
+            continue;
+          }
+          await this.scanDirectoryRecursivelyForORM(fullPath, models, scannedFiles, depth + 1);
+        } else if (entry.isFile()) {
+          // Check if file might contain ORM model code
+          if (this.isPotentialORMModelFile(entry.name)) {
+            const relativePath = path.relative(dirPath, fullPath);
+            if (!scannedFiles.has(relativePath)) {
+              scannedFiles.add(relativePath);
+              await this.analyzeFileForORMModel(fullPath, models);
+            }
+          }
+          }
+        }
+      } catch (error) {
+      // Skip directories we can't read
+      console.log(`⚠️ Could not scan directory for ORM models ${dirPath}:`, error instanceof Error ? error.message : String(error));
+    }
+  }
+  
+  /**
+   * Check if a file might contain ORM model code - AGGRESSIVE DETECTION
+   */
+  private static isPotentialORMModelFile(filename: string): boolean {
+    const ext = path.extname(filename).toLowerCase();
+    const name = filename.toLowerCase();
+    
+    // Expanded file extensions that might contain ORM model code
+    const modelExtensions = [
+      '.py', '.php', '.js', '.ts', '.rb', '.java', '.go', '.rs', '.kt', '.cs', '.scala',
+      '.tsx', '.jsx', '.prisma', '.yml', '.yaml', '.json'
+    ];
+    if (!modelExtensions.includes(ext)) return false;
+    
+    // Very minimal skip list - only skip clearly non-model files
+    const skipPatterns = [
+      'package.json', 'composer.json', 'tsconfig.json', 'webpack.config.js',
+      'readme', 'license', 'dockerfile', 'makefile', '.env'
+    ];
+    
+    // Only skip if filename exactly matches skip patterns
+    if (skipPatterns.some(pattern => name === pattern || name === pattern + ext)) return false;
+    
+    // AGGRESSIVE: Check ALL files with valid extensions for ORM model content
+    console.log(`🔍 Checking potential ORM model file: ${filename}`);
+    return true;
+  }
+  
+  /**
+   * Analyze a file to determine if it contains ORM model code
+   */
+  private static async analyzeFileForORMModel(filePath: string, models: ORMModel[]): Promise<void> {
+    try {
+      const content = await readFile(filePath, 'utf-8');
+      const filename = path.basename(filePath);
+      
+      // Check for ORM model content patterns
+      const ormPatterns = this.getORMModelContentPatterns();
+      
+      for (const pattern of ormPatterns) {
+        if (pattern.test(content)) {
+          console.log(`📋 Found ORM model content in: ${filePath}`);
+          
+          const framework = this.detectORMFramework(filename, content);
+          if (framework) {
+            const detectedModels = await this.extractModelsFromFile(filePath, content, framework);
+            
+            if (detectedModels && detectedModels.length > 0) {
+              models.push(...detectedModels);
+            }
+          }
+          break; // Found ORM content, no need to check other patterns
+        }
       }
     } catch (error) {
-      // Prisma schema doesn't exist
+      // Skip files we can't read
+      console.log(`⚠️ Could not analyze file for ORM models ${filePath}:`, error instanceof Error ? error.message : String(error));
     }
-    
-    return ormModels;
+  }
+
+  /**
+   * Get comprehensive ORM model content patterns for ALL frameworks - ENHANCED
+   */
+  private static getORMModelContentPatterns(): RegExp[] {
+    return [
+      // Django patterns (Enhanced)
+      /from django\.db import models/i,
+      /class\s+\w+\s*\(\s*models\.Model\s*\)/i,
+      /models\.CharField/i,
+      /models\.IntegerField/i,
+      /models\.ForeignKey/i,
+      /models\.ManyToManyField/i,
+      /models\.OneToOneField/i,
+      /models\.DateTimeField/i,
+      
+      // Laravel/Eloquent patterns (Enhanced)
+      /use Illuminate\\Database\\Eloquent\\Model/i,
+      /extends Model/i,
+      /class\s+\w+\s+extends\s+Model/i,
+      /protected\s+\$fillable/i,
+      /protected\s+\$guarded/i,
+      /protected\s+\$table/i,
+      /public function\s+\w+\(\)\s*\{\s*return\s+\$this->hasOne/i,
+      /public function\s+\w+\(\)\s*\{\s*return\s+\$this->hasMany/i,
+      /public function\s+\w+\(\)\s*\{\s*return\s+\$this->belongsTo/i,
+      
+      // Sequelize patterns (Enhanced)
+      /const.*=.*sequelize\.define/i,
+      /DataTypes\./i,
+      /Sequelize\.DataTypes/i,
+      /sequelize\.import/i,
+      /belongsTo\s*\(/i,
+      /hasMany\s*\(/i,
+      /hasOne\s*\(/i,
+      /belongsToMany\s*\(/i,
+      
+      // TypeORM patterns (Enhanced)
+      /import.*Entity.*from.*typeorm/i,
+      /import.*Column.*from.*typeorm/i,
+      /import.*PrimaryGeneratedColumn.*from.*typeorm/i,
+      /@Entity\s*\(/i,
+      /@Column\s*\(/i,
+      /@PrimaryGeneratedColumn\s*\(/i,
+      /@OneToMany\s*\(/i,
+      /@ManyToOne\s*\(/i,
+      /@OneToOne\s*\(/i,
+      /@ManyToMany\s*\(/i,
+      /@JoinColumn\s*\(/i,
+      
+      // Prisma patterns (Enhanced)
+      /model\s+\w+\s*\{/i,
+      /@id/i,
+      /@default/i,
+      /@unique/i,
+      /@relation/i,
+      /String\s+@/i,
+      /Int\s+@/i,
+      /DateTime\s+@/i,
+      
+      // Mongoose patterns (Enhanced)
+      /const.*=.*new\s+mongoose\.Schema/i,
+      /mongoose\.model/i,
+      /mongoose\.Schema/i,
+      /type:\s*String/i,
+      /type:\s*Number/i,
+      /type:\s*Date/i,
+      /ref:\s*['"`]/i,
+      
+      // Rails/ActiveRecord patterns (Enhanced)
+      /class\s+\w+\s*<\s*ApplicationRecord/i,
+      /class\s+\w+\s*<\s*ActiveRecord::Base/i,
+      /has_many\s*:/i,
+      /belongs_to\s*:/i,
+      /has_one\s*:/i,
+      /has_and_belongs_to_many\s*:/i,
+      /validates\s*:/i,
+      
+      // Hibernate/JPA patterns (Enhanced)
+      /@Entity/i,
+      /@Table/i,
+      /@Id/i,
+      /@GeneratedValue/i,
+      /@Column/i,
+      /@OneToMany/i,
+      /@ManyToOne/i,
+      /@OneToOne/i,
+      /@ManyToMany/i,
+      /@JoinColumn/i,
+      
+      // SQLAlchemy patterns (Enhanced)
+      /from sqlalchemy import/i,
+      /class\s+\w+\s*\(\s*Base\s*\)/i,
+      /class\s+\w+\s*\(\s*db\.Model\s*\)/i,
+      /Column\s*\(/i,
+      /Integer\s*\(/i,
+      /String\s*\(/i,
+      /relationship\s*\(/i,
+      /ForeignKey\s*\(/i,
+      
+      // Peewee patterns
+      /from peewee import/i,
+      /class\s+\w+\s*\(\s*Model\s*\)/i,
+      /CharField\s*\(/i,
+      /IntegerField\s*\(/i,
+      /ForeignKeyField\s*\(/i,
+      
+      // Entity Framework patterns
+      /public.*DbSet<\w+>/i,
+      /\[Key\]/i,
+      /\[Column\]/i,
+      /\[Table\]/i,
+      /\[ForeignKey\]/i,
+      /DbContext/i,
+      
+      // Generic patterns
+      /class\s+\w+Model/i,
+      /class\s+\w+Entity/i,
+      /\@model/i,
+      /\@entity/i,
+      /primary.*key/i,
+      /foreign.*key/i
+    ];
+  }
+  
+  /**
+   * Extract models from a file based on framework
+   */
+  private static async extractModelsFromFile(filePath: string, content: string, framework: string): Promise<ORMModel[]> {
+    switch (framework) {
+      case 'django':
+        return this.parseDjangoModelsFile(filePath, content);
+      case 'laravel':
+        return this.parseLaravelModelsFile(filePath, content);
+      case 'sequelize':
+        return this.parseSequelizeModelsFile(filePath, content);
+      case 'typeorm':
+        return this.parseTypeORMModelsFile(filePath, content);
+      case 'prisma':
+        return this.parsePrismaModelsFile(filePath, content);
+      case 'mongoose':
+        return this.parseMongooseModelsFile(filePath, content);
+      case 'rails':
+        return this.parseRailsModelsFile(filePath, content);
+      case 'hibernate':
+        return this.parseHibernateModelsFile(filePath, content);
+      case 'sqlalchemy':
+        return this.parseSQLAlchemyModelsFile(filePath, content);
+      default:
+        return this.parseGenericModelsFile(filePath, content);
+    }
   }
   
   /**
@@ -865,6 +1644,400 @@ export class ComprehensiveDatabaseExtractor {
       if (model) {
         // Override the model name from the class name
         model.name = modelName;
+        models.push(model);
+      }
+    }
+    
+    return models;
+  }
+  
+  /**
+   * Parse Laravel/Eloquent models file
+   */
+  static parseLaravelModelsFile(filePath: string, content: string): ORMModel[] {
+    console.log(`🟠 Parsing Laravel model file: ${filePath}`);
+    
+    const models: ORMModel[] = [];
+    
+    // Find model classes that extend Model
+    const modelClassPattern = /class\s+(\w+)\s+extends\s+Model/g;
+    let match;
+    
+    while ((match = modelClassPattern.exec(content)) !== null) {
+      const modelName = match[1];
+      console.log(`   Found Laravel model: ${modelName}`);
+      
+      // Extract model details
+      const model: ORMModel = {
+        id: `laravel_${modelName}_${path.basename(filePath, path.extname(filePath))}`,
+        name: modelName,
+        filename: path.basename(filePath),
+        framework: 'laravel',
+        tableName: this.extractTableName(content, 'laravel'),
+        sourceCode: content,
+        relationships: this.extractRelationships(content, 'laravel'),
+        properties: this.extractProperties(content, 'laravel'),
+        validations: this.extractValidations(content, 'laravel'),
+        hooks: [],
+        scopes: [],
+        indexes: [],
+        metadata: {
+          extractedAt: new Date(),
+          framework: 'laravel',
+          filename: path.basename(filePath),
+          filePath: filePath
+        }
+      };
+      
+      models.push(model);
+    }
+    
+    return models;
+  }
+  
+  /**
+   * Parse Sequelize models file
+   */
+  static parseSequelizeModelsFile(filePath: string, content: string): ORMModel[] {
+    console.log(`🔵 Parsing Sequelize model file: ${filePath}`);
+    
+    const models: ORMModel[] = [];
+    
+    // Find sequelize.define patterns
+    const definePattern = /(\w+)\s*=\s*sequelize\.define\s*\(\s*['"`](\w+)['"`]/g;
+    let match;
+    
+    while ((match = definePattern.exec(content)) !== null) {
+      const modelName = match[2];
+      console.log(`   Found Sequelize model: ${modelName}`);
+      
+      const model: ORMModel = {
+        id: `sequelize_${modelName}_${path.basename(filePath, path.extname(filePath))}`,
+        name: modelName,
+        filename: path.basename(filePath),
+        framework: 'sequelize',
+        tableName: modelName.toLowerCase(),
+        sourceCode: content,
+        relationships: this.extractRelationships(content, 'sequelize'),
+        properties: this.extractProperties(content, 'sequelize'),
+        validations: [],
+        hooks: [],
+        scopes: [],
+        indexes: [],
+        metadata: {
+          extractedAt: new Date(),
+          framework: 'sequelize',
+          filename: path.basename(filePath),
+          filePath: filePath
+        }
+      };
+      
+      models.push(model);
+    }
+    
+    return models;
+  }
+  
+  /**
+   * Parse TypeORM models file
+   */
+  static parseTypeORMModelsFile(filePath: string, content: string): ORMModel[] {
+    console.log(`🔷 Parsing TypeORM model file: ${filePath}`);
+    
+    const models: ORMModel[] = [];
+    
+    // Find @Entity decorated classes
+    const entityPattern = /@Entity\s*\([^)]*\)[\s\S]*?export\s+class\s+(\w+)/g;
+    let match;
+    
+    while ((match = entityPattern.exec(content)) !== null) {
+      const modelName = match[1];
+      console.log(`   Found TypeORM entity: ${modelName}`);
+      
+      const model: ORMModel = {
+        id: `typeorm_${modelName}`,
+        name: modelName,
+        filename: path.basename(filePath),
+        framework: 'typeorm',
+        tableName: modelName.toLowerCase(),
+        sourceCode: content,
+        relationships: this.extractRelationships(content, 'typeorm'),
+        properties: this.extractProperties(content, 'typeorm'),
+        validations: [],
+        hooks: [],
+        scopes: [],
+        indexes: [],
+        metadata: {
+          extractedAt: new Date(),
+          framework: 'typeorm',
+          filename: path.basename(filePath),
+          filePath: filePath
+        }
+      };
+      
+      models.push(model);
+    }
+    
+    return models;
+  }
+  
+  /**
+   * Parse Prisma models file
+   */
+  static parsePrismaModelsFile(filePath: string, content: string): ORMModel[] {
+    console.log(`🟣 Parsing Prisma models file: ${filePath}`);
+    
+    const models: ORMModel[] = [];
+    
+    // Find model definitions
+    const modelPattern = /model\s+(\w+)\s*\{([^}]+)\}/g;
+    let match;
+    
+    while ((match = modelPattern.exec(content)) !== null) {
+      const modelName = match[1];
+      console.log(`   Found Prisma model: ${modelName}`);
+      
+      const model: ORMModel = {
+        id: `prisma_${modelName}`,
+        name: modelName,
+        filename: path.basename(filePath),
+        framework: 'prisma',
+        tableName: modelName.toLowerCase(),
+        sourceCode: content,
+        relationships: this.extractRelationships(content, 'prisma'),
+        properties: this.extractProperties(content, 'prisma'),
+        validations: [],
+        hooks: [],
+        scopes: [],
+        indexes: [],
+        metadata: {
+          extractedAt: new Date(),
+          framework: 'prisma',
+          filename: path.basename(filePath),
+          filePath: filePath
+        }
+      };
+      
+      models.push(model);
+    }
+    
+    return models;
+  }
+  
+  /**
+   * Parse Mongoose models file
+   */
+  static parseMongooseModelsFile(filePath: string, content: string): ORMModel[] {
+    console.log(`🟤 Parsing Mongoose model file: ${filePath}`);
+    
+    const models: ORMModel[] = [];
+    
+    // Find mongoose.model patterns
+    const modelPattern = /mongoose\.model\s*\(\s*['"`](\w+)['"`]/g;
+    let match;
+    
+    while ((match = modelPattern.exec(content)) !== null) {
+      const modelName = match[1];
+      console.log(`   Found Mongoose model: ${modelName}`);
+      
+      const model: ORMModel = {
+        id: `mongoose_${modelName}`,
+        name: modelName,
+        filename: path.basename(filePath),
+        framework: 'mongoose',
+        tableName: modelName.toLowerCase(),
+        sourceCode: content,
+        relationships: this.extractRelationships(content, 'mongoose'),
+        properties: this.extractProperties(content, 'mongoose'),
+        validations: [],
+        hooks: [],
+        scopes: [],
+        indexes: [],
+        metadata: {
+          extractedAt: new Date(),
+          framework: 'mongoose',
+          filename: path.basename(filePath),
+          filePath: filePath
+        }
+      };
+      
+      models.push(model);
+    }
+    
+    return models;
+  }
+  
+  /**
+   * Parse Rails models file
+   */
+  static parseRailsModelsFile(filePath: string, content: string): ORMModel[] {
+    console.log(`🔴 Parsing Rails model file: ${filePath}`);
+    
+    const models: ORMModel[] = [];
+    
+    // Find ActiveRecord model classes
+    const modelPattern = /class\s+(\w+)\s*<\s*(ApplicationRecord|ActiveRecord::Base)/g;
+    let match;
+    
+    while ((match = modelPattern.exec(content)) !== null) {
+      const modelName = match[1];
+      console.log(`   Found Rails model: ${modelName}`);
+      
+      const model: ORMModel = {
+        id: `rails_${modelName}`,
+        name: modelName,
+        filename: path.basename(filePath),
+        framework: 'rails',
+        tableName: modelName.toLowerCase(),
+        sourceCode: content,
+        relationships: this.extractRelationships(content, 'rails'),
+        properties: [],
+        validations: this.extractValidations(content, 'rails'),
+        hooks: [],
+        scopes: [],
+        indexes: [],
+        metadata: {
+          extractedAt: new Date(),
+          framework: 'rails',
+          filename: path.basename(filePath),
+          filePath: filePath
+        }
+      };
+      
+      models.push(model);
+    }
+    
+    return models;
+  }
+  
+  /**
+   * Parse Hibernate/JPA models file
+   */
+  static parseHibernateModelsFile(filePath: string, content: string): ORMModel[] {
+    console.log(`☕ Parsing Hibernate model file: ${filePath}`);
+    
+    const models: ORMModel[] = [];
+    
+    // Find @Entity classes
+    const entityPattern = /@Entity[\s\S]*?public\s+class\s+(\w+)/g;
+    let match;
+    
+    while ((match = entityPattern.exec(content)) !== null) {
+      const modelName = match[1];
+      console.log(`   Found Hibernate entity: ${modelName}`);
+      
+      const model: ORMModel = {
+        id: `hibernate_${modelName}`,
+        name: modelName,
+        filename: path.basename(filePath),
+        framework: 'hibernate',
+        tableName: modelName.toLowerCase(),
+        sourceCode: content,
+        relationships: this.extractRelationships(content, 'hibernate'),
+        properties: this.extractProperties(content, 'hibernate'),
+        validations: [],
+        hooks: [],
+        scopes: [],
+        indexes: [],
+        metadata: {
+          extractedAt: new Date(),
+          framework: 'hibernate',
+          filename: path.basename(filePath),
+          filePath: filePath
+        }
+      };
+      
+      models.push(model);
+    }
+    
+    return models;
+  }
+  
+  /**
+   * Parse SQLAlchemy models file
+   */
+  static parseSQLAlchemyModelsFile(filePath: string, content: string): ORMModel[] {
+    console.log(`🐍 Parsing SQLAlchemy model file: ${filePath}`);
+    
+    const models: ORMModel[] = [];
+    
+    // Find SQLAlchemy model classes
+    const modelPattern = /class\s+(\w+)\s*\(\s*(Base|db\.Model)\s*\)/g;
+    let match;
+    
+    while ((match = modelPattern.exec(content)) !== null) {
+      const modelName = match[1];
+      console.log(`   Found SQLAlchemy model: ${modelName}`);
+      
+      const model: ORMModel = {
+        id: `sqlalchemy_${modelName}`,
+        name: modelName,
+        filename: path.basename(filePath),
+        framework: 'sqlalchemy',
+        tableName: modelName.toLowerCase(),
+        sourceCode: content,
+        relationships: this.extractRelationships(content, 'sqlalchemy'),
+        properties: this.extractProperties(content, 'sqlalchemy'),
+        validations: [],
+        hooks: [],
+        scopes: [],
+        indexes: [],
+        metadata: {
+          extractedAt: new Date(),
+          framework: 'sqlalchemy',
+          filename: path.basename(filePath),
+          filePath: filePath
+        }
+      };
+      
+      models.push(model);
+    }
+    
+    return models;
+  }
+  
+  /**
+   * Parse generic model files
+   */
+  static parseGenericModelsFile(filePath: string, content: string): ORMModel[] {
+    console.log(`⚪ Parsing generic model file: ${filePath}`);
+    
+    const models: ORMModel[] = [];
+    
+    // Look for generic model patterns
+    const patterns = [
+      /class\s+(\w+Model)/g,
+      /class\s+(\w+Entity)/g,
+      /class\s+(\w+)\s*.*?model/gi
+    ];
+    
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(content)) !== null) {
+        const modelName = match[1];
+        console.log(`   Found generic model: ${modelName}`);
+        
+        const model: ORMModel = {
+          id: `generic_${modelName}`,
+          name: modelName,
+          filename: path.basename(filePath),
+          framework: 'generic',
+          tableName: modelName.toLowerCase(),
+          sourceCode: content,
+          relationships: [],
+          properties: [],
+          validations: [],
+          hooks: [],
+          scopes: [],
+          indexes: [],
+          metadata: {
+            extractedAt: new Date(),
+            framework: 'generic',
+            filename: path.basename(filePath),
+            filePath: filePath
+          }
+        };
+        
         models.push(model);
       }
     }
@@ -927,7 +2100,7 @@ export class ComprehensiveDatabaseExtractor {
     
     // Create the model object with all extracted data
     const model: ORMModel = {
-      id: `model_${modelName}`,
+      id: `model_${modelName}_${path.basename(filename, path.extname(filename))}`,
       name: modelName,
       filename,
       framework,
@@ -1535,19 +2708,15 @@ export class ComprehensiveDatabaseExtractor {
       return [];
     }
   }
-  }
-  
+    
   // Helper methods for parsing
   static extractVersionFromFilename(filename: string): string {
     const match = filename.match(/(\d{4}_\d{2}_\d{2}_\d{6}|\d{14}|\d+)/);
     return match ? match[1] : filename;
   }
   
-  static extractNameFromFilename(filename: string): string {
-    return filename.replace(/^\d+_/, '').replace(/\.[^.]+$/, '').replace(/_/g, ' ');
-  }
   
-  static detectMigrationFramework(filename: string, content: string): Migration['framework'] {
+    static detectMigrationFramework(filename: string, content: string): Migration['framework'] {
     console.log(`🔍 Detecting migration framework for file: ${filename}`);
     
     // Enhanced Django migration detection
@@ -1648,7 +2817,7 @@ export class ComprehensiveDatabaseExtractor {
   /**
    * Extract Django migration version from filename (e.g., 0001_initial.py -> 0001)
    */
-  static extractDjangoMigrationVersion(filename: string): string {
+    static extractDjangoMigrationVersion(filename: string): string {
     const match = filename.match(/^(\d{4})_/);
     return match ? match[1] : '0000';
   }
@@ -1656,7 +2825,7 @@ export class ComprehensiveDatabaseExtractor {
   /**
    * Extract Django migration name from filename (e.g., 0001_initial.py -> initial)
    */
-  static extractDjangoMigrationName(filename: string): string {
+    static extractDjangoMigrationName(filename: string): string {
     const match = filename.match(/^\d{4}_([a-z0-9_]+)\.py$/i);
     return match ? match[1].replace(/_/g, ' ') : filename.replace(/\.py$/, '');
   }
@@ -1664,7 +2833,7 @@ export class ComprehensiveDatabaseExtractor {
   /**
    * Extract Laravel migration version from filename (e.g., 2023_01_01_123456_create_users_table.php -> 2023_01_01_123456)
    */
-  static extractLaravelMigrationVersion(filename: string): string {
+    static extractLaravelMigrationVersion(filename: string): string {
     const match = filename.match(/^(\d{4}_\d{2}_\d{2}_\d{6})_/);
     return match ? match[1] : '0000_00_00_000000';
   }
@@ -1940,10 +3109,6 @@ export class ComprehensiveDatabaseExtractor {
     return 'executed';
   }
   
-  static extractDescriptionFromContent(content: string): string {
-    const commentMatch = content.match(/(?:\/\*|#|--|\/\/)\s*(.+?)(?:\*\/|\n)/);
-    return commentMatch ? commentMatch[1].trim() : '';
-  }
   
   static detectORMFramework(filename: string, content: string): ORMModel['framework'] | null {
     // Enhanced Django detection

@@ -100,14 +100,8 @@ export function useProjectData(): UseProjectDataReturn {
       collaborators: [],
       permissions: undefined,
       // Preserve comprehensive metadata from extraction
-      databaseInfo: schema.databaseInfo,
-      views: schema.views,
-      triggers: schema.triggers,
-      functions: schema.functions,
-      procedures: schema.procedures,
-      migrationHistory: schema.migrationHistory,
-      ormModels: schema.ormModels,
-      sequences: schema.sequences,
+      ...(schema as any),
+      sequences: (schema as any).sequences,
       metadata: {
         totalTables: (schema.tables?.length || 0),
         totalColumns: schema.tables?.reduce((sum, table) => sum + (table.columns?.length || 0), 0) || 0,

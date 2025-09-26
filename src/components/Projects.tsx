@@ -107,7 +107,7 @@ export function Projects() {
       if (data.success && data.data) {
         const allProjects = data.data;
         console.log('📁 Projects component: Projects loaded:', allProjects.length, 'projects');
-        console.log('📁 Projects component: Project details:', allProjects.map(p => ({ 
+        console.log('📁 Projects component: Project details:', allProjects.map((p: any) => ({ 
           id: p.id, 
           name: p.name, 
           databaseCount: p.databaseCount,
@@ -118,9 +118,9 @@ export function Projects() {
         })));
         
         // Debug: Check for projects with tables
-        const projectsWithTables = allProjects.filter(p => (p.totalTables || 0) > 0);
+        const projectsWithTables = allProjects.filter((p: any) => (p.totalTables || 0) > 0);
         console.log('🔍 Projects with tables:', projectsWithTables.length);
-        console.log('🔍 Projects with tables details:', projectsWithTables.map(p => ({
+        console.log('🔍 Projects with tables details:', projectsWithTables.map((p: any) => ({
           id: p.id,
           name: p.name,
           totalTables: p.totalTables,
@@ -147,7 +147,7 @@ export function Projects() {
         const currentConnection = getConnectionInfo();
         
         // Update project status based on active connection
-        const updatedProjects = allProjects.map(project => {
+        const updatedProjects = allProjects.map((project: any) => {
           if (currentConnection && currentConnection.projectId === project.id) {
             return { ...project, status: 'connected' as const };
           }
@@ -214,9 +214,15 @@ export function Projects() {
       errorStack: error instanceof Error ? error.stack : undefined
     };
     
-    console.error('Real-time connection error:', errorInfo);
-    setRealtimeConnected(false);
-    showNotification('error', 'Real-time connection lost. Using fallback polling.');
+    // Only show error notifications for critical errors, not connection retries
+    if (error?.type === 'error' && errorInfo.errorMessage !== 'Unknown error') {
+      console.warn('Real-time connection error:', errorInfo);
+      setRealtimeConnected(false);
+      showNotification('error', 'Real-time connection lost. Using fallback polling.');
+    } else {
+      // For connection retries, just log as info
+      console.log('Real-time connection retry:', errorInfo);
+    }
   }, [showNotification]);
 
   // Set up real-time updates
@@ -751,7 +757,7 @@ export function Projects() {
 
   // Get status counts
   const statusCounts = useMemo(() => {
-    const counts = { all: projects.length, connected: 0, syncing: 0, error: 0, disconnected: 0 };
+    const counts = { all: projects.length, connected: 0, syncing: 0, error: 0, disconnected: 0, connecting: 0 };
     projects.forEach(project => {
       if (counts[project.status] !== undefined) {
         counts[project.status]++;

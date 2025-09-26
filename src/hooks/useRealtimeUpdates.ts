@@ -64,8 +64,17 @@ export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
       errorStack: error instanceof Error ? error.stack : undefined
     };
     
-    console.error('Real-time connection error:', errorInfo);
-    onError?.(error);
+    // Only log errors that are not connection retries
+    if (error?.type !== 'error' || !isConnectedRef.current) {
+      console.warn('Real-time connection error:', errorInfo);
+    }
+    
+    // Call the error handler with proper error handling
+    try {
+      onError?.(error);
+    } catch (callbackError) {
+      console.error('Error in onError callback:', callbackError);
+    }
   }, [onError]);
 
   // Connect to real-time updates

@@ -164,14 +164,19 @@ class RealtimeServiceImpl implements RealtimeService {
         errorObject: error,
         timestamp: new Date().toISOString(),
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A',
-        connectionState: typeof navigator !== 'undefined' ? navigator.connection?.effectiveType : 'N/A'
+        connectionState: typeof navigator !== 'undefined' ? (navigator as any).connection?.effectiveType : 'N/A'
       };
       
-      console.error('Real-time connection error:', errorDetails);
+      // Only log errors if we haven't exceeded max retry attempts
+      if (this.reconnectAttempts < this.maxReconnectAttempts) {
+        console.warn('Real-time connection error (will retry):', errorDetails);
+      } else {
+        console.error('Real-time connection error (max retries reached):', errorDetails);
+      }
       
       // Log additional debugging information
       if (this.eventSource) {
-        console.error('EventSource state:', {
+        console.warn('EventSource state:', {
           readyState: this.eventSource.readyState,
           url: this.eventSource.url,
           withCredentials: this.eventSource.withCredentials
@@ -183,7 +188,14 @@ class RealtimeServiceImpl implements RealtimeService {
       if (!this.isManualDisconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
         this.scheduleReconnect();
       } else {
-        this.disconnectCallbacks.forEach(callback => callback());
+        // Notify disconnect callbacks with error handling
+        this.disconnectCallbacks.forEach(callback => {
+          try {
+            callback();
+          } catch (callbackError) {
+            console.error('Error in disconnect callback:', callbackError);
+          }
+        });
       }
     };
   }
@@ -233,7 +245,14 @@ class RealtimeServiceImpl implements RealtimeService {
       console.error('Real-time service error (max retries reached):', errorInfo);
     }
     
-    this.errorCallbacks.forEach(callback => callback(error));
+    // Notify error callbacks with proper error handling
+    this.errorCallbacks.forEach(callback => {
+      try {
+        callback(error);
+      } catch (callbackError) {
+        console.error('Error in error callback:', callbackError);
+      }
+    });
   }
 }
 

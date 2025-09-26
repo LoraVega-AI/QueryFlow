@@ -248,16 +248,16 @@ export function TableNode(props: any) {
                   <span className="text-xs">{table.data.length}</span>
                 </div>
               )}
-              {table.columns.filter(col => !col.nullable).length > 0 && (
+              {table.columns.filter((col: any) => !col.nullable).length > 0 && (
                 <div className="flex items-center space-x-0.5" title="NOT NULL Columns">
                   <Lock className="w-3 h-3 text-red-500" />
-                  <span className="text-xs">{table.columns.filter(col => !col.nullable).length}</span>
+                  <span className="text-xs">{table.columns.filter((col: any) => !col.nullable).length}</span>
                 </div>
               )}
-              {table.columns.filter(col => col.unique).length > 0 && (
+              {table.columns.filter((col: any) => col.unique).length > 0 && (
                 <div className="flex items-center space-x-0.5" title="Unique Columns">
                   <Star className="w-3 h-3 text-purple-500" />
-                  <span className="text-xs">{table.columns.filter(col => col.unique).length}</span>
+                  <span className="text-xs">{table.columns.filter((col: any) => col.unique).length}</span>
                 </div>
               )}
             </div>
@@ -508,8 +508,8 @@ export function TableNode(props: any) {
                       {column.statistics.distinctValues && (
                         <div>Distinct: {column.statistics.distinctValues}</div>
                       )}
-                      {column.statistics.nullCount !== undefined && (
-                        <div>Nulls: {column.statistics.nullCount}</div>
+                      {(column.statistics as any).nullCount !== undefined && (
+                        <div>Nulls: {(column.statistics as any).nullCount}</div>
                       )}
                     </div>
                   </div>

@@ -201,6 +201,7 @@ export interface Migration {
   version: string;
   name: string;
   filename: string;
+  filePath?: string; // Full path to the migration file
   executedAt?: Date;
   rollbackFile?: string;
   dependencies?: string[];
@@ -213,10 +214,17 @@ export interface Migration {
   description?: string;
   author?: string;
   batch?: number; // For Laravel-style batch migrations
+  size?: number; // File size in bytes
+  createdAt?: Date; // File creation time
+  modifiedAt?: Date; // File modification time
+  content?: string; // File content preview
+  operations?: string[]; // Migration operations
 }
 
 export interface MigrationHistory {
   migrations: Migration[];
+  totalCount?: number;
+  lastMigration?: Migration;
   currentVersion?: string;
   framework: string;
   migrationsTable?: string;
@@ -229,7 +237,7 @@ export interface ORMModel {
   id: string;
   name: string;
   filename: string;
-  framework: 'sequelize' | 'prisma' | 'typeorm' | 'django' | 'laravel' | 'hibernate' | 'mongoose';
+  framework: 'sequelize' | 'prisma' | 'typeorm' | 'django' | 'laravel' | 'hibernate' | 'mongoose' | 'rails' | 'sqlalchemy' | 'generic' | 'peewee';
   tableName?: string;
   primaryKey?: string | string[];
   timestamps?: boolean;
@@ -245,6 +253,9 @@ export interface ORMModel {
   indexes?: ORMIndex[];
   metadata?: Record<string, any>;
   sourceCode?: string;
+  properties?: any[]; // Added for compatibility with comprehensiveDatabaseExtractor.ts
+  methods?: any[]; // Added for compatibility with comprehensiveDatabaseExtractor.ts
+  managers?: any[]; // Added for compatibility with comprehensiveDatabaseExtractor.ts
 }
 
 export interface ORMRelationship {
@@ -306,6 +317,7 @@ export interface DatabaseSchema {
   // Enhanced metadata
   migrationHistory?: MigrationHistory;
   ormModels?: ORMModel[];
+  anomalies?: any[];
   databaseInfo?: {
     type: string; // postgresql, mysql, sqlite, etc.
     version: string;

@@ -6,7 +6,7 @@ export async function POST(request: NextRequest) {
     console.log('🗑️ API: Clearing all projects...');
     
     // Clear all projects from database
-    await dbConnectionManager.clearAllProjects();
+    await (dbConnectionManager as any).clearAllProjects();
     
     return NextResponse.json({
       success: true,

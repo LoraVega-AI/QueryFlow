@@ -119,6 +119,7 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
   const [showIndexesPanel, setShowIndexesPanel] = useState(false);
   const [showMigrationPanel, setShowMigrationPanel] = useState(false);
   const [showORMPanel, setShowORMPanel] = useState(false);
+  const [showValidationPanel, setShowValidationPanel] = useState(false);
   const [showMetadataPanel, setShowMetadataPanel] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     databaseInfo: true,
@@ -1127,6 +1128,18 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                   <span className="text-xs">ORM</span>
                 </button>
                 <button
+                  onClick={() => setShowValidationPanel(!showValidationPanel)}
+                  className={`flex items-center space-x-1 px-2 py-2 rounded-md transition-colors ${
+                    showValidationPanel 
+                      ? 'bg-green-600 text-white hover:bg-green-700' 
+                      : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                  }`}
+                  title={showValidationPanel ? 'Hide Validation' : 'Show Validation'}
+                >
+                  <Shield className="w-4 h-4" />
+                  <span className="text-xs">Validation</span>
+                </button>
+                <button
                   onClick={() => setShowMetadataPanel(!showMetadataPanel)}
                   className={`flex items-center space-x-1 px-2 py-2 rounded-md transition-colors ${
                     showMetadataPanel 
@@ -1328,8 +1341,8 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
               <div className="space-y-2">
                 {/* Table-level indexes */}
                 {schema?.tables.map(table => 
-                  (table.indexes || []).map(index => (
-                    <div key={`${table.id}-${index.id}`} className="bg-gray-700 rounded-lg p-3">
+                  (table.indexes || []).map((index, indexIdx) => (
+                    <div key={`${table.id}-${index.name || index.id || indexIdx}-${indexIdx}`} className="bg-gray-700 rounded-lg p-3">
                       <div className="flex items-center justify-between mb-2">
                         <div>
                           <div className="text-white font-medium text-sm">{index.name}</div>
@@ -1439,17 +1452,17 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                           <span className="text-gray-400">Page Size:</span>
                           <span className="text-white">{dbInfo.pageSize} bytes</span>
                         </div>
-                        {dbInfo.journalMode && (
+                        {(dbInfo as any).journalMode && (
                           <div className="flex justify-between">
                             <span className="text-gray-400">Journal Mode:</span>
-                            <span className="text-white">{dbInfo.journalMode}</span>
+                            <span className="text-white">{(dbInfo as any).journalMode}</span>
                           </div>
                         )}
-                        {dbInfo.foreignKeys !== undefined && (
+                        {(dbInfo as any).foreignKeys !== undefined && (
                           <div className="flex justify-between">
                             <span className="text-gray-400">Foreign Keys:</span>
-                            <span className={`${dbInfo.foreignKeys ? 'text-green-400' : 'text-red-400'}`}>
-                              {dbInfo.foreignKeys ? 'Enabled' : 'Disabled'}
+                            <span className={`${(dbInfo as any).foreignKeys ? 'text-green-400' : 'text-red-400'}`}>
+                              {(dbInfo as any).foreignKeys ? 'Enabled' : 'Disabled'}
                             </span>
                           </div>
                         )}
@@ -1820,6 +1833,26 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                         <div className="text-gray-400 text-xs">Framework</div>
                       </div>
                     </div>
+                    
+                    {/* Framework Distribution */}
+                    {schema.migrationHistory.migrations.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-gray-600">
+                        <h5 className="text-sm font-semibold text-white mb-2">Framework Distribution</h5>
+                        <div className="space-y-2">
+                          {Object.entries(
+                            schema.migrationHistory.migrations.reduce((acc, m) => {
+                              acc[m.framework] = (acc[m.framework] || 0) + 1;
+                              return acc;
+                            }, {} as Record<string, number>)
+                          ).map(([framework, count]) => (
+                            <div key={framework} className="flex justify-between items-center">
+                              <span className="text-gray-300 text-xs capitalize">{framework}</span>
+                              <span className="text-gray-400 text-xs">{count} migrations</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Migration Timeline */}
@@ -1828,27 +1861,68 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                       <Clock className="w-5 h-5 text-blue-500" />
                       <h4 className="text-md font-semibold text-white">Migration Timeline</h4>
                     </div>
-                    <div className="space-y-3">
-                      {schema.migrationHistory.migrations.slice(0, 10).map((migration, index) => (
-                        <div key={migration.id} className="bg-gray-600 rounded p-3">
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {schema.migrationHistory.migrations.map((migration, index) => (
+                        <div key={migration.id} className="bg-gray-600 rounded p-3 hover:bg-gray-550 transition-colors">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-white font-medium text-sm">{migration.name}</div>
-                            <div className="flex items-center space-x-1">
+                            <div className="text-white font-medium text-sm truncate flex-1 mr-2">{migration.name}</div>
+                            <div className="flex items-center space-x-2">
                               <span className={`text-xs px-2 py-1 rounded ${
                                 migration.status === 'executed' ? 'bg-green-100 text-green-800' :
                                 migration.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-red-100 text-red-800'
+                                migration.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
                               }`}>
                                 {migration.status}
                               </span>
+                              <span className={`text-xs px-2 py-1 rounded-full ${
+                                migration.framework === 'django' ? 'bg-green-200 text-green-800' :
+                                migration.framework === 'laravel' ? 'bg-red-200 text-red-800' :
+                                migration.framework === 'sequelize' ? 'bg-blue-200 text-blue-800' :
+                                migration.framework === 'rails' ? 'bg-red-300 text-red-900' :
+                                'bg-gray-200 text-gray-800'
+                              }`}>
+                                {migration.framework}
+                              </span>
                             </div>
                           </div>
-                          <div className="text-xs text-gray-300">
-                            {migration.timestamp && new Date(migration.timestamp).toLocaleDateString()}
-                            {migration.description && ` • ${migration.description}`}
+                          
+                          <div className="text-xs text-gray-300 mb-2">
+                            <div className="flex items-center space-x-4">
+                              <span>📁 {migration.filename}</span>
+                              {migration.version && <span>🔢 v{migration.version}</span>}
+                              {migration.createdAt && (
+                                <span>📅 {new Date(migration.createdAt).toLocaleDateString()}</span>
+                              )}
+                            </div>
                           </div>
+                          
+                          {migration.description && (
+                            <div className="text-xs text-gray-400 mb-2">
+                              {migration.description}
+                            </div>
+                          )}
+                          
+                          {migration.operations && migration.operations.length > 0 && (
+                            <div className="text-xs text-gray-400">
+                              <span className="font-medium">Operations:</span> {migration.operations.join(', ')}
+                            </div>
+                          )}
+                          
+                          {migration.dependencies && migration.dependencies.length > 0 && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              <span className="font-medium">Dependencies:</span> {migration.dependencies.slice(0, 3).join(', ')}
+                              {migration.dependencies.length > 3 && ` +${migration.dependencies.length - 3} more`}
+                            </div>
+                          )}
                         </div>
                       ))}
+                      
+                      {schema.migrationHistory.migrations.length === 0 && (
+                        <div className="text-gray-400 text-sm text-center py-4">
+                          No migrations found in this project
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1893,82 +1967,147 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                         <div className="text-gray-400 text-xs">Total Models</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-blue-400">
-                          {schema.ormModels.reduce((sum, model) => sum + (model.relationships?.length || 0), 0)}
+                        <div className="text-2xl font-bold text-green-400">
+                          {[...new Set(schema.ormModels.map(m => m.framework))].length}
+                        </div>
+                        <div className="text-gray-400 text-xs">Frameworks</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-400">
+                          {schema.ormModels.reduce((sum, m) => sum + (m.relationships?.length || 0), 0)}
                         </div>
                         <div className="text-gray-400 text-xs">Relationships</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-green-400">
-                          {schema.ormModels.reduce((sum, model) => sum + (model.validations?.length || 0), 0)}
+                        <div className="text-2xl font-bold text-yellow-400">
+                          {schema.ormModels.reduce((sum, m) => sum + (m.properties?.length || 0), 0)}
                         </div>
-                        <div className="text-gray-400 text-xs">Validations</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-purple-400">
-                          {new Set(schema.ormModels.map(m => m.framework)).size}
-                        </div>
-                        <div className="text-gray-400 text-xs">Frameworks</div>
+                        <div className="text-gray-400 text-xs">Properties</div>
                       </div>
                     </div>
+                    
+                    {/* Framework Distribution */}
+                    {schema.ormModels.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-gray-600">
+                        <h5 className="text-sm font-semibold text-white mb-2">Framework Distribution</h5>
+                        <div className="space-y-2">
+                          {Object.entries(
+                            schema.ormModels.reduce((acc, m) => {
+                              acc[m.framework] = (acc[m.framework] || 0) + 1;
+                              return acc;
+                            }, {} as Record<string, number>)
+                          ).map(([framework, count]) => (
+                            <div key={framework} className="flex justify-between items-center">
+                              <div className="flex items-center space-x-2">
+                                <span className={`w-3 h-3 rounded-full ${
+                                  framework === 'django' ? 'bg-green-500' :
+                                  framework === 'laravel' ? 'bg-red-500' :
+                                  framework === 'sequelize' ? 'bg-blue-500' :
+                                  framework === 'typeorm' ? 'bg-purple-500' :
+                                  framework === 'prisma' ? 'bg-pink-500' :
+                                  framework === 'mongoose' ? 'bg-yellow-500' :
+                                  framework === 'rails' ? 'bg-red-600' :
+                                  'bg-gray-500'
+                                }`} />
+                                <span className="text-gray-300 text-xs capitalize">{framework}</span>
+                              </div>
+                              <span className="text-gray-400 text-xs">{count} models</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* ORM Models */}
-                  <div className="space-y-3">
-                    {schema.ormModels.map(model => (
-                      <div key={model.id} className="bg-gray-700 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <div className="text-white font-medium text-sm">{model.name}</div>
-                            <div className="text-gray-400 text-xs">{model.framework} • {model.tableName || 'No table'}</div>
+                  {/* ORM Models List */}
+                  <div className="bg-gray-700 rounded-lg p-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <Database className="w-5 h-5 text-blue-500" />
+                      <h4 className="text-md font-semibold text-white">Model Details</h4>
+                    </div>
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {schema.ormModels.map((model, index) => (
+                        <div key={model.id} className="bg-gray-600 rounded p-3 hover:bg-gray-550 transition-colors">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-white font-medium text-sm truncate flex-1 mr-2">{model.name}</div>
+                            <div className="flex items-center space-x-2">
+                              <span className={`text-xs px-2 py-1 rounded-full ${
+                                model.framework === 'django' ? 'bg-green-200 text-green-800' :
+                                model.framework === 'laravel' ? 'bg-red-200 text-red-800' :
+                                model.framework === 'sequelize' ? 'bg-blue-200 text-blue-800' :
+                                model.framework === 'typeorm' ? 'bg-purple-200 text-purple-800' :
+                                model.framework === 'prisma' ? 'bg-pink-200 text-pink-800' :
+                                model.framework === 'mongoose' ? 'bg-yellow-200 text-yellow-800' :
+                                model.framework === 'rails' ? 'bg-red-300 text-red-900' :
+                                'bg-gray-200 text-gray-800'
+                              }`}>
+                                {model.framework}
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex items-center space-x-1">
-                            <span className="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded">
-                              {model.framework}
-                            </span>
+                          
+                          <div className="text-xs text-gray-300 mb-2">
+                            <div className="flex items-center space-x-4">
+                              <span>📁 {model.filename}</span>
+                              {model.tableName && <span>🗃️ {model.tableName}</span>}
+                            </div>
                           </div>
+                          
+                          {model.properties && model.properties.length > 0 && (
+                            <div className="text-xs text-gray-400 mb-2">
+                              <span className="font-medium">Properties:</span> {model.properties.slice(0, 5).map(p => p.name || p.type).join(', ')}
+                              {model.properties.length > 5 && ` +${model.properties.length - 5} more`}
+                            </div>
+                          )}
+                          
+                          {model.relationships && model.relationships.length > 0 && (
+                            <div className="text-xs text-gray-400 mb-2">
+                              <span className="font-medium">Relationships:</span> {model.relationships.slice(0, 3).map((r: any) => `${r.type} ${(r as any).targetModel || (r as any).relatedModel || r.relatedTable || ''}`).join(', ')}
+                              {model.relationships.length > 3 && ` +${model.relationships.length - 3} more`}
+                            </div>
+                          )}
+                          
+                          {model.validations && model.validations.length > 0 && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              <span className="font-medium">Validations:</span> {model.validations.slice(0, 3).map((v: any) => (v as any).type || (v as any).rule || 'validation').join(', ')}
+                              {model.validations.length > 3 && ` +${model.validations.length - 3} more`}
+                            </div>
+                          )}
                         </div>
-                        
-                        {model.relationships && model.relationships.length > 0 && (
-                          <div className="mb-2">
-                            <div className="text-xs text-gray-400 mb-1">Relationships:</div>
-                            <div className="flex flex-wrap gap-1">
-                              {model.relationships.slice(0, 3).map((rel, idx) => (
-                                <span key={idx} className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                  {rel.type}
-                                </span>
-                              ))}
-                              {model.relationships.length > 3 && (
-                                <span className="text-xs text-gray-400">+{model.relationships.length - 3} more</span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {model.validations && model.validations.length > 0 && (
-                          <div className="mb-2">
-                            <div className="text-xs text-gray-400 mb-1">Validations:</div>
-                            <div className="flex flex-wrap gap-1">
-                              {model.validations.slice(0, 3).map((val, idx) => (
-                                <span key={idx} className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                                  {val.type}
-                                </span>
-                              ))}
-                              {model.validations.length > 3 && (
-                                <span className="text-xs text-gray-400">+{model.validations.length - 3} more</span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               ) : (
                 <div className="text-gray-400 text-sm text-center py-4">
-                  No ORM models found
+                  No ORM models available
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Schema Validation Panel */}
+        {showValidationPanel && (
+          <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col h-full">
+            <div className="p-4 border-b border-gray-700 flex-shrink-0 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-2">Schema Validation</h3>
+                <p className="text-sm text-gray-400">Database schema validation and analysis</p>
+              </div>
+              <button
+                onClick={() => setShowValidationPanel(false)}
+                className="p-1 hover:bg-gray-700 rounded transition-colors"
+                title="Close Validation"
+              >
+                <X className="w-5 h-5 text-gray-400 hover:text-white" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-6" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+              <div className="text-gray-400 text-sm text-center py-4">
+                Schema validation features coming soon
+              </div>
             </div>
           </div>
         )}
@@ -2007,7 +2146,7 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                         <div key={index} className="bg-gray-600 rounded p-3">
                           <div className="text-white font-medium text-sm">{view.name}</div>
                           <div className="text-gray-400 text-xs mt-1">
-                            {view.description || 'No description available'}
+                            {(view as any).description || 'No description available'}
                           </div>
                         </div>
                       ))}
@@ -2016,17 +2155,17 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                 )}
 
                 {/* Triggers */}
-                {schema?.triggers && schema.triggers.length > 0 && (
+                {(schema as any)?.triggers && (schema as any).triggers.length > 0 && (
                   <div className="bg-gray-700 rounded-lg p-4">
                     <div className="flex items-center space-x-2 mb-3">
                       <Zap className="w-5 h-5 text-yellow-500" />
                       <h4 className="text-md font-semibold text-white">Database Triggers</h4>
                       <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full">
-                        {schema.triggers.length}
+                        {(schema as any).triggers.length}
                       </span>
                     </div>
                     <div className="space-y-2">
-                      {schema.triggers.map((trigger, index) => (
+                      {(schema as any).triggers.map((trigger: any, index: number) => (
                         <div key={index} className="bg-gray-600 rounded p-3">
                           <div className="text-white font-medium text-sm">{trigger.name}</div>
                           <div className="text-gray-400 text-xs mt-1">
@@ -2053,7 +2192,7 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                         <div key={index} className="bg-gray-600 rounded p-3">
                           <div className="text-white font-medium text-sm">{func.name}</div>
                           <div className="text-gray-400 text-xs mt-1">
-                            {func.description || 'No description available'}
+                            {(func as any).description || 'No description available'}
                           </div>
                         </div>
                       ))}
@@ -2076,7 +2215,7 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                         <div key={index} className="bg-gray-600 rounded p-3">
                           <div className="text-white font-medium text-sm">{proc.name}</div>
                           <div className="text-gray-400 text-xs mt-1">
-                            {proc.description || 'No description available'}
+                            {(proc as any).description || 'No description available'}
                           </div>
                         </div>
                       ))}

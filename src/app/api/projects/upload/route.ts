@@ -113,26 +113,58 @@ export async function POST(request: NextRequest) {
     console.log('📊 Found source code databases:', sourceCodeDatabases.length);
     console.log('📊 Source code databases details:', sourceCodeDatabases.map(db => ({ name: db.name, type: db.type, tables: db.tables?.length || 0 })));
 
-    // Extract migration history and ORM models
+    // Extract migration history and ORM models with enhanced logging
     console.log('🔍 Extracting migration history and ORM models...');
-    const { ComprehensiveDatabaseExtractor } = await import('@/services/comprehensiveDatabaseExtractor');
+    console.log('🔍 Upload directory for migration scanning:', uploadDir);
     
-    const migrationHistory = await ComprehensiveDatabaseExtractor.extractMigrationHistory(uploadDir);
-    const ormModels = await ComprehensiveDatabaseExtractor.extractORMModels(uploadDir);
+    let migrationHistory = null;
+    let ormModels: any[] = [];
+    
+    try {
+      const { ComprehensiveDatabaseExtractor } = await import('@/services/comprehensiveDatabaseExtractor');
+      
+      console.log('🔄 Starting migration history extraction...');
+      migrationHistory = await ComprehensiveDatabaseExtractor.extractMigrationHistory(uploadDir);
+      console.log('✅ Migration history extraction completed');
+      
+      console.log('🔄 Starting ORM models extraction...');
+      ormModels = await ComprehensiveDatabaseExtractor.extractORMModels(uploadDir);
+      console.log('✅ ORM models extraction completed');
+      
+    } catch (extractionError) {
+      console.error('❌ Error during migration/ORM extraction:', extractionError);
+      console.error('❌ Error details:', {
+        message: extractionError instanceof Error ? extractionError.message : 'Unknown error',
+        stack: extractionError instanceof Error ? extractionError.stack : 'No stack'
+      });
+    }
     
     console.log(`📋 Found migration history: ${migrationHistory ? 'Yes' : 'No'}`);
-    console.log(`📋 Found ORM models: ${ormModels.length}`);
+    console.log(`📋 Found ORM models: ${ormModels?.length || 0}`);
     
     if (migrationHistory) {
       console.log(`   📄 ${migrationHistory.migrations.length} migrations (${migrationHistory.framework})`);
+      console.log(`   📊 Migration details:`);
+      migrationHistory.migrations.slice(0, 5).forEach((migration, index) => {
+        console.log(`      ${index + 1}. ${migration.filename} (${migration.framework}) - ${migration.status}`);
+      });
+      if (migrationHistory.migrations.length > 5) {
+        console.log(`      ... and ${migrationHistory.migrations.length - 5} more`);
+      }
     }
-    if (ormModels.length > 0) {
+    
+    if (ormModels && ormModels.length > 0) {
       console.log(`   🏗️ ORM models: ${ormModels.map(m => `${m.name} (${m.framework})`).join(', ')}`);
     }
 
     // Combine both actual database files and extracted definitions
     const allDatabases = [...databaseFiles, ...sourceCodeDatabases];
     console.log('📊 Total databases found:', allDatabases.length);
+    
+    // Detect anomalies across the entire project
+    console.log('🔍 Starting comprehensive anomaly detection...');
+    const projectAnomalies = await detectProjectAnomalies(uploadDir, allDatabases, migrationHistory, ormModels);
+    console.log(`🚨 Found anomalies: ${projectAnomalies.length}`);
 
     // Check if we have any databases at all
     if (allDatabases.length === 0) {
@@ -160,6 +192,7 @@ export async function POST(request: NextRequest) {
       indexes: allIndexes,
       migrationHistory,
       ormModels,
+      anomalies: projectAnomalies,
       databaseInfo: allDatabases[0]?.schema?.databaseInfo || {
         type: 'mixed',
         version: 'unknown',
@@ -477,7 +510,7 @@ async function testDatabaseFile(filePath: string): Promise<{ success: boolean; t
       id: `schema_${Date.now()}`,
       name: `Database Schema`,
       tables: schemaTables,
-      relationships: schemaTables.flatMap(table => table.relationships || []),
+      relationships: schemaTables.flatMap((table: any) => table.relationships || []),
       indexes: extractionResult.indexes || [],
       views: extractionResult.views || [],
       triggers: extractionResult.triggers || [],
@@ -855,4 +888,117 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles: string[], uplo
     console.error('❌ Error stack:', error instanceof Error ? error.stack : 'No stack');
     return [];
   }
+}
+
+/**
+ * Comprehensive anomaly detection across the entire project
+ */
+async function detectProjectAnomalies(
+  projectPath: string, 
+  databases: any[], 
+  migrationHistory: any, 
+  ormModels: any[]
+): Promise<any[]> {
+  console.log('🔍 Starting comprehensive project anomaly detection...');
+  const anomalies: any[] = [];
+  
+  try {
+    // Import anomaly detection services
+    const { ProjectAnomalyDetector } = await import('./projectAnomalyDetector');
+    
+    // Detect schema-level anomalies
+    const schemaAnomalies = await ProjectAnomalyDetector.detectSchemaAnomalies(databases);
+    anomalies.push(...schemaAnomalies);
+    
+    // Detect migration anomalies
+    if (migrationHistory) {
+      const migrationAnomalies = await ProjectAnomalyDetector.detectMigrationAnomalies(migrationHistory);
+      anomalies.push(...migrationAnomalies);
+    }
+    
+    // Detect ORM anomalies
+    if (ormModels?.length > 0) {
+      const ormAnomalies = await ProjectAnomalyDetector.detectORMAnomalies(ormModels);
+      anomalies.push(...ormAnomalies);
+    }
+    
+    // Detect file-based anomalies across ALL directories
+    const fileAnomalies = await ProjectAnomalyDetector.detectFileAnomalies(projectPath);
+    anomalies.push(...fileAnomalies);
+    
+    // Detect architecture anomalies
+    const architectureAnomalies = await ProjectAnomalyDetector.detectArchitectureAnomalies(projectPath, databases, ormModels);
+    anomalies.push(...architectureAnomalies);
+    
+    console.log(`✅ Anomaly detection completed. Found ${anomalies.length} anomalies`);
+    console.log(`📊 Anomaly breakdown:`, {
+      schemaAnomalies: schemaAnomalies.length,
+      migrationAnomalies: migrationHistory ? (await ProjectAnomalyDetector.detectMigrationAnomalies(migrationHistory)).length : 0,
+      ormAnomalies: ormModels?.length > 0 ? (await ProjectAnomalyDetector.detectORMAnomalies(ormModels)).length : 0,
+      fileAnomalies: fileAnomalies.length,
+      architectureAnomalies: architectureAnomalies.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Error during anomaly detection:', error);
+    
+    // Fallback to basic anomaly detection
+    const basicAnomalies = await detectBasicAnomalies(databases, migrationHistory, ormModels);
+    anomalies.push(...basicAnomalies);
+  }
+  
+  return anomalies;
+}
+
+/**
+ * Fallback basic anomaly detection
+ */
+async function detectBasicAnomalies(
+  databases: any[], 
+  migrationHistory: any, 
+  ormModels: any[]
+): Promise<any[]> {
+  const anomalies: any[] = [];
+  
+  // Check for missing primary keys
+  databases.forEach(db => {
+    db.tables?.forEach((table: any) => {
+      const hasPrimaryKey = table.columns?.some((col: any) => col.isPrimaryKey || col.constraints?.includes('PRIMARY KEY'));
+      if (!hasPrimaryKey) {
+        anomalies.push({
+          id: `anomaly_missing_pk_${table.name}_${Date.now()}`,
+          type: 'schema',
+          severity: 'warning',
+          title: 'Missing Primary Key',
+          description: `Table "${table.name}" does not have a primary key defined`,
+          affectedTable: table.name,
+          recommendation: 'Add a primary key constraint to ensure data integrity',
+          detectedAt: new Date()
+        });
+      }
+    });
+  });
+  
+  // Check for ORM-database mismatches
+  if (ormModels?.length > 0 && databases.length > 0) {
+    const dbTableNames = new Set(databases.flatMap(db => db.tables?.map((t: any) => t.name) || []));
+    const ormTableNames = new Set(ormModels.map(model => model.tableName).filter(Boolean));
+    
+    ormTableNames.forEach(ormTable => {
+      if (!dbTableNames.has(ormTable)) {
+        anomalies.push({
+          id: `anomaly_orm_mismatch_${ormTable}_${Date.now()}`,
+          type: 'consistency',
+          severity: 'warning',
+          title: 'ORM-Database Mismatch',
+          description: `ORM model references table "${ormTable}" but table not found in database schema`,
+          affectedTable: ormTable,
+          recommendation: 'Ensure ORM models match database schema or run migrations',
+          detectedAt: new Date()
+        });
+      }
+    });
+  }
+  
+  return anomalies;
 }

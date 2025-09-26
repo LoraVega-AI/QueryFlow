@@ -49,8 +49,29 @@ const DATABASE_FILE_EXTENSIONS = {
 
 // ORM and schema-related file patterns
 const ORM_FILE_PATTERNS = {
-  // Migration folders
-  migrations: ['migrations', 'db/migrations', 'database/migrations'],
+  // Migration folders - comprehensive framework support
+  migrations: [
+    // Standard migration directories
+    'migrations', 'db/migrations', 'db/migrate', 'database/migrations',
+    
+    // Framework-specific migration directories
+    // Django
+    'app/migrations', 'core/migrations', 'api/migrations',
+    'users/migrations', 'accounts/migrations', 'blog/migrations',
+    'posts/migrations', 'comments/migrations', 'products/migrations',
+    
+    // Laravel
+    'database/migrations', 'app/database/migrations',
+    
+    // Rails
+    'db/migrate', 'db/schema',
+    
+    // Node.js/TypeScript
+    'src/migrations', 'lib/migrations',
+    
+    // Other common patterns
+    'migration', 'migrate', 'alembic/versions'
+  ],
   
   // Schema files
   schemas: [
