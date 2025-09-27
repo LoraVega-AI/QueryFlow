@@ -183,6 +183,33 @@ export async function POST(request: NextRequest) {
     const allRelationships = allDatabases.flatMap(db => db.schema?.relationships || []);
     const allIndexes = allDatabases.flatMap(db => db.schema?.indexes || []);
     
+    // Merge extraction metadata from all databases
+    const allExtractionMetadata = allDatabases
+      .filter(db => db.extractionMetadata)
+      .map(db => db.extractionMetadata);
+    
+    // Combine frameworks, languages, and source files from all extraction metadata
+    const combinedFrameworks = [...new Set(allExtractionMetadata.flatMap(meta => meta.frameworks || []))];
+    const combinedLanguages = [...new Set(allExtractionMetadata.flatMap(meta => meta.languages || []))];
+    const combinedSourceFiles = [...new Set(allExtractionMetadata.flatMap(meta => meta.sourceFiles || []))];
+    const avgConfidence = allExtractionMetadata.length > 0 
+      ? Math.round(allExtractionMetadata.reduce((sum, meta) => sum + (meta.confidence || 0), 0) / allExtractionMetadata.length)
+      : 0;
+    const totalExtractionTime = allExtractionMetadata.reduce((sum, meta) => sum + (meta.extractionTime || 0), 0);
+
+    // If no extraction metadata, create basic metadata from project detection
+    const basicMetadata = {
+      frameworks: detectionResult.projectType ? [detectionResult.projectType] : ['sqlite'],
+      languages: detectionResult.projectType === 'django' ? ['python'] : 
+                detectionResult.projectType === 'laravel' ? ['php'] :
+                detectionResult.projectType === 'rails' ? ['ruby'] :
+                detectionResult.projectType === 'nodejs' ? ['javascript'] : ['sql'],
+      sourceFiles: filePaths.length,
+      confidence: 85, // Default confidence for basic detection
+      extractionTime: 0,
+      extractionCount: 0
+    };
+
     // Create comprehensive schema with enhanced metadata
     const mergedSchema = {
       id: `schema_${Date.now()}`,
@@ -202,6 +229,15 @@ export async function POST(request: NextRequest) {
       triggers: allDatabases.flatMap(db => db.schema?.triggers || []),
       functions: allDatabases.flatMap(db => db.schema?.functions || []),
       procedures: allDatabases.flatMap(db => db.schema?.procedures || []),
+      // Add extraction metadata to schema (use combined or fall back to basic)
+      metadata: allExtractionMetadata.length > 0 ? {
+        frameworks: combinedFrameworks,
+        languages: combinedLanguages,
+        sourceFiles: combinedSourceFiles,
+        confidence: avgConfidence,
+        extractionTime: totalExtractionTime,
+        extractionCount: allExtractionMetadata.length
+      } : basicMetadata,
       createdAt: new Date(),
       updatedAt: new Date(),
       version: 1
@@ -238,7 +274,8 @@ export async function POST(request: NextRequest) {
       name: project.name,
       technology: project.technology,
       databaseCount: project.databaseCount,
-      databases: project.databases.length
+      databases: project.databases.length,
+      schemaMetadata: mergedSchema.metadata
     });
 
     // Save project to database

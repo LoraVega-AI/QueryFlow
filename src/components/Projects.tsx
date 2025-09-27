@@ -1146,6 +1146,39 @@ export function Projects() {
                 {project.description}
               </p>
 
+              {/* Framework Information */}
+              {project.schema?.metadata?.frameworks && project.schema.metadata.frameworks.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <span className="text-sm font-semibold text-gray-700">Frameworks Detected:</span>
+                    <div className="flex flex-wrap gap-2">
+                      {project.schema.metadata.frameworks.map((framework: string, index: number) => (
+                        <span
+                          key={index}
+                          className="px-2 py-1 bg-gradient-to-r from-purple-100 to-purple-200 text-purple-800 rounded-lg text-xs font-medium border border-purple-200"
+                        >
+                          {framework}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  {project.schema.metadata.confidence && (
+                    <div className="flex items-center space-x-2 text-sm text-gray-600">
+                      <span className="font-medium">Confidence:</span>
+                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                        project.schema.metadata.confidence >= 80 
+                          ? 'bg-green-100 text-green-800' 
+                          : project.schema.metadata.confidence >= 60 
+                          ? 'bg-yellow-100 text-yellow-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {project.schema.metadata.confidence}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Stats */}
               <div className="flex items-center justify-between text-sm text-gray-500 mb-6">
                 <div className="flex items-center space-x-2 bg-gray-100 px-3 py-2 rounded-xl">
@@ -1165,6 +1198,56 @@ export function Projects() {
                   )}
                 </div>
               </div>
+
+              {/* Additional Project Details */}
+              {project.schema?.metadata && (
+                <div className="mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    {project.schema.metadata.languages && project.schema.metadata.languages.length > 0 && (
+                      <div className="flex items-center space-x-2">
+                        <span className="font-medium text-gray-700">Languages:</span>
+                        <span className="text-gray-600">{project.schema.metadata.languages.join(', ')}</span>
+                      </div>
+                    )}
+                    {project.schema.metadata.sourceFiles && project.schema.metadata.sourceFiles.length > 0 && (
+                      <div className="flex items-center space-x-2">
+                        <span className="font-medium text-gray-700">Source Files:</span>
+                        <span className="text-gray-600">{project.schema.metadata.sourceFiles.length} files</span>
+                      </div>
+                    )}
+                    {project.schema.metadata.extractionTime && (
+                      <div className="flex items-center space-x-2">
+                        <span className="font-medium text-gray-700">Extraction Time:</span>
+                        <span className="text-gray-600">{project.schema.metadata.extractionTime}ms</span>
+                      </div>
+                    )}
+                    {project.hasForeignKeys !== undefined && (
+                      <div className="flex items-center space-x-2">
+                        <span className="font-medium text-gray-700">Foreign Keys:</span>
+                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                          project.hasForeignKeys 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {project.hasForeignKeys ? 'Yes' : 'No'}
+                        </span>
+                      </div>
+                    )}
+                    {project.hasIndexes !== undefined && (
+                      <div className="flex items-center space-x-2">
+                        <span className="font-medium text-gray-700">Indexes:</span>
+                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                          project.hasIndexes 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {project.hasIndexes ? 'Yes' : 'No'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Schema/Tables Info */}
               {project.schema ? (
