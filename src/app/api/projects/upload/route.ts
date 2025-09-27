@@ -594,26 +594,42 @@ function detectProjectType(filePaths: string[]): { projectName: string; projectT
     return { projectName: 'Node.js Project', projectType: 'nodejs' };
   }
 
-  // Check for Python projects
+  // Check for Django (must come before general Python check)
+  if (fileNames.has('manage.py') || fileNames.has('settings.py') || directories.has('django') || 
+      filePaths.some(f => f.includes('django') || f.includes('manage.py') || f.includes('settings.py'))) {
+    console.log('🎸 Detected Django project');
+    return { projectName: 'Django Project', projectType: 'django' };
+  }
+
+  // Check for Flask
+  if (fileNames.has('app.py') || fileNames.has('flask_app.py') || 
+      filePaths.some(f => f.includes('flask') && f.endsWith('.py'))) {
+    console.log('🧪 Detected Flask project');
+    return { projectName: 'Flask Project', projectType: 'flask' };
+  }
+
+  // Check for FastAPI
+  if (fileNames.has('main.py') && filePaths.some(f => f.includes('fastapi') || f.includes('uvicorn'))) {
+    console.log('⚡ Detected FastAPI project');
+    return { projectName: 'FastAPI Project', projectType: 'fastapi' };
+  }
+
+  // Check for Python projects (general Python - must come after specific frameworks)
   if (fileNames.has('requirements.txt') || fileNames.has('setup.py') || fileNames.has('pyproject.toml')) {
     console.log('🐍 Detected Python project');
     return { projectName: 'Python Project', projectType: 'python' };
   }
 
-  // Check for Django
-  if (fileNames.has('manage.py') || fileNames.has('settings.py')) {
-    console.log('🎸 Detected Django project');
-    return { projectName: 'Django Project', projectType: 'django' };
-  }
-
-  // Check for Laravel
-  if (fileNames.has('artisan') || fileNames.has('composer.json')) {
+  // Check for Laravel (must come before general PHP check)
+  if (fileNames.has('artisan') || fileNames.has('composer.json') || 
+      filePaths.some(f => f.includes('laravel') || f.includes('artisan'))) {
     console.log('🎼 Detected Laravel project');
     return { projectName: 'Laravel Project', projectType: 'laravel' };
   }
 
-  // Check for Ruby/Rails
-  if (fileNames.has('gemfile') || fileNames.has('rails') || fileNames.has('config.ru')) {
+  // Check for Ruby/Rails (must come before general Ruby check)
+  if (fileNames.has('gemfile') || fileNames.has('rails') || fileNames.has('config.ru') ||
+      filePaths.some(f => f.includes('rails') || f.includes('gemfile'))) {
     console.log('💎 Detected Ruby/Rails project');
     return { projectName: 'Ruby on Rails Project', projectType: 'rails' };
   }
@@ -630,17 +646,19 @@ function detectProjectType(filePaths: string[]): { projectName: string; projectT
     return { projectName: 'Java Project', projectType: 'java' };
   }
 
-  // Check for React
-  if (fileNames.has('src/app.js') || fileNames.has('src/index.js') ||
-      (fileNames.has('package.json') && directories.has('src'))) {
-    console.log('⚛️ Detected React project');
-    return { projectName: 'React Project', projectType: 'react' };
-  }
-
-  // Check for Next.js
-  if (fileNames.has('next.config.js') || directories.has('pages') || directories.has('app')) {
+  // Check for Next.js (must come before React check)
+  if (fileNames.has('next.config.js') || directories.has('pages') || directories.has('app') ||
+      filePaths.some(f => f.includes('next.config') || f.includes('_app.js') || f.includes('_document.js'))) {
     console.log('▲ Detected Next.js project');
     return { projectName: 'Next.js Project', projectType: 'nextjs' };
+  }
+
+  // Check for React (must come after Next.js check)
+  if (fileNames.has('src/app.js') || fileNames.has('src/index.js') ||
+      (fileNames.has('package.json') && directories.has('src')) ||
+      filePaths.some(f => f.includes('react') && f.endsWith('.js'))) {
+    console.log('⚛️ Detected React project');
+    return { projectName: 'React Project', projectType: 'react' };
   }
 
   // Check for Vue.js
