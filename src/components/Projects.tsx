@@ -85,6 +85,8 @@ export function Projects() {
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
   // Table details expansion state (for showing rows/columns)
   const [expandedTableDetails, setExpandedTableDetails] = useState<Set<string>>(new Set());
+  // Section expansion state
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   
   // Session management
   const { addRecentProject, getRecentProjects, updateUserPreferences, getUserPreferences } = useSessionManager({
@@ -801,6 +803,19 @@ export function Projects() {
     });
   }, []);
 
+  // Toggle section expansion
+  const toggleSection = useCallback((sectionKey: string) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sectionKey)) {
+        newSet.delete(sectionKey);
+      } else {
+        newSet.add(sectionKey);
+      }
+      return newSet;
+    });
+  }, []);
+
   // Export project database info
   const handleExportProject = useCallback((project: Project) => {
     try {
@@ -1148,51 +1163,80 @@ export function Projects() {
 
               {/* Framework Information */}
               {project.schema?.metadata?.frameworks && project.schema.metadata.frameworks.length > 0 && (
-                <div className="mb-6 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border border-indigo-100 shadow-sm">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
-                      <span className="text-white text-sm font-bold">⚡</span>
-                    </div>
-                    <span className="text-sm font-bold text-gray-800">Framework Detection</span>
-                  </div>
-                  <div className="flex items-center space-x-3 mb-3">
-                    <span className="text-sm font-medium text-gray-700">Detected:</span>
-                    <div className="flex flex-wrap gap-2">
-                      {project.schema.metadata.frameworks.map((framework: string, index: number) => (
-                        <span
-                          key={index}
-                          className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-full text-xs font-bold shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
-                        >
-                          {framework.toUpperCase()}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  {project.schema.metadata.confidence && (
+                <div className="mb-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-100 shadow-sm">
+                  <div 
+                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-indigo-100 transition-colors duration-200"
+                    onClick={() => toggleSection(`${project.id}-frameworks`)}
+                  >
                     <div className="flex items-center space-x-3">
-                      <span className="text-sm font-medium text-gray-700">Confidence:</span>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-16 bg-gray-200 rounded-full h-2">
-                          <div 
-                            className={`h-2 rounded-full transition-all duration-300 ${
-                              project.schema.metadata.confidence >= 80 
-                                ? 'bg-gradient-to-r from-green-400 to-green-600' 
-                                : project.schema.metadata.confidence >= 60 
-                                ? 'bg-gradient-to-r from-yellow-400 to-orange-500' 
-                                : 'bg-gradient-to-r from-red-400 to-red-600'
-                            }`}
-                            style={{ width: `${project.schema.metadata.confidence}%` }}
-                          ></div>
+                      <div className="w-6 h-6 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        <span className="text-white text-xs font-bold">⚡</span>
+                      </div>
+                      <span className="text-sm font-bold text-gray-800">Framework Detection</span>
+                      <div className="flex space-x-1">
+                        {project.schema.metadata.frameworks.slice(0, 2).map((framework: string, index: number) => (
+                          <span
+                            key={index}
+                            className="px-2 py-0.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-full text-xs font-bold"
+                          >
+                            {framework.toUpperCase()}
+                          </span>
+                        ))}
+                        {project.schema.metadata.frameworks.length > 2 && (
+                          <span className="px-2 py-0.5 bg-gray-500 text-white rounded-full text-xs font-bold">
+                            +{project.schema.metadata.frameworks.length - 2}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
+                      expandedSections.has(`${project.id}-frameworks`) ? 'rotate-180' : ''
+                    }`} />
+                  </div>
+                  {expandedSections.has(`${project.id}-frameworks`) && (
+                    <div className="px-3 pb-3 border-t border-indigo-100">
+                      <div className="pt-3 space-y-3">
+                        <div className="flex items-center space-x-3">
+                          <span className="text-sm font-medium text-gray-700">Detected:</span>
+                          <div className="flex flex-wrap gap-2">
+                            {project.schema.metadata.frameworks.map((framework: string, index: number) => (
+                              <span
+                                key={index}
+                                className="px-2 py-1 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-full text-xs font-bold"
+                              >
+                                {framework.toUpperCase()}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          project.schema.metadata.confidence >= 80 
-                            ? 'bg-green-100 text-green-800 border border-green-200' 
-                            : project.schema.metadata.confidence >= 60 
-                            ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' 
-                            : 'bg-red-100 text-red-800 border border-red-200'
-                        }`}>
-                          {project.schema.metadata.confidence}%
-                        </span>
+                        {project.schema.metadata.confidence && (
+                          <div className="flex items-center space-x-3">
+                            <span className="text-sm font-medium text-gray-700">Confidence:</span>
+                            <div className="flex items-center space-x-2">
+                              <div className="w-16 bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className={`h-2 rounded-full transition-all duration-300 ${
+                                    project.schema.metadata.confidence >= 80 
+                                      ? 'bg-gradient-to-r from-green-400 to-green-600' 
+                                      : project.schema.metadata.confidence >= 60 
+                                      ? 'bg-gradient-to-r from-yellow-400 to-orange-500' 
+                                      : 'bg-gradient-to-r from-red-400 to-red-600'
+                                  }`}
+                                  style={{ width: `${project.schema.metadata.confidence}%` }}
+                                ></div>
+                              </div>
+                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                project.schema.metadata.confidence >= 80 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : project.schema.metadata.confidence >= 60 
+                                  ? 'bg-yellow-100 text-yellow-800' 
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {project.schema.metadata.confidence}%
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1200,27 +1244,23 @@ export function Projects() {
               )}
 
               {/* Stats */}
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-3 bg-gradient-to-r from-slate-100 to-gray-100 px-4 py-3 rounded-xl border border-gray-200 shadow-sm">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                    <RefreshCw className="w-4 h-4 text-white" />
-                  </div>
-                  <div>
-                    <span className="text-sm font-medium text-gray-600">Last synced</span>
-                    <div className="text-sm font-bold text-gray-800">{formatLastSynced(project.lastSynced)}</div>
-                  </div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2 bg-gradient-to-r from-slate-100 to-gray-100 px-3 py-2 rounded-lg border border-gray-200">
+                  <RefreshCw className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs font-medium text-gray-600">Last synced:</span>
+                  <span className="text-xs font-bold text-gray-800">{formatLastSynced(project.lastSynced)}</span>
                 </div>
-                <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
                   {project.totalTables !== undefined && (
-                    <div className="flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-4 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105">
-                      <Database className="w-4 h-4" />
-                      <span className="text-sm font-bold">{project.totalTables} tables</span>
+                    <div className="flex items-center space-x-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-3 py-2 rounded-lg shadow-sm">
+                      <Database className="w-3 h-3" />
+                      <span className="text-xs font-bold">{project.totalTables} tables</span>
                     </div>
                   )}
                   {project.totalRows !== undefined && (
-                    <div className="flex items-center space-x-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white px-4 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105">
-                      <span className="text-sm">📊</span>
-                      <span className="text-sm font-bold">{(project.totalRows || 0).toLocaleString()} rows</span>
+                    <div className="flex items-center space-x-1 bg-gradient-to-r from-emerald-500 to-green-600 text-white px-3 py-2 rounded-lg shadow-sm">
+                      <span className="text-xs">📊</span>
+                      <span className="text-xs font-bold">{(project.totalRows || 0).toLocaleString()}</span>
                     </div>
                   )}
                 </div>
@@ -1228,91 +1268,123 @@ export function Projects() {
 
               {/* Additional Project Details */}
               {project.schema?.metadata && (
-                <div className="mb-6 p-5 bg-gradient-to-r from-slate-50 to-gray-50 rounded-xl border border-slate-200 shadow-sm">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="w-8 h-8 bg-gradient-to-br from-slate-500 to-gray-600 rounded-lg flex items-center justify-center">
-                      <span className="text-white text-sm font-bold">🔧</span>
+                <div className="mb-4 bg-gradient-to-r from-slate-50 to-gray-50 rounded-lg border border-slate-200 shadow-sm">
+                  <div 
+                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-100 transition-colors duration-200"
+                    onClick={() => toggleSection(`${project.id}-details`)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-6 h-6 bg-gradient-to-br from-slate-500 to-gray-600 rounded-lg flex items-center justify-center">
+                        <span className="text-white text-xs font-bold">🔧</span>
+                      </div>
+                      <span className="text-sm font-bold text-gray-800">Project Details</span>
+                      <div className="flex space-x-1">
+                        {project.schema.metadata.languages && project.schema.metadata.languages.length > 0 && (
+                          <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                            {project.schema.metadata.languages[0]}
+                          </span>
+                        )}
+                        {project.hasForeignKeys && (
+                          <span className="px-2 py-0.5 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                            FK
+                          </span>
+                        )}
+                        {project.hasIndexes && (
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                            IDX
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-sm font-bold text-gray-800">Project Details</span>
+                    <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
+                      expandedSections.has(`${project.id}-details`) ? 'rotate-180' : ''
+                    }`} />
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {project.schema.metadata.languages && project.schema.metadata.languages.length > 0 && (
-                      <div className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-100 shadow-sm">
-                        <div className="w-6 h-6 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center">
-                          <span className="text-white text-xs font-bold">💻</span>
-                        </div>
-                        <div>
-                          <span className="text-xs font-medium text-gray-600">Languages</span>
-                          <div className="text-sm font-bold text-gray-800">{project.schema.metadata.languages.join(', ')}</div>
-                        </div>
-                      </div>
-                    )}
-                    {project.schema.metadata.sourceFiles && project.schema.metadata.sourceFiles.length > 0 && (
-                      <div className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-100 shadow-sm">
-                        <div className="w-6 h-6 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center">
-                          <span className="text-white text-xs font-bold">📁</span>
-                        </div>
-                        <div>
-                          <span className="text-xs font-medium text-gray-600">Source Files</span>
-                          <div className="text-sm font-bold text-gray-800">{project.schema.metadata.sourceFiles.length} files</div>
-                        </div>
-                      </div>
-                    )}
-                    {project.schema.metadata.extractionTime && (
-                      <div className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-100 shadow-sm">
-                        <div className="w-6 h-6 bg-gradient-to-br from-purple-400 to-purple-600 rounded-full flex items-center justify-center">
-                          <span className="text-white text-xs font-bold">⏱️</span>
-                        </div>
-                        <div>
-                          <span className="text-xs font-medium text-gray-600">Extraction Time</span>
-                          <div className="text-sm font-bold text-gray-800">{project.schema.metadata.extractionTime}ms</div>
-                        </div>
-                      </div>
-                    )}
-                    {project.hasForeignKeys !== undefined && (
-                      <div className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-100 shadow-sm">
-                        <div className="w-6 h-6 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center">
-                          <span className="text-white text-xs font-bold">🔗</span>
-                        </div>
-                        <div>
-                          <span className="text-xs font-medium text-gray-600">Foreign Keys</span>
-                          <div className={`px-2 py-1 rounded-full text-xs font-bold inline-block ${
-                            project.hasForeignKeys 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            {project.hasForeignKeys ? 'Yes' : 'No'}
+                  {expandedSections.has(`${project.id}-details`) && (
+                    <div className="px-3 pb-3 border-t border-slate-200">
+                      <div className="pt-3 grid grid-cols-2 gap-3">
+                        {project.schema.metadata.languages && project.schema.metadata.languages.length > 0 && (
+                          <div className="flex items-center space-x-2 p-2 bg-white rounded-lg border border-gray-100">
+                            <div className="w-5 h-5 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs">💻</span>
+                            </div>
+                            <div>
+                              <span className="text-xs font-medium text-gray-600">Languages</span>
+                              <div className="text-xs font-bold text-gray-800">{project.schema.metadata.languages.join(', ')}</div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    )}
-                    {project.hasIndexes !== undefined && (
-                      <div className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-100 shadow-sm">
-                        <div className="w-6 h-6 bg-gradient-to-br from-indigo-400 to-indigo-600 rounded-full flex items-center justify-center">
-                          <span className="text-white text-xs font-bold">📊</span>
-                        </div>
-                        <div>
-                          <span className="text-xs font-medium text-gray-600">Indexes</span>
-                          <div className={`px-2 py-1 rounded-full text-xs font-bold inline-block ${
-                            project.hasIndexes 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            {project.hasIndexes ? 'Yes' : 'No'}
+                        )}
+                        {project.schema.metadata.sourceFiles && project.schema.metadata.sourceFiles.length > 0 && (
+                          <div className="flex items-center space-x-2 p-2 bg-white rounded-lg border border-gray-100">
+                            <div className="w-5 h-5 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs">📁</span>
+                            </div>
+                            <div>
+                              <span className="text-xs font-medium text-gray-600">Files</span>
+                              <div className="text-xs font-bold text-gray-800">{project.schema.metadata.sourceFiles.length}</div>
+                            </div>
                           </div>
-                        </div>
+                        )}
+                        {project.schema.metadata.extractionTime && (
+                          <div className="flex items-center space-x-2 p-2 bg-white rounded-lg border border-gray-100">
+                            <div className="w-5 h-5 bg-gradient-to-br from-purple-400 to-purple-600 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs">⏱️</span>
+                            </div>
+                            <div>
+                              <span className="text-xs font-medium text-gray-600">Time</span>
+                              <div className="text-xs font-bold text-gray-800">{project.schema.metadata.extractionTime}ms</div>
+                            </div>
+                          </div>
+                        )}
+                        {project.hasForeignKeys !== undefined && (
+                          <div className="flex items-center space-x-2 p-2 bg-white rounded-lg border border-gray-100">
+                            <div className="w-5 h-5 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs">🔗</span>
+                            </div>
+                            <div>
+                              <span className="text-xs font-medium text-gray-600">Foreign Keys</span>
+                              <div className={`px-1 py-0.5 rounded-full text-xs font-bold ${
+                                project.hasForeignKeys 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {project.hasForeignKeys ? 'Yes' : 'No'}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {project.hasIndexes !== undefined && (
+                          <div className="flex items-center space-x-2 p-2 bg-white rounded-lg border border-gray-100">
+                            <div className="w-5 h-5 bg-gradient-to-br from-indigo-400 to-indigo-600 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs">📊</span>
+                            </div>
+                            <div>
+                              <span className="text-xs font-medium text-gray-600">Indexes</span>
+                              <div className={`px-1 py-0.5 rounded-full text-xs font-bold ${
+                                project.hasIndexes 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {project.hasIndexes ? 'Yes' : 'No'}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Schema/Tables Info */}
               {project.schema ? (
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
+                <div className="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100 shadow-sm">
+                  <div 
+                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-blue-100 transition-colors duration-200"
+                    onClick={() => toggleSection(`${project.id}-tables`)}
+                  >
                     <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                      <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
                         <Database className="w-4 h-4 text-white" />
                       </div>
                       <div>
@@ -1322,34 +1394,42 @@ export function Projects() {
                     </div>
                     <div className="flex items-center space-x-2">
                       <button
-                        onClick={() => handleExportProject(project)}
-                        className="p-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExportProject(project);
+                        }}
+                        className="p-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition-all duration-200 shadow-sm hover:shadow-md"
                         title="Export database info"
                       >
-                        <Printer className="w-4 h-4" />
+                        <Printer className="w-3 h-3" />
                       </button>
+                      <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
+                        expandedSections.has(`${project.id}-tables`) ? 'rotate-180' : ''
+                      }`} />
                     </div>
                   </div>
-                  <div className="space-y-2">
+                  {expandedSections.has(`${project.id}-tables`) && (
+                    <div className="px-3 pb-3 border-t border-blue-100">
+                      <div className="pt-3 space-y-2">
                     {(project.schema?.tables || []).slice(0, 3).map((table: any, index: number) => {
                       const tableKey = `${project.id}-${table.name}`;
                       const isExpanded = expandedTableDetails.has(tableKey);
                       
                       return (
-                        <div key={`${project.id}-table-${table.name}-${index}`} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
-                          <div className="flex items-center justify-between p-4 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 cursor-pointer" onClick={() => toggleTableDetails(tableKey)}>
-                            <div className="flex items-center space-x-4">
-                              <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-lg flex items-center justify-center">
-                                <Database className="w-4 h-4 text-white" />
+                        <div key={`${project.id}-table-${table.name}-${index}`} className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                          <div className="flex items-center justify-between p-3 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 cursor-pointer" onClick={() => toggleTableDetails(tableKey)}>
+                            <div className="flex items-center space-x-3">
+                              <div className="w-6 h-6 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-lg flex items-center justify-center">
+                                <Database className="w-3 h-3 text-white" />
                               </div>
                               <div>
-                                <span className="font-bold text-gray-800 text-sm">{table.name}</span>
-                                <div className="flex items-center space-x-2 mt-1">
-                                  <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                                <span className="font-bold text-gray-800 text-xs">{table.name}</span>
+                                <div className="flex items-center space-x-1 mt-0.5">
+                                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
                                     {table.rowCount || 0} rows
                                   </span>
                                   {table.columns && (
-                                    <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                                    <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded-full text-xs font-medium">
                                       {table.columns.length} cols
                                     </span>
                                   )}
@@ -1357,7 +1437,7 @@ export function Projects() {
                               </div>
                             </div>
                             <div className="flex items-center space-x-2">
-                              <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                              <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
                             </div>
                           </div>
                           
@@ -1507,7 +1587,7 @@ export function Projects() {
                     {(project.schema?.tables?.length || 0) > 3 && (
                       <button
                         onClick={() => toggleTableExpansion(project.id)}
-                        className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 text-sm font-bold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                        className="w-full px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:from-blue-600 hover:to-indigo-700 text-xs font-bold transition-all duration-200 shadow-sm hover:shadow-md"
                       >
                         {expandedTables.has(project.id) 
                           ? `- Hide ${(project.schema?.tables?.length || 0) - 3} more tables`
@@ -1515,7 +1595,9 @@ export function Projects() {
                         }
                       </button>
                     )}
-                  </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="mb-4">
