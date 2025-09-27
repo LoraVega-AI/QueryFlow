@@ -388,6 +388,9 @@ class ApplicationDataManager {
   private static instance: ApplicationDataManager;
   private appDb: any = null; // SQLite Database instance
   private initialized = false;
+  private projectsCache: any[] | null = null;
+  private cacheTimestamp: number = 0;
+  private readonly CACHE_TTL = 30000; // 30 seconds cache TTL
 
   private constructor() {}
 
@@ -396,6 +399,13 @@ class ApplicationDataManager {
       ApplicationDataManager.instance = new ApplicationDataManager();
     }
     return ApplicationDataManager.instance;
+  }
+
+  // Cache invalidation methods
+  private invalidateProjectsCache(): void {
+    this.projectsCache = null;
+    this.cacheTimestamp = 0;
+    console.log('🗑️ Projects cache invalidated');
   }
 
   async initialize(): Promise<void> {
@@ -598,6 +608,9 @@ class ApplicationDataManager {
       ]);
       
       console.log('✅ Project saved successfully to database');
+      
+      // Invalidate cache after successful save
+      this.invalidateProjectsCache();
     } catch (error) {
       console.error('❌ Failed to save project to database:', error);
       console.error('❌ Error type:', typeof error);
@@ -627,18 +640,61 @@ class ApplicationDataManager {
     if (!this.appDb) await this.initialize();
     if (!this.appDb) return []; // SQLite not available
 
-    const rows = await this.appDb.all('SELECT * FROM projects ORDER BY updated_at DESC');
-    return rows.map((row: any) => ({
-      ...row,
-      schema: JSON.parse(row.schema_data || '{}'),
-      isExample: row.is_example === 1,
-      databaseCount: row.database_count,
-      totalTables: row.total_tables || 0,
-      totalRows: row.total_rows || 0,
-      hasForeignKeys: row.has_foreign_keys === 1,
-      hasIndexes: row.has_indexes === 1,
-      lastSynced: row.last_synced
-    }));
+    // Check cache first
+    const now = Date.now();
+    if (this.projectsCache && (now - this.cacheTimestamp) < this.CACHE_TTL) {
+      console.log('📦 Returning cached projects data');
+      return this.projectsCache;
+    }
+
+    console.log('🔄 Fetching fresh projects data from database');
+    
+    // Optimized query with only necessary fields
+    const rows = await this.appDb.all(`
+      SELECT 
+        id, name, description, technology, status, 
+        last_synced, database_count, icon, color, 
+        is_example, created_at, updated_at,
+        total_tables, total_rows, has_foreign_keys, has_indexes,
+        schema_data
+      FROM projects 
+      ORDER BY updated_at DESC
+    `);
+    
+    const projects = rows.map((row: any) => {
+      try {
+        return {
+          ...row,
+          schema: JSON.parse(row.schema_data || '{}'),
+          isExample: row.is_example === 1,
+          databaseCount: row.database_count,
+          totalTables: row.total_tables || 0,
+          totalRows: row.total_rows || 0,
+          hasForeignKeys: row.has_foreign_keys === 1,
+          hasIndexes: row.has_indexes === 1,
+          lastSynced: row.last_synced
+        };
+      } catch (parseError) {
+        console.warn('Failed to parse schema for project:', row.id, parseError);
+        return {
+          ...row,
+          schema: {},
+          isExample: row.is_example === 1,
+          databaseCount: row.database_count,
+          totalTables: row.total_tables || 0,
+          totalRows: row.total_rows || 0,
+          hasForeignKeys: row.has_foreign_keys === 1,
+          hasIndexes: row.has_indexes === 1,
+          lastSynced: row.last_synced
+        };
+      }
+    });
+
+    // Update cache
+    this.projectsCache = projects;
+    this.cacheTimestamp = now;
+    
+    return projects;
   }
 
   async deleteProject(projectId: string): Promise<void> {
@@ -646,6 +702,9 @@ class ApplicationDataManager {
     if (!this.appDb) return; // SQLite not available
 
     await this.appDb.run('DELETE FROM projects WHERE id = ?', projectId);
+    
+    // Invalidate cache after deletion
+    this.invalidateProjectsCache();
   }
 
   async clearAllProjects(): Promise<void> {

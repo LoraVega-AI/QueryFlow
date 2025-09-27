@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { dbConnectionManager } from '@/utils/databaseConnection';
+import { ApiResponseBuilder } from '@/utils/apiResponse';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,16 +15,14 @@ export async function GET(request: NextRequest) {
       // Health check for specific session
       const health = await dbConnectionManager.healthCheckPool(sessionId);
 
-      return NextResponse.json({
-        success: true,
-        message: `Health check for session ${sessionId}`,
-        data: {
+      return NextResponse.json(
+        ApiResponseBuilder.success({
           sessionId,
           healthy: health.healthy,
           latency: health.latency,
           error: health.error
-        }
-      });
+        }, `Health check for session ${sessionId}`)
+      );
     } else {
       // Health check for all sessions
       const activeSessions = dbConnectionManager.getActiveSessions();
@@ -60,23 +59,20 @@ export async function GET(request: NextRequest) {
 
       const healthyCount = healthResults.filter(r => r.healthy).length;
 
-      return NextResponse.json({
-        success: true,
-        message: 'Health check completed for all sessions',
-        data: {
+      return NextResponse.json(
+        ApiResponseBuilder.success({
           totalSessions: healthResults.length,
           healthySessions: healthyCount,
           unhealthySessions: healthResults.length - healthyCount,
           results: healthResults
-        }
-      });
+        }, 'Health check completed for all sessions')
+      );
     }
   } catch (error: any) {
     console.error('Health check failed:', error);
-    return NextResponse.json({
-      success: false,
-      message: 'Health check failed',
-      error: error.message
-    }, { status: 500 });
+    return NextResponse.json(
+      ApiResponseBuilder.serverError('Health check failed', error.message),
+      { status: 500 }
+    );
   }
 }

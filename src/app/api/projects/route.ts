@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { dbConnectionManager } from '@/utils/databaseConnection';
+import { ApiResponseBuilder, ApiValidator } from '@/utils/apiResponse';
 
 export async function GET() {
   try {
@@ -16,6 +17,16 @@ export async function GET() {
     
     // Get projects with fresh data
     const projects = await dbConnectionManager.getAllProjects();
+    
+    if (!Array.isArray(projects)) {
+      console.error('❌ Projects API: Invalid projects data type:', typeof projects);
+      return NextResponse.json({
+        success: false,
+        message: 'Invalid projects data format',
+        error: 'Database returned non-array data'
+      }, { status: 500 });
+    }
+    
     console.log('📊 Projects API: Fresh data retrieved:', projects.length, 'projects');
     
     // Sort by creation date to get latest first
@@ -32,18 +43,17 @@ export async function GET() {
       createdAt: p.createdAt || p.created_at
     })));
 
-    return NextResponse.json({
-      success: true,
-      message: 'Projects retrieved successfully',
-      data: sortedProjects
-    });
+    return NextResponse.json(
+      ApiResponseBuilder.success(sortedProjects, 'Projects retrieved successfully', sortedProjects.length)
+    );
   } catch (error: any) {
     console.error('❌ Projects API: Failed to get projects:', error);
-    return NextResponse.json({
-      success: false,
-      message: 'Failed to retrieve projects',
-      error: error.message
-    }, { status: 500 });
+    console.error('❌ Error stack:', error.stack);
+    
+    return NextResponse.json(
+      ApiResponseBuilder.serverError('Failed to retrieve projects', process.env.NODE_ENV === 'development' ? error.message : 'Database connection error'),
+      { status: 500 }
+    );
   }
 }
 

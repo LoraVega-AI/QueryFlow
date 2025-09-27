@@ -129,6 +129,13 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
       return;
     }
 
+    // Check if we have a valid current project
+    if (!currentProject) {
+      console.warn('Analytics: No current project available for table stats calculation');
+      setTableStats([]);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -156,9 +163,20 @@ export function Analytics({ schema: propSchema }: AnalyticsProps) {
             recordCount = table.data.length;
             console.log(`📊 Analytics: Using extracted data count for ${table.name}: ${recordCount} records`);
           } else {
-            const result = await executeProjectQuery(`SELECT COUNT(*) as count FROM "${table.name}"`);
-            recordCount = result.rows[0]?.count || 0;
-            console.log(`📊 Analytics: Using query count for ${table.name}: ${recordCount} records`);
+            try {
+              const result = await executeProjectQuery(`SELECT COUNT(*) as count FROM "${table.name}"`);
+              recordCount = result.rows[0]?.count || 0;
+              console.log(`📊 Analytics: Using query count for ${table.name}: ${recordCount} records`);
+            } catch (queryError) {
+              console.warn(`📊 Analytics: Failed to query table ${table.name}:`, queryError);
+              // Check if it's a schema-only project (no database connection)
+              if (queryError.message?.includes('no database connection available') || 
+                  queryError.message?.includes('Schema-only project')) {
+                console.log(`📊 Analytics: Table ${table.name} is from schema-only project, using 0 records`);
+              }
+              // Fallback to 0 if query fails
+              recordCount = 0;
+            }
           }
 
           stats.push({

@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbConnectionManager } from '@/utils/databaseConnection';
 import { broadcastMessage } from '@/utils/realtimeBroadcast';
+import { ApiResponseBuilder, ApiValidator } from '@/utils/apiResponse';
 
 export async function GET(
   request: NextRequest,
@@ -13,28 +14,38 @@ export async function GET(
   try {
     const { id: projectId } = await params;
     
+    if (!projectId) {
+      return NextResponse.json(
+        ApiResponseBuilder.validationError('Project ID is required'),
+        { status: 400 }
+      );
+    }
+
+    console.log('🔍 Getting project:', projectId);
+    
     await dbConnectionManager.initializeAppData();
     const project = await dbConnectionManager.getProject(projectId);
 
     if (!project) {
-      return NextResponse.json({
-        success: false,
-        message: 'Project not found'
-      }, { status: 404 });
+      console.log('❌ Project not found:', projectId);
+      return NextResponse.json(
+        ApiResponseBuilder.notFoundError('Project'),
+        { status: 404 }
+      );
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Project retrieved successfully',
-      data: project
-    });
+    console.log('✅ Project retrieved successfully:', project.name);
+    
+    return NextResponse.json(
+      ApiResponseBuilder.success(project, 'Project retrieved successfully')
+    );
   } catch (error: any) {
-    console.error('Failed to get project:', error);
-    return NextResponse.json({
-      success: false,
-      message: 'Failed to retrieve project',
-      error: error.message
-    }, { status: 500 });
+    console.error('❌ Failed to get project:', error);
+    console.error('❌ Error stack:', error.stack);
+    return NextResponse.json(
+      ApiResponseBuilder.serverError('Failed to retrieve project', error.message),
+      { status: 500 }
+    );
   }
 }
 
@@ -45,11 +56,21 @@ export async function DELETE(
   try {
     const { id: projectId } = await params;
     
+    if (!projectId) {
+      return NextResponse.json({
+        success: false,
+        message: 'Project ID is required'
+      }, { status: 400 });
+    }
+
+    console.log('🗑️ Deleting project:', projectId);
+    
     await dbConnectionManager.initializeAppData();
     
     // Check if project exists
     const project = await dbConnectionManager.getProject(projectId);
     if (!project) {
+      console.log('❌ Project not found for deletion:', projectId);
       return NextResponse.json({
         success: false,
         message: 'Project not found'
@@ -58,6 +79,7 @@ export async function DELETE(
 
     // Delete project
     await dbConnectionManager.deleteProject(projectId);
+    console.log('✅ Project deleted successfully:', project.name);
 
     // Broadcast real-time update
     try {
@@ -79,7 +101,8 @@ export async function DELETE(
       message: 'Project deleted successfully'
     });
   } catch (error: any) {
-    console.error('Failed to delete project:', error);
+    console.error('❌ Failed to delete project:', error);
+    console.error('❌ Error stack:', error.stack);
     return NextResponse.json({
       success: false,
       message: 'Failed to delete project',

@@ -278,11 +278,16 @@ export function useProjectData(): UseProjectDataReturn {
       if (updatedProject) {
         await selectProject(updatedProject);
       } else {
-        throw new Error('Project not found');
+        console.warn('useProjectData: Project not found in projectsManager, clearing current project');
+        setCurrentProject(null);
+        setProjectSchema(null);
+        setProjectDatabases([]);
       }
     } catch (err: any) {
       console.error('useProjectData: Failed to refresh project:', err);
       setError(err.message || 'Failed to refresh project');
+      // Don't clear the project on error, just log it
+    } finally {
       setIsLoading(false);
     }
   }, [currentProject, selectProject]);
@@ -293,13 +298,36 @@ export function useProjectData(): UseProjectDataReturn {
     }
 
     try {
+      // Ensure the project is loaded in the projects manager
+      const allProjects = await projectsManager.getAllProjects();
+      const projectExists = allProjects.some(p => p.id === currentProject.id);
+      
+      if (!projectExists) {
+        console.warn('useProjectData: Project not found in projects manager, attempting to load...');
+        // Try to refresh the project data
+        await refreshProject();
+      }
+
       const result = await projectsManager.executeProjectQuery(currentProject.id, sql, params);
       return result;
     } catch (err: any) {
       console.error('useProjectData: Query execution failed:', err);
+      // If it's a "Project not found" error, try to refresh the project
+      if (err.message === 'Project not found') {
+        console.warn('useProjectData: Project not found, attempting to refresh...');
+        try {
+          await refreshProject();
+          // Retry the query once
+          const result = await projectsManager.executeProjectQuery(currentProject.id, sql, params);
+          return result;
+        } catch (retryErr: any) {
+          console.error('useProjectData: Retry failed:', retryErr);
+          throw retryErr;
+        }
+      }
       throw err;
     }
-  }, [currentProject]);
+  }, [currentProject, refreshProject]);
 
   // Computed values
   const tableCount = useMemo(() => {

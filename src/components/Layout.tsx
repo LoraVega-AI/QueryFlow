@@ -30,7 +30,6 @@ const TABS = [
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'workflow', label: 'Workflow Manager', icon: Workflow },
   { id: 'search', label: 'Advanced Search', icon: Search },
-  { id: 'performance', label: 'Performance Monitor', icon: Monitor },
 ] as const;
 
 export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
