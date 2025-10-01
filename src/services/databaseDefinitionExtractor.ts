@@ -14,7 +14,7 @@ import {
   ExtractionPerformance,
   ExtractionWarning,
   ExtractionError
-} from '@/types/extraction';
+} from '../types/extraction';
 
 import { FileIntakeService } from './extraction/fileIntakeService';
 import { RegexFilterService } from './extraction/regexFilterService';
@@ -24,6 +24,7 @@ import { SchemaNormalizationService } from './extraction/schemaNormalizationServ
 import { SQLiteConversionService } from './extraction/sqliteConversionService';
 import { WorkerPoolService } from './extraction/workerPoolService';
 import { CacheService } from './extraction/cacheService';
+import { SystemCatalogExtractor } from './extraction/systemCatalogExtractor';
 
 export class DatabaseDefinitionExtractor {
   private fileIntake: FileIntakeService;
@@ -219,6 +220,70 @@ export class DatabaseDefinitionExtractor {
         stack: error instanceof Error ? error.stack : undefined
       });
       
+      throw error;
+    }
+  }
+
+  /**
+   * Extract system catalog information from database connections
+   */
+  async extractSystemCatalog(
+    databaseType: 'postgresql' | 'mysql' | 'sqlite' | 'mongodb',
+    connectionInfo: string | { filePath: string } | { connectionString: string }
+  ): Promise<any> {
+    console.log(`🔍 Starting system catalog extraction for ${databaseType}...`);
+    
+    try {
+      let result;
+      
+      switch (databaseType) {
+        case 'postgresql':
+          if (typeof connectionInfo === 'string') {
+            result = await SystemCatalogExtractor.extractPostgreSQL(connectionInfo);
+          } else if ('connectionString' in connectionInfo) {
+            result = await SystemCatalogExtractor.extractPostgreSQL(connectionInfo.connectionString);
+          } else {
+            throw new Error('PostgreSQL requires connection string');
+          }
+          break;
+          
+        case 'mysql':
+          if (typeof connectionInfo === 'string') {
+            result = await SystemCatalogExtractor.extractMySQL(connectionInfo);
+          } else if ('connectionString' in connectionInfo) {
+            result = await SystemCatalogExtractor.extractMySQL(connectionInfo.connectionString);
+          } else {
+            throw new Error('MySQL requires connection string');
+          }
+          break;
+          
+        case 'sqlite':
+          if ('filePath' in connectionInfo) {
+            result = await SystemCatalogExtractor.extractSQLite(connectionInfo.filePath);
+          } else {
+            throw new Error('SQLite requires file path');
+          }
+          break;
+          
+        case 'mongodb':
+          if (typeof connectionInfo === 'string') {
+            result = await SystemCatalogExtractor.extractMongoDB(connectionInfo);
+          } else if ('connectionString' in connectionInfo) {
+            result = await SystemCatalogExtractor.extractMongoDB(connectionInfo.connectionString);
+          } else {
+            throw new Error('MongoDB requires connection string');
+          }
+          break;
+          
+        default:
+          throw new Error(`Unsupported database type: ${databaseType}`);
+      }
+      
+      console.log(`✅ System catalog extraction completed for ${databaseType}`);
+      return result;
+      
+    } catch (error) {
+      console.error(`❌ System catalog extraction failed for ${databaseType}:`, error);
       throw error;
     }
   }

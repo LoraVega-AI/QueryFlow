@@ -103,6 +103,23 @@ export interface Project {
   totalRows?: number;
   hasForeignKeys?: boolean;
   hasIndexes?: boolean;
+  systemCatalog?: {
+    tables: any[];
+    views: any[];
+    indexes: any[];
+    triggers: any[];
+    sequences: any[];
+    functions: any[];
+    procedures: any[];
+    metadata: {
+      databaseType: string;
+      version: string;
+      encoding?: string;
+      collation?: string;
+      timezone?: string;
+      extractedAt: string;
+    };
+  };
   createdAt: Date;
   updatedAt: Date;
   // Additional properties for compatibility

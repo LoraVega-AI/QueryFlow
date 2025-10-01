@@ -15,14 +15,12 @@ let mysqlPool: any = null;
 // Load database drivers only on server side
 if (typeof window === 'undefined') {
   try {
-    // Dynamic imports for Node.js modules
-    const sqliteModule = require('sqlite3');
-    const sqliteOpen = require('sqlite').open;
-    const DatabaseClass = require('sqlite').Database;
+    console.log('🔧 Loading database drivers...');
 
-    sqlite3 = sqliteModule;
-    open = sqliteOpen;
-    Database = DatabaseClass;
+    // Dynamic imports for Node.js modules
+    sqlite3 = require('sqlite3');
+    open = require('sqlite').open;
+    Database = require('sqlite').Database;
     fs = require('fs');
 
     mysql = require('mysql2/promise');
@@ -30,8 +28,15 @@ if (typeof window === 'undefined') {
     Pool = pg.Pool;
     // Import mysql2 pool for connection pooling
     mysqlPool = require('mysql2').createPool;
+
+    console.log('✅ Database drivers loaded successfully');
   } catch (error) {
-    console.warn('Database drivers not available:', error);
+    console.error('❌ Database drivers not available:', error);
+    console.error('❌ Error details:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code
+    });
   }
 }
 
@@ -554,6 +559,14 @@ class ApplicationDataManager {
         console.log('✅ has_indexes column already exists');
       }
       
+      if (!columnNames.includes('system_catalog')) {
+        console.log('➕ Adding system_catalog column...');
+        await this.appDb.exec('ALTER TABLE projects ADD COLUMN system_catalog TEXT');
+        console.log('✅ Added system_catalog column to projects table');
+      } else {
+        console.log('✅ system_catalog column already exists');
+      }
+      
       console.log('✅ Projects table migration completed');
     } catch (error) {
       console.error('❌ Migration failed:', error);
@@ -586,8 +599,8 @@ class ApplicationDataManager {
     try {
       await this.appDb.run(`
         INSERT OR REPLACE INTO projects
-        (id, name, description, technology, status, last_synced, database_count, total_tables, total_rows, has_foreign_keys, has_indexes, icon, color, is_example, schema_data, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, name, description, technology, status, last_synced, database_count, total_tables, total_rows, has_foreign_keys, has_indexes, icon, color, is_example, schema_data, system_catalog, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         project.id,
         project.name,
@@ -604,6 +617,7 @@ class ApplicationDataManager {
         project.color || '',
         project.isExample ? 1 : 0,
         schemaData,
+        project.systemCatalog ? JSON.stringify(project.systemCatalog) : null,
         now
       ]);
       
@@ -630,6 +644,7 @@ class ApplicationDataManager {
     return {
       ...row,
       schema: JSON.parse(row.schema_data || '{}'),
+      systemCatalog: row.system_catalog ? JSON.parse(row.system_catalog) : null,
       isExample: row.is_example === 1,
       databaseCount: row.database_count,
       lastSynced: row.last_synced
@@ -656,7 +671,7 @@ class ApplicationDataManager {
         last_synced, database_count, icon, color, 
         is_example, created_at, updated_at,
         total_tables, total_rows, has_foreign_keys, has_indexes,
-        schema_data
+        schema_data, system_catalog
       FROM projects 
       ORDER BY updated_at DESC
     `);
@@ -666,6 +681,7 @@ class ApplicationDataManager {
         return {
           ...row,
           schema: JSON.parse(row.schema_data || '{}'),
+          systemCatalog: row.system_catalog ? JSON.parse(row.system_catalog) : null,
           isExample: row.is_example === 1,
           databaseCount: row.database_count,
           totalTables: row.total_tables || 0,
@@ -679,6 +695,7 @@ class ApplicationDataManager {
         return {
           ...row,
           schema: {},
+          systemCatalog: null,
           isExample: row.is_example === 1,
           databaseCount: row.database_count,
           totalTables: row.total_tables || 0,
@@ -1447,20 +1464,44 @@ export class DatabaseConnectionManager {
 
   // Application Data Persistence Methods
   async initializeAppData(): Promise<void> {
-    await appDataManager.initialize();
+    try {
+      await appDataManager.initialize();
+    } catch (error) {
+      console.error('❌ Failed to initialize application data:', error);
+      console.error('❌ Continuing without application data persistence');
+      // Don't throw error - allow the app to continue without persistence
+    }
   }
 
   // Project persistence
   async saveProject(project: any): Promise<void> {
-    await appDataManager.saveProject(project);
+    try {
+      await appDataManager.saveProject(project);
+    } catch (error) {
+      console.error('❌ Failed to save project:', error);
+      console.error('❌ Project data may not be persisted');
+      // Don't throw error - allow the app to continue
+    }
   }
 
   async getProject(projectId: string): Promise<any | null> {
-    return await appDataManager.getProject(projectId);
+    try {
+      return await appDataManager.getProject(projectId);
+    } catch (error) {
+      console.error(`❌ Failed to get project ${projectId}:`, error);
+      console.error('❌ Returning null');
+      return null;
+    }
   }
 
   async getAllProjects(): Promise<any[]> {
-    return await appDataManager.getAllProjects();
+    try {
+      return await appDataManager.getAllProjects();
+    } catch (error) {
+      console.error('❌ Failed to get all projects:', error);
+      console.error('❌ Returning empty projects array');
+      return [];
+    }
   }
 
   async deleteProject(projectId: string): Promise<void> {

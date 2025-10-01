@@ -11,6 +11,7 @@ import { DataManagementManager } from '@/utils/dataManagement';
 import { Plus, Edit, Trash2, Save, X, RefreshCw, Upload, Download, FileText, AlertTriangle, CheckCircle, Filter, BarChart3, Settings, Eye, Database, TrendingUp, Shield, History, Zap, Wifi, WifiOff, Users, Activity, Clock, Folder } from 'lucide-react';
 import { realtimeDataStream, DataStreamEvent, UserActivity } from '@/utils/realtimeDataStream';
 import { useProjectData } from '@/hooks/useProjectData';
+import { projectsManager } from '@/utils/projectsManager';
 
 interface DataEditorProps {
   schema?: DatabaseSchema | null; // Made optional since we get it from project
@@ -33,7 +34,9 @@ export function DataEditor({ schema: propSchema }: DataEditorProps) {
     getColumnNames,
     isTableExists,
     isLoading: projectLoading,
-    error: projectError
+    error: projectError,
+    refreshProject,
+    selectProject
   } = useProjectData();
 
   // Use project schema if available, otherwise fall back to prop
@@ -53,7 +56,7 @@ export function DataEditor({ schema: propSchema }: DataEditorProps) {
   const [csvData, setCsvData] = useState<string>('');
   
   // Advanced features state
-  const [activeTab, setActiveTab] = useState<'editor' | 'quality' | 'import' | 'export' | 'audit' | 'transform'>('editor');
+  const [activeTab, setActiveTab] = useState<'editor' | 'quality' | 'import' | 'export' | 'audit' | 'transform' | 'catalog'>('editor');
   const [showDataQuality, setShowDataQuality] = useState(false);
   const [showDataImport, setShowDataImport] = useState(false);
   const [showDataExport, setShowDataExport] = useState(false);
@@ -536,6 +539,55 @@ export function DataEditor({ schema: propSchema }: DataEditorProps) {
       setDataTransformations([]);
     }
   }, [selectedTable, loadRecords, loadBulkOperations, loadValidationRules]);
+
+  // Handle project updates and refresh system catalog data
+  useEffect(() => {
+    if (currentProject) {
+      console.log('📊 DataEditor: Project updated, refreshing system catalog data');
+      console.log('📊 Current project:', currentProject.name);
+      console.log('📊 System catalog present:', !!currentProject.systemCatalog);
+      
+      if (currentProject.systemCatalog) {
+        console.log('📊 System catalog data:', {
+          tables: currentProject.systemCatalog.tables?.length || 0,
+          views: currentProject.systemCatalog.views?.length || 0,
+          indexes: currentProject.systemCatalog.indexes?.length || 0,
+          databaseType: currentProject.systemCatalog.metadata?.databaseType,
+          version: currentProject.systemCatalog.metadata?.version
+        });
+      }
+    }
+  }, [currentProject]);
+
+  // Simplified project selection - now handled by useProjectData hook
+  useEffect(() => {
+    console.log('📊 DataEditor: useEffect triggered');
+    console.log('📊 DataEditor: Current project:', currentProject?.name || 'None');
+    console.log('📊 DataEditor: System catalog present:', !!currentProject?.systemCatalog);
+
+    if (currentProject?.systemCatalog) {
+      console.log(`📊 DataEditor: System catalog tables: ${currentProject.systemCatalog.tables?.length || 0}`);
+      console.log(`📊 DataEditor: Database type: ${currentProject.systemCatalog.metadata?.databaseType}`);
+      console.log(`📊 DataEditor: Version: ${currentProject.systemCatalog.metadata?.version}`);
+    } else {
+      console.log('📊 DataEditor: No system catalog data');
+    }
+  }, [currentProject]);
+
+  // Periodic check now handled by useProjectData hook
+
+  // Refresh project data function
+  const refreshProjectData = useCallback(async () => {
+    console.log('🔄 Refreshing project data...');
+    try {
+      // Force refresh the current project data
+      await refreshProject();
+      showNotification('success', 'Project data refreshed successfully');
+    } catch (error) {
+      console.error('Failed to refresh project data:', error);
+      showNotification('error', 'Failed to refresh project data');
+    }
+  }, [refreshProject, showNotification]);
 
   // Handle adding new record
   const handleAddRecord = useCallback(() => {
@@ -1156,6 +1208,219 @@ export function DataEditor({ schema: propSchema }: DataEditorProps) {
           </div>
         );
       
+      case 'catalog':
+        console.log('📊 DataEditor: Rendering system catalog tab');
+        console.log('📊 DataEditor: Current project in catalog tab:', currentProject?.name || 'None');
+        console.log('📊 DataEditor: System catalog data available:', !!currentProject?.systemCatalog);
+
+        return (
+          <div className="flex-1 p-4">
+            <div className="h-full bg-gray-800 rounded-lg p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-white">System Catalog</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={refreshProjectData}
+                    className="flex items-center gap-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors"
+                    title="Refresh project data"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Refresh
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-4">
+                {/* Debug information */}
+                <div className="bg-gray-600 rounded-lg p-3 text-xs">
+                  <div className="text-gray-300 mb-2">Debug Information:</div>
+                  <div className="text-gray-400">
+                    <div>Current Project: {currentProject?.name || 'None'}</div>
+                    <div>Project ID: {currentProject?.id || 'None'}</div>
+                    <div>System Catalog Present: {currentProject?.systemCatalog ? 'Yes' : 'No'}</div>
+                    <div>System Catalog Type: {typeof currentProject?.systemCatalog}</div>
+                    {currentProject?.systemCatalog && (
+                      <div>Tables Count: {currentProject.systemCatalog.tables?.length || 0}</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* SOLUTION 4: Project Selection Helper */}
+                <div className="bg-gray-600 rounded-lg p-3 text-xs">
+                  <div className="text-gray-300 mb-2">Available Projects with System Catalog:</div>
+                  <div className="text-gray-400">
+                    <div className="text-yellow-400 mb-2">Click Refresh to auto-select a project with system catalog data</div>
+                    <div className="text-gray-500 text-xs">
+                      The system will automatically select the most recent project that has system catalog data.
+                      If no data appears, try clicking the Refresh button above.
+                    </div>
+                  </div>
+                </div>
+                
+                {currentProject?.systemCatalog ? (
+                  <div className="space-y-4">
+                    {/* Database Info */}
+                    <div className="bg-gray-700 rounded-lg p-4">
+                      <h4 className="text-white font-medium mb-3">Database Information</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-400">Type:</span>
+                          <span className="text-white ml-2">{currentProject.systemCatalog.metadata?.databaseType || 'Unknown'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Version:</span>
+                          <span className="text-white ml-2">{currentProject.systemCatalog.metadata?.version || 'Unknown'}</span>
+                        </div>
+                        {currentProject.systemCatalog.metadata?.encoding && (
+                          <div>
+                            <span className="text-gray-400">Encoding:</span>
+                            <span className="text-white ml-2">{currentProject.systemCatalog.metadata.encoding}</span>
+                          </div>
+                        )}
+                        {currentProject.systemCatalog.metadata?.extractedAt && (
+                          <div>
+                            <span className="text-gray-400">Extracted:</span>
+                            <span className="text-white ml-2">{new Date(currentProject.systemCatalog.metadata.extractedAt).toLocaleString()}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Tables */}
+                    {currentProject.systemCatalog.tables && currentProject.systemCatalog.tables.length > 0 && (
+                      <div className="bg-gray-700 rounded-lg p-4">
+                        <h4 className="text-white font-medium mb-3">Tables ({currentProject.systemCatalog.tables.length})</h4>
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {currentProject.systemCatalog.tables.map((table, index) => (
+                            <div key={index} className="border border-gray-600 rounded p-3">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-white font-medium">{table.name}</span>
+                                <span className="text-gray-400 text-sm">{table.columns?.length || 0} columns</span>
+                              </div>
+                              {table.statistics?.rowCount && (
+                                <div className="text-gray-400 text-sm mb-2">
+                                  Row count: {table.statistics.rowCount}
+                                </div>
+                              )}
+                              {table.columns && table.columns.length > 0 && (
+                                <div className="space-y-1">
+                                  <div className="text-gray-400 text-xs mb-1">Columns:</div>
+                                  {table.columns.slice(0, 5).map((column, colIndex) => (
+                                    <div key={colIndex} className="text-xs text-gray-300 ml-2">
+                                      <span className="font-mono">{column.name}</span>
+                                      <span className="text-gray-500 ml-2">({column.type})</span>
+                                      {column.primaryKey && <span className="ml-2 text-blue-400">PK</span>}
+                                      {!column.nullable && <span className="ml-2 text-red-400">NOT NULL</span>}
+                                    </div>
+                                  ))}
+                                  {table.columns.length > 5 && (
+                                    <div className="text-xs text-gray-500 ml-2">
+                                      ... and {table.columns.length - 5} more columns
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Views */}
+                    {currentProject.systemCatalog.views && currentProject.systemCatalog.views.length > 0 && (
+                      <div className="bg-gray-700 rounded-lg p-4">
+                        <h4 className="text-white font-medium mb-3">Views ({currentProject.systemCatalog.views.length})</h4>
+                        <div className="space-y-2">
+                          {currentProject.systemCatalog.views.map((view, index) => (
+                            <div key={index} className="border border-gray-600 rounded p-3">
+                              <div className="text-white font-medium mb-1">{view.name}</div>
+                              <div className="text-gray-400 text-sm">
+                                {view.definition?.substring(0, 100)}...
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Indexes */}
+                    {currentProject.systemCatalog.indexes && currentProject.systemCatalog.indexes.length > 0 && (
+                      <div className="bg-gray-700 rounded-lg p-4">
+                        <h4 className="text-white font-medium mb-3">Indexes ({currentProject.systemCatalog.indexes.length})</h4>
+                        <div className="space-y-2">
+                          {currentProject.systemCatalog.indexes.map((index, idx) => (
+                            <div key={idx} className="border border-gray-600 rounded p-3">
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <span className="text-white font-medium">{index.name}</span>
+                                  <span className="text-gray-400 ml-2">on {index.tableName}</span>
+                                </div>
+                                <div className="text-sm text-gray-400">
+                                  {index.unique ? 'UNIQUE' : 'NON-UNIQUE'} • {index.type}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Other Objects */}
+                    {(currentProject.systemCatalog.triggers?.length > 0 || 
+                      currentProject.systemCatalog.sequences?.length > 0 || 
+                      currentProject.systemCatalog.functions?.length > 0 || 
+                      currentProject.systemCatalog.procedures?.length > 0) && (
+                      <div className="bg-gray-700 rounded-lg p-4">
+                        <h4 className="text-white font-medium mb-3">Other Objects</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                          {currentProject.systemCatalog.triggers?.length > 0 && (
+                            <div>
+                              <span className="text-gray-400">Triggers:</span>
+                              <span className="text-white ml-2">{currentProject.systemCatalog.triggers.length}</span>
+                            </div>
+                          )}
+                          {currentProject.systemCatalog.sequences?.length > 0 && (
+                            <div>
+                              <span className="text-gray-400">Sequences:</span>
+                              <span className="text-white ml-2">{currentProject.systemCatalog.sequences.length}</span>
+                            </div>
+                          )}
+                          {currentProject.systemCatalog.functions?.length > 0 && (
+                            <div>
+                              <span className="text-gray-400">Functions:</span>
+                              <span className="text-white ml-2">{currentProject.systemCatalog.functions.length}</span>
+                            </div>
+                          )}
+                          {currentProject.systemCatalog.procedures?.length > 0 && (
+                            <div>
+                              <span className="text-gray-400">Procedures:</span>
+                              <span className="text-white ml-2">{currentProject.systemCatalog.procedures.length}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Database className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                    <h4 className="text-white text-lg mb-2">No System Catalog Data</h4>
+                    <p className="text-gray-400 mb-4">
+                      System catalog information will be automatically extracted when you upload a project with database files.
+                    </p>
+                    {currentProject && (
+                      <div className="text-sm text-gray-500">
+                        <p>Current project: <span className="text-white">{currentProject.name}</span></p>
+                        <p>System catalog: <span className="text-red-400">Not available</span></p>
+                        <p className="mt-2">Try refreshing the project data or upload a new project with a database file.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      
       default:
         return null;
     }
@@ -1249,6 +1514,15 @@ export function DataEditor({ schema: propSchema }: DataEditorProps) {
             >
               <Zap className="w-4 h-4 inline mr-1" />
               Transform
+            </button>
+            <button
+              onClick={() => setActiveTab('catalog')}
+              className={`px-3 py-1 rounded-md text-sm transition-colors ${
+                activeTab === 'catalog' ? 'bg-orange-600 text-white' : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              <Database className="w-4 h-4 inline mr-1" />
+              System Catalog
             </button>
           </div>
         </div>

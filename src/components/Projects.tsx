@@ -1508,17 +1508,27 @@ export function Projects() {
                       const isExpanded = expandedTableDetails.has(tableKey);
                       
                       return (
-                        <div key={`${project.id}-table-${table.name}-${index + 3}`} className="bg-gray-50 rounded-lg overflow-hidden">
-                          <div className="flex items-center justify-between text-xs text-gray-600 p-3 hover:bg-gray-100 transition-colors duration-200 cursor-pointer" onClick={() => toggleTableDetails(tableKey)}>
+                        <div key={`${project.id}-table-${table.name}-${index + 3}`} className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                          <div className="flex items-center justify-between p-3 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200 cursor-pointer" onClick={() => toggleTableDetails(tableKey)}>
                             <div className="flex items-center space-x-3">
-                              <Database className="w-4 h-4 text-gray-400" />
-                              <span className="font-semibold text-gray-800">{table.name}</span>
+                              <div className="w-6 h-6 bg-gradient-to-br from-blue-400 to-indigo-500 rounded-lg flex items-center justify-center">
+                                <Database className="w-3 h-3 text-white" />
+                              </div>
+                              <div>
+                                <span className="font-bold text-gray-800 text-xs">{table.name}</span>
+                                <div className="flex items-center space-x-1 mt-0.5">
+                                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                                    {table.rowCount || 0} rows
+                                  </span>
+                                  {table.columns && (
+                                    <span className="px-1.5 py-0.5 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                                      {table.columns.length} cols
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex items-center space-x-3">
-                              <span className="text-gray-500 font-medium">({table.rowCount || 0} rows)</span>
-                              {table.columns && (
-                                <span className="text-gray-500 font-medium">({table.columns.length} cols)</span>
-                              )}
+                            <div className="flex items-center space-x-2">
                               <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
                             </div>
                           </div>

@@ -152,8 +152,12 @@ export class ProjectsManager {
   }
 
   private async initializeProjectDatabases(): Promise<void> {
-    for (const project of this.projects.values()) {
-      await this.initializeProjectDatabase(project);
+    try {
+      for (const project of this.projects.values()) {
+        await this.initializeProjectDatabase(project);
+      }
+    } catch (error) {
+      console.warn('Failed to initialize project databases, continuing without database features:', error);
     }
   }
 
@@ -176,12 +180,13 @@ export class ProjectsManager {
 
       // Create tables for each database in the project
       for (const database of project.databases) {
-        console.log(`Creating tables for database ${database.name} in project ${project.id}`);
+        try {
+          console.log(`Creating tables for database ${database.name} in project ${project.id}`);
 
-        // Convert project schema to database schema
-        const dbSchema: DatabaseSchema = {
-          id: `project_${project.id}_schema`,
-          name: `Project ${project.id} Schema`,
+          // Convert project schema to database schema
+          const dbSchema: DatabaseSchema = {
+            id: `project_${project.id}_schema`,
+            name: `Project ${project.id} Schema`,
           tables: project.schema.tables as any, // Cast to avoid type mismatch
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -190,6 +195,10 @@ export class ProjectsManager {
 
         // Initialize database with schema
         await this.createDatabaseTables(project.id, database, dbSchema);
+        } catch (dbError) {
+          console.warn(`Failed to initialize database ${database.name} for project ${project.id}:`, dbError);
+          // Continue with other databases
+        }
       }
 
       // Populate with sample data
@@ -199,9 +208,9 @@ export class ProjectsManager {
       this.emitEvent('project_initialized', { projectId: project.id });
       console.log(`Successfully initialized database for project ${project.id}`);
     } catch (error) {
-      console.error(`Failed to initialize database for project ${project.id}:`, error);
+      console.warn(`Failed to initialize database for project ${project.id}:`, error);
       project.status = 'error';
-      throw error;
+      // Don't throw error, just continue without database features
     }
   }
 

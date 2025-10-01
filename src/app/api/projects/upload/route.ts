@@ -90,6 +90,13 @@ export async function POST(request: NextRequest) {
     console.log('🗄️ Extracting database files...');
     const databaseFiles = await extractDatabaseFiles(uploadDir);
     console.log('📊 Found database files:', databaseFiles.length);
+    console.log('📊 databaseFiles details:', JSON.stringify(databaseFiles.map(db => ({ 
+      name: db.name, 
+      type: db.type, 
+      status: db.status,
+      filePath: db.filePath,
+      allKeys: Object.keys(db)
+    })), null, 2));
 
     // Log database file details with data extraction info
     if (databaseFiles.length > 0) {
@@ -161,6 +168,132 @@ export async function POST(request: NextRequest) {
     const allDatabases = [...databaseFiles, ...sourceCodeDatabases];
     console.log('📊 Total databases found:', allDatabases.length);
     
+      // Extract system catalog information from database files
+      console.log('🔍 Starting system catalog extraction...');
+      console.log('📊 allDatabases length:', allDatabases.length);
+      console.log('📊 allDatabases structure:', JSON.stringify(allDatabases.map(db => ({ 
+        name: db.name, 
+        type: db.type, 
+        status: db.status, 
+        filePath: db.filePath,
+        allKeys: Object.keys(db)
+      })), null, 2));
+    
+    // Set default values
+    let systemCatalogData = null;
+    const testValue = 'SYSTEM_CATALOG_TEST_REACHED';
+    const testSqliteFiles = allDatabases.filter(db => db.filePath && db.filePath.endsWith('.db'));
+    let testCatalogResult = null;
+    let testError = null;
+    
+    try {
+      // Find SQLite database files for system catalog extraction
+      console.log('🔍 Looking for SQLite files in allDatabases:', allDatabases.length);
+      console.log('📊 Database types:', allDatabases.map(db => ({ type: db.type, filePath: db.filePath, name: db.name, status: db.status })));
+      
+      // Look for SQLite files in multiple ways
+      let sqliteFiles = allDatabases.filter(db => db.type === 'sqlite' && db.filePath);
+      console.log('🔍 First pass - files with type="sqlite":', sqliteFiles.length);
+      
+      // If no files found with type='sqlite', try looking for files with .db extension
+      if (sqliteFiles.length === 0) {
+        console.log('🔍 No files with type="sqlite", looking for .db files...');
+        sqliteFiles = allDatabases.filter(db => {
+          const hasDbExtension = db.filePath && (db.filePath.endsWith('.db') || db.filePath.endsWith('.sqlite') || db.filePath.endsWith('.sqlite3'));
+          const hasReadyStatus = db.status === 'ready';
+          console.log(`🔍 Checking file: ${db.filePath}, hasDbExtension: ${hasDbExtension}, status: ${db.status}`);
+          return hasDbExtension && hasReadyStatus;
+        });
+        console.log('🔍 Second pass - files with .db extension:', sqliteFiles.length);
+      }
+      
+      // If still no files found, try looking in the originalFiles array
+      if (sqliteFiles.length === 0) {
+        console.log('🔍 No files found in allDatabases, checking originalFiles...');
+        const originalFiles = filePaths || [];
+        const dbFiles = originalFiles.filter(file => file.endsWith('.db') || file.endsWith('.sqlite') || file.endsWith('.sqlite3'));
+        console.log('📊 Found database files in originalFiles:', dbFiles);
+        
+        if (dbFiles.length > 0) {
+          // Create a mock database object for the first file
+          sqliteFiles = [{
+            type: 'sqlite',
+            filePath: dbFiles[0],
+            name: 'uploaded_database',
+            status: 'ready'
+          }];
+        }
+      }
+      
+      console.log('📊 Found SQLite files:', sqliteFiles.length);
+      console.log('📊 SQLite files details:', sqliteFiles.map(f => ({ name: f.name, filePath: f.filePath, type: f.type, status: f.status })));
+      
+      if (sqliteFiles.length > 0) {
+        console.log(`📊 Found ${sqliteFiles.length} SQLite files for system catalog extraction`);
+        
+        // Use the first SQLite file for system catalog extraction
+        const primaryDbFile = sqliteFiles[0];
+        console.log(`🔍 Extracting system catalog from: ${primaryDbFile.filePath}`);
+        console.log(`🔍 File exists check: ${require('fs').existsSync(primaryDbFile.filePath)}`);
+        
+        // Import and use the JavaScript system catalog extractor
+        console.log('📦 Importing system catalog extractor...');
+        try {
+          const { extractSQLiteSystemCatalog } = require('../../../../services/extraction/systemCatalogExtractor.js');
+          console.log('✅ System catalog extractor imported successfully');
+          
+          // Extract system catalog data
+          console.log('🔍 Starting system catalog extraction...');
+          console.log('🔍 Calling extractSQLiteSystemCatalog with:', primaryDbFile.filePath);
+          
+          try {
+            systemCatalogData = await extractSQLiteSystemCatalog(primaryDbFile.filePath);
+            console.log('✅ System catalog extraction completed successfully');
+            console.log('📊 System catalog data tables count:', systemCatalogData?.tables?.length || 0);
+            console.log('📊 System catalog data views count:', systemCatalogData?.views?.length || 0);
+            console.log('📊 System catalog data indexes count:', systemCatalogData?.indexes?.length || 0);
+            testCatalogResult = systemCatalogData;
+          } catch (extractionError: any) {
+            console.error('❌ System catalog extraction failed:', extractionError);
+            console.error('❌ Extraction error details:', extractionError.message);
+            console.error('❌ Extraction error stack:', extractionError.stack);
+            systemCatalogData = null;
+            testCatalogResult = null;
+            testError = `Extraction Error: ${extractionError.message}`;
+          }
+        } catch (importError: any) {
+          console.error('❌ Failed to import system catalog extractor:', importError);
+          console.error('❌ Import error details:', importError.message);
+          console.error('❌ Import error stack:', importError.stack);
+          systemCatalogData = null;
+          testCatalogResult = null;
+          testError = `Import Error: ${importError.message}`;
+        }
+      } else {
+        console.log('⚠️ No SQLite files found for system catalog extraction');
+        console.log('📊 allDatabases structure:', JSON.stringify(allDatabases.map(db => ({ 
+          name: db.name, 
+          type: db.type, 
+          status: db.status, 
+          filePath: db.filePath,
+          allKeys: Object.keys(db)
+        })), null, 2));
+      }
+      
+      console.log(`✅ System catalog extraction completed:`, {
+        tables: systemCatalogData?.tables?.length || 0,
+        views: systemCatalogData?.views?.length || 0,
+        indexes: systemCatalogData?.indexes?.length || 0,
+        triggers: systemCatalogData?.triggers?.length || 0
+      });
+    } catch (catalogError: any) {
+      console.error('❌ System catalog extraction failed:', catalogError);
+      console.error('❌ Error details:', catalogError.message);
+      console.error('❌ Error stack:', catalogError.stack);
+      testError = `Catalog Error: ${catalogError.message}`;
+      // Continue without system catalog data
+    }
+
     // Detect anomalies across the entire project
     console.log('🔍 Starting comprehensive anomaly detection...');
     const projectAnomalies = await detectProjectAnomalies(uploadDir, allDatabases, migrationHistory, ormModels);
@@ -179,7 +312,255 @@ export async function POST(request: NextRequest) {
     console.log('🏗️ Creating project object...');
     
     // Merge schemas from all databases (both actual files and extracted definitions)
-    const allTables = allDatabases.flatMap(db => db.tables || []);
+    // Prioritize actual database files over extracted definitions to avoid duplicates and phantom tables
+    const actualDatabaseFiles = allDatabases.filter(db => db.type === 'sqlite' && db.tables && db.tables.length > 0);
+    const extractedDatabases = allDatabases.filter(db => db.type === 'extracted' && db.tables && db.tables.length > 0);
+    
+    console.log(`📊 Database sources: ${actualDatabaseFiles.length} actual files, ${extractedDatabases.length} extracted definitions`);
+    
+    let allTables: any[] = [];
+    
+    if (actualDatabaseFiles.length > 0) {
+      // Use actual database files as primary source (most reliable)
+      console.log('🎯 Using actual database files as primary source');
+      allTables = actualDatabaseFiles.flatMap(db => db.tables || []);
+      console.log(`📊 Found ${allTables.length} tables from actual database files`);
+    } else if (extractedDatabases.length > 0) {
+      // Fallback to extracted definitions if no actual database files
+      console.log('⚠️ No actual database files found, using extracted definitions');
+      allTables = extractedDatabases.flatMap(db => db.tables || []);
+      console.log(`📊 Found ${allTables.length} tables from extracted definitions`);
+    } else {
+      // Fallback to all databases if no clear categorization
+      console.log('⚠️ No clear database categorization, using all databases');
+      allTables = allDatabases.flatMap(db => db.tables || []);
+      console.log(`📊 Found ${allTables.length} tables from all databases`);
+    }
+    
+    // UNIVERSAL TABLE FILTERING - Remove ALL phantom, metadata, and duplicate tables
+    const tableMap = new Map<string, any>();
+    const duplicateTables: string[] = [];
+    const phantomTables: string[] = [];
+    
+    // CONSERVATIVE patterns - only filter obvious phantom tables
+    const universalPhantomPatterns = [
+      // System tables (all databases)
+      /^sqlite_/,
+      /^information_schema\./,
+      /^pg_/,
+      /^mysql\./,
+      /^sys\./,
+      
+      // Framework metadata tables (only obvious ones)
+      /^django_admin_log$/,
+      /^django_content_type$/,
+      /^django_migrations$/,
+      /^django_session$/,
+      /^laravel_migrations$/,
+      /^rails_schema_migrations$/,
+      
+      // Migration tables (only obvious ones)
+      /^schema_migrations$/,
+      /^ar_internal_metadata$/,
+      /^schema_info$/,
+      /^schema_versions$/,
+      
+      // Session tables (only obvious ones)
+      /^sessions$/,
+      /^cache$/,
+      
+      // Admin logging (only obvious ones)
+      /^admin_log$/,
+      /^audit_log$/,
+      
+      // Content type (only obvious ones)
+      /^content_types$/,
+      
+      // User management metadata (only obvious ones)
+      /^user_groups$/,
+      /^user_permissions$/,
+      /^group_permissions$/,
+      
+      // ORM model classes (only obvious ones)
+      /Model$/,
+      /Entity$/,
+      /Schema$/,
+      /Repository$/,
+      /Service$/,
+      
+      // Common phantom patterns (only obvious ones)
+      /^User$/,
+      /^Group$/,
+      /^Permission$/,
+      /^ContentType$/,
+      /^Session$/,
+      /^LogEntry$/,
+      /^Migration$/,
+      /^Schema$/,
+      /^Model$/,
+      /^Entity$/
+    ];
+    
+    // Check if a table name matches universal phantom patterns
+    const isPhantomTable = (tableName: string): boolean => {
+      return universalPhantomPatterns.some(pattern => pattern.test(tableName));
+    };
+    
+    // Check if a table is a metadata view (VERY CONSERVATIVE)
+    const isMetadataView = (table: any): boolean => {
+      if (!table.columns || table.columns.length === 0) return true;
+      
+      // Only filter if it has VERY specific metadata column patterns AND very few columns
+      if (table.columns.length <= 2) {
+        const strictMetadataColumns = ['app_label', 'model', 'content_type_id'];
+        const hasOnlyStrictMetadataColumns = table.columns.every((col: any) => 
+          strictMetadataColumns.includes(col.name?.toLowerCase())
+        );
+        if (hasOnlyStrictMetadataColumns) return true;
+      }
+      
+      // Only filter if it has migration-specific columns AND very few columns
+      const migrationColumns = ['migration', 'version', 'batch', 'schema_version'];
+      const hasMigrationColumns = table.columns.some((col: any) => 
+        migrationColumns.some(pattern => 
+          col.name?.toLowerCase().includes(pattern)
+        )
+      );
+      
+      // Only filter if it has session-specific columns AND very few columns
+      const sessionColumns = ['session_key', 'session_data', 'expire_date'];
+      const hasSessionColumns = table.columns.some((col: any) => 
+        sessionColumns.some(pattern => 
+          col.name?.toLowerCase().includes(pattern)
+        )
+      );
+      
+      // Only filter if it has very few columns AND specific metadata patterns
+      return (hasMigrationColumns || hasSessionColumns) && table.columns.length <= 3;
+    };
+    
+    // Check if table has suspicious structure (VERY CONSERVATIVE)
+    const hasSuspiciousStructure = (table: any): boolean => {
+      if (!table.columns) return true;
+      
+      // Only filter if it has NO columns at all
+      if (table.columns.length === 0) return true;
+      
+      // Only filter if it has exactly 1 column and it's not a primary key
+      if (table.columns.length === 1) {
+        const hasPrimaryKey = table.columns.some((col: any) => 
+          col.primaryKey || col.name?.toLowerCase() === 'id'
+        );
+        return !hasPrimaryKey;
+      }
+      
+      // Don't filter anything else - be very conservative
+      return false;
+    };
+    
+    // CONSERVATIVE filtering - only remove obvious phantom tables
+    for (const table of allTables) {
+      const tableName = table.name?.toLowerCase();
+      if (!tableName) continue;
+      
+      // 1. Skip only obvious phantom tables by name pattern
+      if (isPhantomTable(table.name)) {
+        phantomTables.push(table.name);
+        console.log(`👻 Skipping phantom table: ${table.name} (matches phantom pattern)`);
+        continue;
+      }
+      
+      // 2. Skip only tables with no columns
+      if (!table.columns || table.columns.length === 0) {
+        phantomTables.push(table.name);
+        console.log(`👻 Skipping empty table: ${table.name} (no columns found)`);
+        continue;
+      }
+      
+      // 3. Skip only obvious metadata views (very strict criteria)
+      if (isMetadataView(table)) {
+        phantomTables.push(table.name);
+        console.log(`👻 Skipping metadata view: ${table.name} (metadata structure)`);
+        continue;
+      }
+      
+      // 4. Skip only tables with very suspicious structure
+      if (hasSuspiciousStructure(table)) {
+        phantomTables.push(table.name);
+        console.log(`👻 Skipping suspicious table: ${table.name} (suspicious structure)`);
+        continue;
+      }
+      
+      // 5. Skip only extracted tables that are clearly ORM classes
+      if (table.type === 'extracted' && table.name && 
+          (table.name.endsWith('Model') || table.name.endsWith('Entity') || 
+           table.name.endsWith('Schema') || table.name.endsWith('Repository') ||
+           table.name.endsWith('Service') || table.name.endsWith('Controller'))) {
+        phantomTables.push(table.name);
+        console.log(`👻 Skipping ORM class: ${table.name} (not a database table)`);
+        continue;
+      }
+      
+      // 6. Deduplicate by name (case-insensitive)
+      if (tableMap.has(tableName)) {
+        duplicateTables.push(table.name);
+        console.log(`🔄 Found duplicate table: ${table.name} (keeping first occurrence)`);
+        continue;
+      }
+      
+      // 7. Table passed all filters - keep it (be conservative!)
+      tableMap.set(tableName, table);
+      console.log(`✅ Keeping table: ${table.name} (${table.columns.length} columns)`);
+    }
+    
+    allTables = Array.from(tableMap.values());
+    
+    if (duplicateTables.length > 0) {
+      console.log(`🧹 Removed ${duplicateTables.length} duplicate tables: ${duplicateTables.join(', ')}`);
+    }
+    
+    if (phantomTables.length > 0) {
+      console.log(`👻 Filtered out ${phantomTables.length} phantom tables: ${phantomTables.join(', ')}`);
+    }
+    
+    // Additional validation: Cross-reference with actual database schema if available
+    if (actualDatabaseFiles.length > 0) {
+      const actualTableNames = new Set(
+        actualDatabaseFiles.flatMap(db => db.tables || [])
+          .map(table => table.name?.toLowerCase())
+          .filter(Boolean)
+      );
+      
+      const validatedTables = allTables.filter(table => {
+        const tableName = table.name?.toLowerCase();
+        if (!tableName) return false;
+        
+        // If we have actual database files, only keep tables that exist in them
+        if (actualTableNames.has(tableName)) {
+          return true;
+        }
+        
+        // Log tables that don't exist in actual database
+        console.log(`⚠️ Table ${table.name} not found in actual database schema`);
+        return false;
+      });
+      
+      if (validatedTables.length !== allTables.length) {
+        const removedCount = allTables.length - validatedTables.length;
+        console.log(`🔍 Removed ${removedCount} tables that don't exist in actual database`);
+        allTables = validatedTables;
+      }
+    }
+    
+    console.log(`✅ Final table count: ${allTables.length} unique tables`);
+    console.log(`📋 Table names: ${allTables.map(t => t.name).join(', ')}`);
+    
+    // Log table source information for debugging
+    allTables.forEach(table => {
+      const source = table.type === 'sqlite' ? 'actual database' : 'extracted';
+      console.log(`📊 Table ${table.name}: ${source} (${table.columns?.length || 0} columns)`);
+    });
+    
     const allRelationships = allDatabases.flatMap(db => db.schema?.relationships || []);
     const allIndexes = allDatabases.flatMap(db => db.schema?.indexes || []);
     
@@ -265,6 +646,12 @@ export async function POST(request: NextRequest) {
       totalRows: allDatabases.reduce((sum, db) => sum + (db.totalRows || 0), 0),
       hasForeignKeys: allRelationships.length > 0,
       hasIndexes: allIndexes.length > 0,
+      systemCatalog: systemCatalogData,
+        testValue: testValue, // Add test value to response
+        testSqliteFilesCount: testSqliteFiles.length, // Add test SQLite files count
+        testSqliteFiles: testSqliteFiles.map(db => ({ name: db.name, filePath: db.filePath })), // Add test SQLite files
+        testCatalogResult: testCatalogResult ? 'SUCCESS' : 'FAILED', // Add test catalog result
+        testError: testError, // Add test error to response
       createdAt: new Date(),
       updatedAt: new Date()
     };

@@ -34,9 +34,17 @@ export class ComprehensiveDatabaseExtractor {
         console.log(`📊 Database metadata extracted: ${databaseInfo.type} v${databaseInfo.version}`);
         console.log(`📊 Encoding: ${databaseInfo.encoding}, Page size: ${databaseInfo.pageSize} bytes`);
         
-        // Get all tables
+        // Get all tables - only filter out obvious system tables
         console.log('🔍 Querying for database tables...');
-        const tables = await db.all("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+        const tables = await db.all(`
+          SELECT name FROM sqlite_master 
+          WHERE type='table' 
+          AND name NOT LIKE 'sqlite_%'
+          AND name NOT IN (
+            'django_admin_log', 'django_content_type', 'django_migrations', 'django_session',
+            'schema_migrations', 'ar_internal_metadata', 'sessions', 'cache'
+          )
+        `);
         console.log(`📊 Found ${tables.length} tables for comprehensive extraction`);
         console.log(`📊 Tables: ${tables.map((t: any) => t.name).join(', ')}`);
         

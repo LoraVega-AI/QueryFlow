@@ -52,24 +52,36 @@ export class WorkerManager {
     if (this.isInitialized) return;
 
     try {
-      // Create workers
+      // Check if we're in a browser environment and workers are supported
+      if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+        console.warn('Workers not supported in this environment, skipping initialization');
+        this.isInitialized = true;
+        return;
+      }
+
+      // Create workers with error handling
       for (let i = 0; i < this.config.maxWorkers; i++) {
-        const worker = new Worker(new URL('../workers/searchWorker.ts', import.meta.url), {
-          type: 'module'
-        });
-        
-        worker.onmessage = this.handleWorkerMessage.bind(this);
-        worker.onerror = this.handleWorkerError.bind(this);
-        
-        this.workers.push(worker);
+        try {
+          const worker = new Worker(new URL('../workers/searchWorker.ts', import.meta.url), {
+            type: 'module'
+          });
+          
+          worker.onmessage = this.handleWorkerMessage.bind(this);
+          worker.onerror = this.handleWorkerError.bind(this);
+          
+          this.workers.push(worker);
+        } catch (workerError) {
+          console.warn(`Failed to create worker ${i + 1}:`, workerError);
+          // Continue with other workers
+        }
       }
 
       this.isInitialized = true;
       console.log(`Initialized ${this.workers.length} Web Workers`);
     } catch (error) {
-      console.error('Failed to initialize Web Workers:', error);
-      // Fallback to main thread processing
-      this.isInitialized = false;
+      console.warn('Failed to initialize Web Workers, continuing without workers:', error);
+      this.isInitialized = true;
+      // Don't throw error, just continue without workers
     }
   }
 

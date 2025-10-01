@@ -209,13 +209,38 @@ export function useProjectData(): UseProjectDataReturn {
           
           await selectProject(virtualProject);
         } else {
-          // Fall back to projects manager
-          const existingProject = projectsManager.getCurrentProject();
-          if (existingProject) {
-            console.log('useProjectData: Using existing project from manager:', existingProject.name);
-            await selectProject(existingProject);
+          // Fall back to projects manager - prioritize projects with system catalog
+          console.log('useProjectData: No active connection, searching for project with system catalog...');
+          const allProjects = await projectsManager.getAllProjects();
+          
+          // Find projects with system catalog data
+          const projectsWithCatalog = allProjects.filter(p => 
+            p.systemCatalog && 
+            p.systemCatalog.tables && 
+            p.systemCatalog.tables.length > 0
+          );
+          
+          console.log(`useProjectData: Found ${projectsWithCatalog.length} projects with system catalog out of ${allProjects.length} total`);
+          
+          if (projectsWithCatalog.length > 0) {
+            // Select the most recent project with system catalog
+            const sortedProjects = projectsWithCatalog.sort((a, b) => 
+              new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime()
+            );
+            const projectToSelect = sortedProjects[0];
+            
+            console.log('useProjectData: Selecting project with system catalog:', projectToSelect.name);
+            console.log(`useProjectData: Project has ${projectToSelect.systemCatalog.tables.length} tables`);
+            await selectProject(projectToSelect);
           } else {
-            console.log('useProjectData: No active connection or existing project found');
+            // Fall back to any existing project
+            const existingProject = projectsManager.getCurrentProject();
+            if (existingProject) {
+              console.log('useProjectData: No projects with system catalog, using existing project:', existingProject.name);
+              await selectProject(existingProject);
+            } else {
+              console.log('useProjectData: No projects found');
+            }
           }
         }
       } catch (err) {
@@ -256,6 +281,64 @@ export function useProjectData(): UseProjectDataReturn {
       projectsManager.removeEventListener('project_error', handleProjectError);
     };
   }, []);
+
+  // Periodic check for projects with system catalog data
+  useEffect(() => {
+    const checkForSystemCatalogProject = async () => {
+      try {
+        console.log('🔍 useProjectData: Periodic check started');
+        console.log('🔍 useProjectData: Current project:', currentProject?.name || 'None');
+        console.log('🔍 useProjectData: Current project has system catalog:', !!currentProject?.systemCatalog);
+
+        // Only run if we don't have a current project or current project doesn't have system catalog
+        if (!currentProject || !currentProject.systemCatalog || (currentProject.systemCatalog.tables && currentProject.systemCatalog.tables.length === 0)) {
+          console.log('🔍 useProjectData: Checking for projects with system catalog...');
+
+          try {
+            const allProjects = await projectsManager.getAllProjects();
+            console.log('🔍 useProjectData: Retrieved', allProjects.length, 'projects from manager');
+
+            const projectsWithCatalog = allProjects.filter(p =>
+              p.systemCatalog &&
+              p.systemCatalog.tables &&
+              p.systemCatalog.tables.length > 0
+            );
+
+            console.log('🔍 useProjectData: Found', projectsWithCatalog.length, 'projects with system catalog');
+
+            if (projectsWithCatalog.length > 0) {
+              const sortedProjects = projectsWithCatalog.sort((a, b) =>
+                new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime()
+              );
+              const projectToSelect = sortedProjects[0];
+
+              console.log('🔍 useProjectData: Auto-selecting project with system catalog:', projectToSelect.name);
+              console.log('🔍 useProjectData: Project has', projectToSelect.systemCatalog.tables.length, 'tables');
+              await selectProject(projectToSelect);
+            } else {
+              console.log('🔍 useProjectData: No projects with system catalog found');
+            }
+          } catch (projectsError) {
+            console.error('🔍 useProjectData: Failed to get projects:', projectsError);
+          }
+        } else {
+          console.log('🔍 useProjectData: Current project already has system catalog');
+        }
+      } catch (error) {
+        console.warn('🔍 useProjectData: Failed to check for system catalog projects:', error);
+      }
+    };
+
+    // Run immediately and then every 3 seconds
+    console.log('🔍 useProjectData: Starting periodic check');
+    checkForSystemCatalogProject();
+    const intervalId = setInterval(checkForSystemCatalogProject, 3000);
+
+    return () => {
+      console.log('🔍 useProjectData: Clearing periodic check');
+      clearInterval(intervalId);
+    };
+  }, [currentProject, selectProject]);
 
   const clearProjectData = useCallback(() => {
     setCurrentProject(null);
