@@ -222,6 +222,25 @@ export function useProjectData(): UseProjectDataReturn {
           
           console.log(`useProjectData: Found ${projectsWithCatalog.length} projects with system catalog out of ${allProjects.length} total`);
           
+          // Detailed logging for debugging
+          if (projectsWithCatalog.length > 0) {
+            console.log('📦 useProjectData: Projects with system catalog:', projectsWithCatalog.map(p => ({
+              id: p.id,
+              name: p.name,
+              catalogTables: p.systemCatalog?.tables?.length || 0,
+              databaseType: p.systemCatalog?.metadata?.databaseType
+            })));
+          } else {
+            console.warn('⚠️ useProjectData: No projects with system catalog found! Checking all projects...');
+            console.log('📋 useProjectData: All projects:', allProjects.map(p => ({
+              id: p.id,
+              name: p.name,
+              hasCatalog: !!p.systemCatalog,
+              catalogType: typeof p.systemCatalog,
+              catalogTables: p.systemCatalog?.tables?.length || 0
+            })));
+          }
+          
           if (projectsWithCatalog.length > 0) {
             // Select the most recent project with system catalog
             const sortedProjects = projectsWithCatalog.sort((a, b) => 
@@ -305,6 +324,14 @@ export function useProjectData(): UseProjectDataReturn {
             );
 
             console.log('🔍 useProjectData: Found', projectsWithCatalog.length, 'projects with system catalog');
+            
+            if (projectsWithCatalog.length > 0) {
+              console.log('📦 useProjectData: System catalog projects:', projectsWithCatalog.map(p => ({
+                id: p.id,
+                name: p.name,
+                catalogTables: p.systemCatalog?.tables?.length || 0
+              })));
+            }
 
             if (projectsWithCatalog.length > 0) {
               const sortedProjects = projectsWithCatalog.sort((a, b) =>

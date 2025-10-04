@@ -29,6 +29,18 @@ export async function GET() {
     
     console.log('📊 Projects API: Fresh data retrieved:', projects.length, 'projects');
     
+    // Log system catalog information for debugging
+    const projectsWithCatalog = projects.filter(p => p.systemCatalog && p.systemCatalog.tables && p.systemCatalog.tables.length > 0);
+    console.log('📦 Projects API: Projects with system catalog:', projectsWithCatalog.length);
+    if (projectsWithCatalog.length > 0) {
+      console.log('📦 Projects API: System catalog projects:', projectsWithCatalog.map(p => ({
+        id: p.id,
+        name: p.name,
+        catalogTables: p.systemCatalog?.tables?.length || 0,
+        databaseType: p.systemCatalog?.metadata?.databaseType
+      })));
+    }
+    
     // Sort by creation date to get latest first
     const sortedProjects = projects.sort((a, b) => {
       const dateA = new Date(a.createdAt || a.created_at || 0);
@@ -40,6 +52,8 @@ export async function GET() {
       id: p.id,
       name: p.name,
       totalTables: p.totalTables,
+      hasCatalog: !!p.systemCatalog,
+      catalogTables: p.systemCatalog?.tables?.length || 0,
       createdAt: p.createdAt || p.created_at
     })));
 

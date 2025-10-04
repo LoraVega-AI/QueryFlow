@@ -537,6 +537,11 @@ export class ProjectsManager {
         schema: p.schema,
         tables: p.schema?.tables || [],
         queries: [],
+        totalTables: p.totalTables,
+        totalRows: p.totalRows,
+        hasForeignKeys: p.hasForeignKeys,
+        hasIndexes: p.hasIndexes,
+        systemCatalog: p.systemCatalog, // CRITICAL: Pass through system catalog data
         createdAt: p.createdAt || new Date(),
         updatedAt: p.updatedAt || new Date()
       }));
@@ -548,6 +553,20 @@ export class ProjectsManager {
           console.log(`📊 ProjectsManager: Loading databases for project ${project.id}...`);
           const databases = await dbConnectionManager.getProjectDatabases(project.id);
           console.log(`📊 ProjectsManager: Found ${databases.length} databases for project ${project.id}`);
+          
+          // Log system catalog information
+          if (project.systemCatalog) {
+            console.log(`📦 ProjectsManager: Project ${project.name} has system catalog with ${project.systemCatalog.tables?.length || 0} tables`);
+            console.log(`📦 ProjectsManager: System catalog metadata:`, {
+              databaseType: project.systemCatalog.metadata?.databaseType,
+              version: project.systemCatalog.metadata?.version,
+              tablesCount: project.systemCatalog.tables?.length || 0,
+              viewsCount: project.systemCatalog.views?.length || 0,
+              indexesCount: project.systemCatalog.indexes?.length || 0
+            });
+          } else {
+            console.log(`📦 ProjectsManager: Project ${project.name} has NO system catalog`);
+          }
           
           project.databases = databases.map(db => ({
             id: db.id,
@@ -564,7 +583,18 @@ export class ProjectsManager {
         }
       }
 
+      // Summary logging
+      const projectsWithCatalog = projects.filter(p => p.systemCatalog && p.systemCatalog.tables && p.systemCatalog.tables.length > 0);
       console.log('✅ ProjectsManager: Returning projects:', projects.length);
+      console.log(`📦 ProjectsManager: Projects with system catalog: ${projectsWithCatalog.length}`);
+      if (projectsWithCatalog.length > 0) {
+        console.log('📦 ProjectsManager: Projects with system catalog:', projectsWithCatalog.map(p => ({
+          id: p.id,
+          name: p.name,
+          tablesCount: p.systemCatalog?.tables?.length || 0
+        })));
+      }
+      
       return projects;
     } catch (error) {
       console.error('❌ ProjectsManager: Failed to get projects from persistent storage:', error);
@@ -606,6 +636,11 @@ export class ProjectsManager {
         schema: persistedProject.schema,
         tables: persistedProject.schema?.tables || [],
         queries: [],
+        totalTables: persistedProject.totalTables,
+        totalRows: persistedProject.totalRows,
+        hasForeignKeys: persistedProject.hasForeignKeys,
+        hasIndexes: persistedProject.hasIndexes,
+        systemCatalog: persistedProject.systemCatalog, // CRITICAL: Pass through system catalog data
         createdAt: persistedProject.createdAt || new Date(),
         updatedAt: persistedProject.updatedAt || new Date()
       };
