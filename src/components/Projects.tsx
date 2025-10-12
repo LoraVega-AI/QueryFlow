@@ -33,6 +33,7 @@ import { Project } from '../types/project';
 import { DatabaseConnectionModal } from './DatabaseConnectionModal';
 import { QueryEditor } from './QueryEditor';
 import { ProjectUploader } from './ProjectUploader';
+import { VerificationDashboard } from './VerificationDashboard';
 import { useDatabase } from '../contexts/DatabaseContext';
 import { DatabaseConnector } from '../utils/databaseConnector';
 import { DatabaseSchema } from '../types/database';
@@ -1636,6 +1637,23 @@ export function Projects() {
                     )}
                   </div>
                 </div>
+              )}
+
+              {/* Verification Dashboard */}
+              {project.databases && project.databases.length > 0 && project.databases[0] && (
+                <VerificationDashboard
+                  verification={project.databases[0].verification}
+                  databaseIntrospection={project.databases[0].databaseIntrospection}
+                  schemaObjects={project.databases[0].schemaObjects}
+                  columns={project.databases[0].columns}
+                  constraints={project.databases[0].constraints}
+                  statistics={project.databases[0].statistics}
+                  functions={project.databases[0].functions}
+                  security={project.databases[0].security}
+                  runtimeState={project.databases[0].runtimeState}
+                  engineFeatures={project.databases[0].engineFeatures}
+                  verificationStatus={project.databases[0].verificationStatus}
+                />
               )}
 
                     {/* Actions */}

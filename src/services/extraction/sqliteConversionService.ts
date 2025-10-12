@@ -75,6 +75,71 @@ export class SQLiteConversionService {
   }
 
   /**
+   * Convert IR schema to SQLite database and save to file
+   */
+  async convertToFile(schema: IRSchema, filePath: string, options: SQLiteConversionOptions): Promise<string> {
+    const startTime = Date.now();
+    console.log(`🗄️  Converting IR schema to SQLite database file: ${filePath}...`);
+
+    try {
+      const fs = require('fs');
+      const path = require('path');
+
+      // Ensure directory exists
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      // Create SQLite database at specified path
+      const db = new Database(filePath);
+
+      // Enable foreign key constraints if requested
+      if (options.enableConstraints) {
+        db.exec('PRAGMA foreign_keys = ON');
+      }
+
+      // Convert tables
+      for (const table of schema.tables) {
+        await this.createTable(db, table, options);
+        console.log(`📋 Created table: ${table.name}`);
+      }
+
+      // Create indexes if requested
+      if (options.createIndexes) {
+        for (const table of schema.tables) {
+          await this.createIndexes(db, table);
+        }
+      }
+
+      // Add metadata if requested
+      if (options.addMetadata) {
+        await this.addMetadata(db, schema);
+      }
+
+      // Generate sample data if requested
+      if (options.generateSampleData) {
+        for (const table of schema.tables) {
+          await this.generateSampleData(db, table);
+        }
+      }
+
+      // Close database
+      db.close();
+
+      const conversionTime = Date.now() - startTime;
+      const fileSize = fs.statSync(filePath).size;
+      console.log(`🗄️  SQLite file conversion completed in ${conversionTime}ms (${fileSize} bytes)`);
+
+      return filePath;
+
+    } catch (error) {
+      console.error('SQLite file conversion failed:', error);
+      throw new Error(`SQLite file conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Convert IR schema to SQLite schema (without creating database)
    */
   async convertToSchema(schema: IRSchema, options: SQLiteConversionOptions): Promise<SQLiteSchema> {

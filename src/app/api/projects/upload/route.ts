@@ -1255,8 +1255,31 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles: string[], uplo
       tablesCount: extractionResult.schema.tables.length,
       hasSchema: !!extractionResult.schema,
       hasMetadata: !!extractionResult.metadata,
-      confidence: extractionResult.metadata?.confidence
+      confidence: extractionResult.metadata?.confidence,
+      hasVerification: !!extractionResult.verification,
+      verifiedTables: extractionResult.verification?.verifiedTables?.length || 0,
+      hasDatabaseIntrospection: !!extractionResult.databaseIntrospection
     });
+    
+    // Log verification results if available
+    if (extractionResult.verification) {
+      console.log('✅ Verification data available:', {
+        verifiedTables: extractionResult.verification.verifiedTables.length,
+        phantomTables: extractionResult.verification.phantomTables.length,
+        duplicateTables: extractionResult.verification.duplicateTables.length,
+        accuracy: extractionResult.verification.verificationStats.accuracy
+      });
+    }
+    
+    // Log database introspection if available
+    if (extractionResult.databaseIntrospection) {
+      console.log('🔍 Database introspection available:', {
+        actualTables: extractionResult.databaseIntrospection.actualTables.length,
+        views: extractionResult.databaseIntrospection.views?.length || 0,
+        indexes: extractionResult.databaseIntrospection.indexes?.length || 0,
+        triggers: extractionResult.databaseIntrospection.triggers?.length || 0
+      });
+    }
     
     // Convert extraction result to database format
     if (extractionResult.schema.tables.length > 0) {
@@ -1269,6 +1292,18 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles: string[], uplo
         relativePath: 'extracted',
         isConnected: false,
         lastSync: null,
+        // Include verification data
+        verification: extractionResult.verification,
+        databaseIntrospection: extractionResult.databaseIntrospection,
+        schemaObjects: extractionResult.schemaObjects,
+        columns: extractionResult.columns,
+        constraints: extractionResult.constraints,
+        statistics: extractionResult.statistics,
+        functions: extractionResult.functions,
+        security: extractionResult.security,
+        runtimeState: extractionResult.runtimeState,
+        engineFeatures: extractionResult.engineFeatures,
+        verificationStatus: extractionResult.verificationStatus,
         tables: extractionResult.schema.tables.map(table => ({
           id: table.name,
           name: table.name,

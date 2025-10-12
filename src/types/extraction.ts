@@ -275,6 +275,185 @@ export interface ExtractionResult {
     extractionTime: number;
     confidence: number;
   };
+  verificationStatus?: {
+    stage: 'idle' | 'introspecting' | 'reconciling' | 'analyzing' | 'complete' | 'error';
+    progress: number;
+    currentOperation: string;
+    errors: string[];
+    warnings: string[];
+  };
+  // Comprehensive unified report sections
+  verification?: {
+    verifiedTables: any[];
+    phantomTables: any[];
+    duplicateTables: any[];
+    mismatchedTables: any[];
+    reconciliationMatches: any[];
+    verificationStats: {
+      totalExtracted: number;
+      verified: number;
+      phantoms: number;
+      duplicates: number;
+      mismatched: number;
+      accuracy: number;
+      reconciliationScore: number;
+    };
+    extractionConsistency?: {
+      unusedModels: Array<{
+        modelName: string;
+        modelType: 'TABLE' | 'VIEW' | 'COLLECTION';
+        filePath?: string;
+        reason: 'NOT_IN_DATABASE' | 'NO_MATCHING_TABLE' | 'STRUCTURE_MISMATCH';
+        details: string;
+        suggestions: string[];
+      }>;
+      phantomStructures: Array<{
+        structureName: string;
+        structureType: 'TABLE' | 'VIEW' | 'INDEX' | 'CONSTRAINT' | 'TRIGGER' | 'FUNCTION' | 'PROCEDURE';
+        databaseSource: 'CATALOG' | 'INTROSPECTION';
+        reason: 'NOT_IN_ORM' | 'NO_MATCHING_MODEL' | 'ORPHANED_OBJECT';
+        details: string;
+        suggestions: string[];
+      }>;
+      constraintDiscrepancies: Array<{
+        tableName: string;
+        constraintType: 'PRIMARY_KEY' | 'FOREIGN_KEY' | 'UNIQUE' | 'CHECK' | 'NOT_NULL';
+        ormDefinition?: any;
+        databaseDefinition?: any;
+        discrepancyType: 'MISSING_IN_ORM' | 'MISSING_IN_DATABASE' | 'STRUCTURE_MISMATCH' | 'NAME_MISMATCH';
+        severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+        details: string;
+      }>;
+      relationDiscrepancies: Array<{
+        tableName: string;
+        relationType: 'ONE_TO_ONE' | 'ONE_TO_MANY' | 'MANY_TO_MANY' | 'BELONGS_TO' | 'HAS_MANY' | 'HAS_ONE';
+        ormDefinition?: any;
+        databaseDefinition?: any;
+        discrepancyType: 'MISSING_IN_ORM' | 'MISSING_IN_DATABASE' | 'STRUCTURE_MISMATCH' | 'TYPE_MISMATCH';
+        severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+        details: string;
+      }>;
+      columnDiscrepancies: Array<{
+        tableName: string;
+        columnName: string;
+        ormDefinition?: any;
+        databaseDefinition?: any;
+        discrepancyType: 'MISSING_IN_ORM' | 'MISSING_IN_DATABASE' | 'TYPE_MISMATCH' | 'NULLABLE_MISMATCH' | 'DEFAULT_MISMATCH';
+        severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+        details: string;
+      }>;
+      consistencyMetrics: {
+        totalModels: number;
+        totalDatabaseObjects: number;
+        unusedModelCount: number;
+        phantomStructureCount: number;
+        constraintDiscrepancyCount: number;
+        relationDiscrepancyCount: number;
+        columnDiscrepancyCount: number;
+        overallConsistencyScore: number;
+        criticalIssuesCount: number;
+        highIssuesCount: number;
+        mediumIssuesCount: number;
+        lowIssuesCount: number;
+      };
+    };
+  };
+  databaseIntrospection?: {
+    actualTables: string[];
+    databaseConfiguration?: any;
+    statistics?: any;
+    tableMetadata: any[];
+    views?: any[];
+    indexes?: any[];
+    triggers?: any[];
+    sequences?: any[];
+    procedures?: any[];
+    functions?: any[];
+    events?: any[];
+    security?: any;
+    runtimeState?: any;
+    dependencyGraph?: any;
+    // Engine-specific features
+    extensions?: any;
+    partitioning?: any;
+    engineInfo?: any;
+    pragmas?: any;
+    mongoOptions?: any;
+  };
+  // Schema objects section
+  schemaObjects?: {
+    tables: any[];
+    views: any[];
+    indexes: any[];
+    triggers: any[];
+    sequences: any[];
+    procedures: any[];
+    functions: any[];
+    events: any[];
+    materializedViews: any[];
+    partitionedTables: any[];
+    temporaryTables: any[];
+  };
+  // Enhanced columns section
+  columns?: {
+    detailedMetadata: any[];
+    typeMappings: any[];
+    constraintAnalysis: any[];
+    relationshipMapping: any[];
+    performanceMetrics: any[];
+  };
+  // Constraints section
+  constraints?: {
+    primaryKeys: any[];
+    foreignKeys: any[];
+    uniqueConstraints: any[];
+    checkConstraints: any[];
+    notNullConstraints: any[];
+    exclusionConstraints: any[];
+    constraintValidation: any[];
+  };
+  // Statistics section
+  statistics?: {
+    tableStatistics: any[];
+    indexStatistics: any[];
+    performanceMetrics: any[];
+    sizeAnalysis: any[];
+    usagePatterns: any[];
+  };
+  // Functions and procedures section
+  functions?: {
+    storedProcedures: any[];
+    userDefinedFunctions: any[];
+    triggers: any[];
+    events: any[];
+    sequences: any[];
+    dependencies: any[];
+  };
+  // Users and roles section
+  security?: {
+    users: any[];
+    roles: any[];
+    permissions: any[];
+    grants: any[];
+    accessControl: any[];
+  };
+  // Runtime state section
+  runtimeState?: {
+    connections: any[];
+    transactions: any[];
+    locks: any[];
+    blockingLocks: any[];
+    systemMetrics: any[];
+  };
+  // Engine features section
+  engineFeatures?: {
+    extensions: any;
+    partitioning: any;
+    engineInfo: any;
+    pragmas: any;
+    mongoOptions: any;
+    databaseConfiguration: any;
+  };
 }
 
 export interface ExtractionPerformance {

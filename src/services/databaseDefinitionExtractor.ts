@@ -25,6 +25,8 @@ import { SQLiteConversionService } from './extraction/sqliteConversionService';
 import { WorkerPoolService } from './extraction/workerPoolService';
 import { CacheService } from './extraction/cacheService';
 import { SystemCatalogExtractor } from './extraction/systemCatalogExtractor';
+import { DatabaseVerificationService } from './extraction/databaseVerificationService';
+import { TempFileManager } from './extraction/tempFileManager';
 
 export class DatabaseDefinitionExtractor {
   private fileIntake: FileIntakeService;
@@ -35,6 +37,8 @@ export class DatabaseDefinitionExtractor {
   private sqliteConverter: SQLiteConversionService;
   private workerPool: WorkerPoolService;
   private cache: CacheService;
+  private verificationService: DatabaseVerificationService;
+  private tempFileManager: TempFileManager;
 
   private progress: ExtractionProgress;
   private performance: ExtractionPerformance;
@@ -50,6 +54,8 @@ export class DatabaseDefinitionExtractor {
     this.sqliteConverter = new SQLiteConversionService();
     this.workerPool = new WorkerPoolService();
     this.cache = new CacheService();
+    this.verificationService = new DatabaseVerificationService();
+    this.tempFileManager = new TempFileManager();
 
     this.progress = this.initializeProgress();
     this.performance = this.initializePerformance();
@@ -112,10 +118,48 @@ export class DatabaseDefinitionExtractor {
       });
       console.log(`🗄️  Generated SQLite database`);
 
+      // Stage 7: Database Verification and Introspection
+      await this.updateProgress('verifying');
+      let verificationResult = null;
+      let databaseIntrospection = null;
+      let tempDbPath: string | undefined;
+      
+      try {
+        // Create temp file from buffer for verification
+        if (sqliteDb) {
+          tempDbPath = await this.tempFileManager.createTempDatabase(sqliteDb, `extraction_${Date.now()}`);
+          console.log(`📁 Created temp database for verification: ${tempDbPath}`);
+          
+          // Perform table verification against actual database
+          verificationResult = await this.verificationService.verifyTables(
+            irSchema.tables,
+            'sqlite',
+            { filePath: tempDbPath }
+          );
+          
+          // Perform database introspection
+          databaseIntrospection = await this.verificationService.introspectDatabase(
+            'sqlite',
+            { filePath: tempDbPath }
+          );
+          
+          console.log(`✅ Verification completed with ${verificationResult.verifiedTables.length} verified tables`);
+          console.log(`🔍 Database introspection found ${databaseIntrospection.actualTables.length} actual tables`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Verification failed, continuing without verification:', error);
+      } finally {
+        // Always cleanup temp file
+        if (tempDbPath) {
+          await this.tempFileManager.cleanup(tempDbPath);
+        }
+      }
+
       await this.updateProgress('complete');
       this.performance.endTime = new Date();
       this.performance.totalTime = Date.now() - startTime;
 
+      // Build comprehensive unified report
       const result: ExtractionResult = {
         schema: irSchema,
         sqliteDb,
@@ -126,7 +170,20 @@ export class DatabaseDefinitionExtractor {
           processedFiles: this.progress.filesProcessed,
           extractionTime: this.performance.totalTime,
           confidence: this.calculateOverallConfidence(irSchema)
-        }
+        },
+        // Add verification results if available
+        ...(verificationResult && { verification: verificationResult }),
+        // Add database introspection results if available
+        ...(databaseIntrospection && { databaseIntrospection }),
+        // Build comprehensive sections from available data
+        schemaObjects: this.buildSchemaObjectsSection(irSchema, databaseIntrospection),
+        columns: this.buildColumnsSection(irSchema, databaseIntrospection),
+        constraints: this.buildConstraintsSection(irSchema, databaseIntrospection),
+        statistics: this.buildStatisticsSection(databaseIntrospection),
+        functions: this.buildFunctionsSection(databaseIntrospection),
+        security: this.buildSecuritySection(databaseIntrospection),
+        runtimeState: this.buildRuntimeStateSection(databaseIntrospection),
+        engineFeatures: this.buildEngineFeaturesSection(databaseIntrospection)
       };
 
       console.log('🎉 Extraction completed successfully!');
@@ -145,6 +202,321 @@ export class DatabaseDefinitionExtractor {
       
       throw error;
     }
+  }
+
+  /**
+   * Build comprehensive schema objects section
+   */
+  private buildSchemaObjectsSection(irSchema: IRSchema, databaseIntrospection: any): any {
+    return {
+      tables: irSchema.tables.map(table => ({
+        name: table.name,
+        schema: table.schema,
+        fields: table.fields,
+        indexes: table.indexes,
+        constraints: table.constraints,
+        triggers: table.triggers,
+        metadata: table.metadata,
+        sourceLocation: table.sourceLocation
+      })),
+      views: databaseIntrospection?.views || [],
+      indexes: databaseIntrospection?.indexes || [],
+      triggers: databaseIntrospection?.triggers || [],
+      sequences: databaseIntrospection?.sequences || [],
+      procedures: databaseIntrospection?.procedures || [],
+      functions: databaseIntrospection?.functions || [],
+      events: databaseIntrospection?.events || [],
+      materializedViews: databaseIntrospection?.views?.filter((v: any) => v.isMaterialized) || [],
+      partitionedTables: databaseIntrospection?.partitioning?.partitionedTables || [],
+      temporaryTables: irSchema.tables.filter(table => table.name.startsWith('temp_') || table.name.startsWith('tmp_'))
+    };
+  }
+
+  /**
+   * Build comprehensive columns section
+   */
+  private buildColumnsSection(irSchema: IRSchema, databaseIntrospection: any): any {
+    const detailedMetadata = [];
+    const typeMappings = [];
+    const constraintAnalysis = [];
+    const relationshipMapping = [];
+    const performanceMetrics = [];
+
+    // Process each table's columns
+    for (const table of irSchema.tables) {
+      for (const field of table.fields) {
+        detailedMetadata.push({
+          tableName: table.name,
+          columnName: field.name,
+          type: field.type,
+          nullable: field.nullable,
+          primaryKey: field.primaryKey,
+          unique: field.unique,
+          autoIncrement: field.autoIncrement,
+          defaultValue: field.defaultValue,
+          constraints: field.constraints,
+          foreignKey: field.foreignKey,
+          documentation: field.documentation,
+          sourceLocation: field.sourceLocation
+        });
+
+        // Type mappings
+        typeMappings.push({
+          ormType: field.type,
+          databaseType: field.type, // This would be mapped from database introspection
+          compatibility: 'compatible',
+          notes: ''
+        });
+
+        // Constraint analysis
+        if (field.constraints) {
+          constraintAnalysis.push({
+            tableName: table.name,
+            columnName: field.name,
+            constraints: field.constraints,
+            validation: 'valid',
+            recommendations: []
+          });
+        }
+
+        // Relationship mapping
+        if (field.foreignKey) {
+          relationshipMapping.push({
+            sourceTable: table.name,
+            sourceColumn: field.name,
+            targetTable: field.foreignKey.table,
+            targetColumn: field.foreignKey.field,
+            relationshipType: 'foreign_key',
+            onDelete: field.foreignKey.onDelete,
+            onUpdate: field.foreignKey.onUpdate
+          });
+        }
+      }
+    }
+
+    return {
+      detailedMetadata,
+      typeMappings,
+      constraintAnalysis,
+      relationshipMapping,
+      performanceMetrics
+    };
+  }
+
+  /**
+   * Build comprehensive constraints section
+   */
+  private buildConstraintsSection(irSchema: IRSchema, databaseIntrospection: any): any {
+    const primaryKeys = [];
+    const foreignKeys = [];
+    const uniqueConstraints = [];
+    const checkConstraints = [];
+    const notNullConstraints = [];
+    const exclusionConstraints = [];
+    const constraintValidation = [];
+
+    // Process constraints from IR schema
+    for (const table of irSchema.tables) {
+      // Primary keys
+      const pkFields = table.fields.filter(f => f.primaryKey);
+      if (pkFields.length > 0) {
+        primaryKeys.push({
+          tableName: table.name,
+          columns: pkFields.map(f => f.name),
+          constraintName: `pk_${table.name}`,
+          isComposite: pkFields.length > 1
+        });
+      }
+
+      // Foreign keys
+      for (const field of table.fields) {
+        if (field.foreignKey) {
+          foreignKeys.push({
+            tableName: table.name,
+            columnName: field.name,
+            referencedTable: field.foreignKey.table,
+            referencedColumn: field.foreignKey.field,
+            constraintName: `fk_${table.name}_${field.name}`,
+            onDelete: field.foreignKey.onDelete,
+            onUpdate: field.foreignKey.onUpdate
+          });
+        }
+      }
+
+      // Unique constraints
+      const uniqueFields = table.fields.filter(f => f.unique && !f.primaryKey);
+      for (const field of uniqueFields) {
+        uniqueConstraints.push({
+          tableName: table.name,
+          columnName: field.name,
+          constraintName: `uk_${table.name}_${field.name}`,
+          isUnique: true
+        });
+      }
+
+      // Not null constraints
+      const notNullFields = table.fields.filter(f => !f.nullable);
+      for (const field of notNullFields) {
+        notNullConstraints.push({
+          tableName: table.name,
+          columnName: field.name,
+          constraintName: `nn_${table.name}_${field.name}`,
+          isNotNull: true
+        });
+      }
+
+      // Check constraints
+      for (const field of table.fields) {
+        if (field.constraints?.check) {
+          checkConstraints.push({
+            tableName: table.name,
+            columnName: field.name,
+            expression: field.constraints.check,
+            constraintName: `ck_${table.name}_${field.name}`,
+            isEnabled: true
+          });
+        }
+      }
+    }
+
+    // Add database introspection constraints
+    if (databaseIntrospection?.tableMetadata) {
+      for (const table of databaseIntrospection.tableMetadata) {
+        if (table.constraints) {
+          // Add primary key constraints from database
+          if (table.constraints.primaryKeyConstraints) {
+            for (const pk of table.constraints.primaryKeyConstraints) {
+              primaryKeys.push({
+                tableName: table.name,
+                columns: pk.columns,
+                constraintName: pk.name,
+                isComposite: pk.columns.length > 1,
+                source: 'database'
+              });
+            }
+          }
+
+          // Add foreign key constraints from database
+          if (table.constraints.foreignKeyConstraints) {
+            for (const fk of table.constraints.foreignKeyConstraints) {
+              foreignKeys.push({
+                tableName: table.name,
+                columnName: fk.columns[0],
+                referencedTable: fk.referencedTable,
+                referencedColumn: fk.referencedColumns[0],
+                constraintName: fk.name,
+                onDelete: fk.onDelete,
+                onUpdate: fk.onUpdate,
+                source: 'database'
+              });
+            }
+          }
+
+          // Add unique constraints from database
+          if (table.constraints.uniqueConstraints) {
+            for (const uk of table.constraints.uniqueConstraints) {
+              uniqueConstraints.push({
+                tableName: table.name,
+                columns: uk.columns,
+                constraintName: uk.name,
+                isUnique: true,
+                source: 'database'
+              });
+            }
+          }
+
+          // Add check constraints from database
+          if (table.constraints.checkConstraints) {
+            for (const ck of table.constraints.checkConstraints) {
+              checkConstraints.push({
+                tableName: table.name,
+                expression: ck.expression,
+                constraintName: ck.name,
+                isEnabled: ck.isEnabled,
+                source: 'database'
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      primaryKeys,
+      foreignKeys,
+      uniqueConstraints,
+      checkConstraints,
+      notNullConstraints,
+      exclusionConstraints,
+      constraintValidation
+    };
+  }
+
+  /**
+   * Build comprehensive statistics section
+   */
+  private buildStatisticsSection(databaseIntrospection: any): any {
+    return {
+      tableStatistics: databaseIntrospection?.statistics?.tableStatistics || [],
+      indexStatistics: databaseIntrospection?.statistics?.indexStatistics || [],
+      performanceMetrics: databaseIntrospection?.statistics?.performanceMetrics || [],
+      sizeAnalysis: databaseIntrospection?.statistics?.sizeAnalysis || [],
+      usagePatterns: databaseIntrospection?.statistics?.usagePatterns || []
+    };
+  }
+
+  /**
+   * Build comprehensive functions section
+   */
+  private buildFunctionsSection(databaseIntrospection: any): any {
+    return {
+      storedProcedures: databaseIntrospection?.procedures || [],
+      userDefinedFunctions: databaseIntrospection?.functions || [],
+      triggers: databaseIntrospection?.triggers || [],
+      events: databaseIntrospection?.events || [],
+      sequences: databaseIntrospection?.sequences || [],
+      dependencies: databaseIntrospection?.dependencyGraph || []
+    };
+  }
+
+  /**
+   * Build comprehensive security section
+   */
+  private buildSecuritySection(databaseIntrospection: any): any {
+    return {
+      users: databaseIntrospection?.security?.users || [],
+      roles: databaseIntrospection?.security?.roles || [],
+      permissions: databaseIntrospection?.security?.permissions || [],
+      grants: databaseIntrospection?.security?.grants || [],
+      accessControl: databaseIntrospection?.security?.accessControl || []
+    };
+  }
+
+  /**
+   * Build comprehensive runtime state section
+   */
+  private buildRuntimeStateSection(databaseIntrospection: any): any {
+    return {
+      connections: databaseIntrospection?.runtimeState?.connections || [],
+      transactions: databaseIntrospection?.runtimeState?.transactions || [],
+      locks: databaseIntrospection?.runtimeState?.locks || [],
+      blockingLocks: databaseIntrospection?.runtimeState?.blockingLocks || [],
+      systemMetrics: databaseIntrospection?.runtimeState?.systemMetrics || []
+    };
+  }
+
+  /**
+   * Build comprehensive engine features section
+   */
+  private buildEngineFeaturesSection(databaseIntrospection: any): any {
+    return {
+      extensions: databaseIntrospection?.extensions || null,
+      partitioning: databaseIntrospection?.partitioning || null,
+      engineInfo: databaseIntrospection?.engineInfo || null,
+      pragmas: databaseIntrospection?.pragmas || null,
+      mongoOptions: databaseIntrospection?.mongoOptions || null,
+      databaseConfiguration: databaseIntrospection?.databaseConfiguration || null
+    };
   }
 
   /**
@@ -195,10 +567,48 @@ export class DatabaseDefinitionExtractor {
         generateSampleData: false
       });
 
+      // Stage 7: Database Verification and Introspection
+      await this.updateProgress('verifying');
+      let verificationResult = null;
+      let databaseIntrospection = null;
+      let tempDbPath: string | undefined;
+      
+      try {
+        // Create temp file from buffer for verification
+        if (sqliteDb) {
+          tempDbPath = await this.tempFileManager.createTempDatabase(sqliteDb, `extraction_${Date.now()}`);
+          console.log(`📁 Created temp database for verification: ${tempDbPath}`);
+          
+          // Perform table verification against actual database
+          verificationResult = await this.verificationService.verifyTables(
+            irSchema.tables,
+            'sqlite',
+            { filePath: tempDbPath }
+          );
+          
+          // Perform database introspection
+          databaseIntrospection = await this.verificationService.introspectDatabase(
+            'sqlite',
+            { filePath: tempDbPath }
+          );
+          
+          console.log(`✅ Verification completed with ${verificationResult.verifiedTables.length} verified tables`);
+          console.log(`🔍 Database introspection found ${databaseIntrospection.actualTables.length} actual tables`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Verification failed, continuing without verification:', error);
+      } finally {
+        // Always cleanup temp file
+        if (tempDbPath) {
+          await this.tempFileManager.cleanup(tempDbPath);
+        }
+      }
+
       await this.updateProgress('complete');
       this.performance.endTime = new Date();
       this.performance.totalTime = Date.now() - startTime;
 
+      // Build comprehensive unified report
       return {
         schema: irSchema,
         sqliteDb,
@@ -209,7 +619,20 @@ export class DatabaseDefinitionExtractor {
           processedFiles: this.progress.filesProcessed,
           extractionTime: this.performance.totalTime,
           confidence: this.calculateOverallConfidence(irSchema)
-        }
+        },
+        // Add verification results if available
+        ...(verificationResult && { verification: verificationResult }),
+        // Add database introspection results if available
+        ...(databaseIntrospection && { databaseIntrospection }),
+        // Build comprehensive sections from available data
+        schemaObjects: this.buildSchemaObjectsSection(irSchema, databaseIntrospection),
+        columns: this.buildColumnsSection(irSchema, databaseIntrospection),
+        constraints: this.buildConstraintsSection(irSchema, databaseIntrospection),
+        statistics: this.buildStatisticsSection(databaseIntrospection),
+        functions: this.buildFunctionsSection(databaseIntrospection),
+        security: this.buildSecuritySection(databaseIntrospection),
+        runtimeState: this.buildRuntimeStateSection(databaseIntrospection),
+        engineFeatures: this.buildEngineFeaturesSection(databaseIntrospection)
       };
 
     } catch (error) {

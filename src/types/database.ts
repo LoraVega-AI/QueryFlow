@@ -91,6 +91,23 @@ export interface Table {
   indexes?: TableIndex[];
   triggers?: TableTrigger[];
   businessRules?: BusinessRule[];
+  sequences?: Array<{
+    name: string;
+    schema: string;
+    columnName: string;
+    startValue: number;
+    increment: number;
+    minValue: number;
+    maxValue: number;
+    cycle: boolean;
+    cache: number;
+    lastValue?: number;
+    isOwned: boolean;
+    ownershipType?: 'COLUMN' | 'TABLE' | 'SEQUENCE';
+    dataType: string;
+    creationDDL: string;
+    comment?: string;
+  }>;
   version?: number;
   createdAt?: Date;
   updatedAt?: Date;

@@ -444,8 +444,11 @@ class ApplicationDataManager {
 
     if (!this.appDb) return; // Additional check
 
-    // Check if we need to migrate the projects table
-    await this.migrateProjectsTable();
+  // Check if we need to migrate the projects table
+  await this.migrateProjectsTable();
+  
+  // Check if we need to migrate to comprehensive sections
+  await this.migrateToComprehensiveSections();
 
     // Projects table
     await this.appDb.exec(`
@@ -465,6 +468,18 @@ class ApplicationDataManager {
         color TEXT,
         is_example INTEGER DEFAULT 0,
         schema_data TEXT,
+        system_catalog TEXT,
+        -- Comprehensive unified report sections
+        verification_data TEXT,
+        database_introspection TEXT,
+        schema_objects TEXT,
+        columns_data TEXT,
+        constraints_data TEXT,
+        statistics_data TEXT,
+        functions_data TEXT,
+        security_data TEXT,
+        runtime_state TEXT,
+        engine_features TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
@@ -576,6 +591,46 @@ class ApplicationDataManager {
     }
   }
 
+  // Migrate to comprehensive sections
+  private async migrateToComprehensiveSections(): Promise<void> {
+    if (!this.appDb) return;
+
+    try {
+      // Check if comprehensive sections columns exist
+      const columns = await this.appDb.all(`
+        PRAGMA table_info(projects)
+      `);
+      
+      const hasComprehensiveSections = columns.some((col: any) => 
+        col.name === 'verification_data' || 
+        col.name === 'database_introspection' ||
+        col.name === 'schema_objects'
+      );
+
+      if (!hasComprehensiveSections) {
+        console.log('🔄 Migrating projects table to comprehensive sections...');
+        
+        // Add comprehensive sections columns
+        await this.appDb.exec(`
+          ALTER TABLE projects ADD COLUMN verification_data TEXT;
+          ALTER TABLE projects ADD COLUMN database_introspection TEXT;
+          ALTER TABLE projects ADD COLUMN schema_objects TEXT;
+          ALTER TABLE projects ADD COLUMN columns_data TEXT;
+          ALTER TABLE projects ADD COLUMN constraints_data TEXT;
+          ALTER TABLE projects ADD COLUMN statistics_data TEXT;
+          ALTER TABLE projects ADD COLUMN functions_data TEXT;
+          ALTER TABLE projects ADD COLUMN security_data TEXT;
+          ALTER TABLE projects ADD COLUMN runtime_state TEXT;
+          ALTER TABLE projects ADD COLUMN engine_features TEXT;
+        `);
+        
+        console.log('✅ Projects table migrated to comprehensive sections');
+      }
+    } catch (error) {
+      console.error('❌ Failed to migrate to comprehensive sections:', error);
+    }
+  }
+
   // Project operations
   async saveProject(project: any): Promise<void> {
     if (!this.appDb) await this.initialize();
@@ -596,11 +651,23 @@ class ApplicationDataManager {
     const schemaData = JSON.stringify(project.schema || {});
     const now = new Date().toISOString();
 
+    // Prepare comprehensive sections data
+    const verificationData = project.verification ? JSON.stringify(project.verification) : null;
+    const databaseIntrospection = project.databaseIntrospection ? JSON.stringify(project.databaseIntrospection) : null;
+    const schemaObjects = project.schemaObjects ? JSON.stringify(project.schemaObjects) : null;
+    const columnsData = project.columns ? JSON.stringify(project.columns) : null;
+    const constraintsData = project.constraints ? JSON.stringify(project.constraints) : null;
+    const statisticsData = project.statistics ? JSON.stringify(project.statistics) : null;
+    const functionsData = project.functions ? JSON.stringify(project.functions) : null;
+    const securityData = project.security ? JSON.stringify(project.security) : null;
+    const runtimeState = project.runtimeState ? JSON.stringify(project.runtimeState) : null;
+    const engineFeatures = project.engineFeatures ? JSON.stringify(project.engineFeatures) : null;
+
     try {
       await this.appDb.run(`
         INSERT OR REPLACE INTO projects
-        (id, name, description, technology, status, last_synced, database_count, total_tables, total_rows, has_foreign_keys, has_indexes, icon, color, is_example, schema_data, system_catalog, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, name, description, technology, status, last_synced, database_count, total_tables, total_rows, has_foreign_keys, has_indexes, icon, color, is_example, schema_data, system_catalog, verification_data, database_introspection, schema_objects, columns_data, constraints_data, statistics_data, functions_data, security_data, runtime_state, engine_features, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         project.id,
         project.name,
@@ -618,6 +685,16 @@ class ApplicationDataManager {
         project.isExample ? 1 : 0,
         schemaData,
         project.systemCatalog ? JSON.stringify(project.systemCatalog) : null,
+        verificationData,
+        databaseIntrospection,
+        schemaObjects,
+        columnsData,
+        constraintsData,
+        statisticsData,
+        functionsData,
+        securityData,
+        runtimeState,
+        engineFeatures,
         now
       ]);
       
@@ -647,7 +724,18 @@ class ApplicationDataManager {
       systemCatalog: row.system_catalog ? JSON.parse(row.system_catalog) : null,
       isExample: row.is_example === 1,
       databaseCount: row.database_count,
-      lastSynced: row.last_synced
+      lastSynced: row.last_synced,
+      // Comprehensive sections
+      verification: row.verification_data ? JSON.parse(row.verification_data) : null,
+      databaseIntrospection: row.database_introspection ? JSON.parse(row.database_introspection) : null,
+      schemaObjects: row.schema_objects ? JSON.parse(row.schema_objects) : null,
+      columns: row.columns_data ? JSON.parse(row.columns_data) : null,
+      constraints: row.constraints_data ? JSON.parse(row.constraints_data) : null,
+      statistics: row.statistics_data ? JSON.parse(row.statistics_data) : null,
+      functions: row.functions_data ? JSON.parse(row.functions_data) : null,
+      security: row.security_data ? JSON.parse(row.security_data) : null,
+      runtimeState: row.runtime_state ? JSON.parse(row.runtime_state) : null,
+      engineFeatures: row.engine_features ? JSON.parse(row.engine_features) : null
     };
   }
 
