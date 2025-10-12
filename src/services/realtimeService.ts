@@ -101,6 +101,11 @@ class RealtimeServiceImpl implements RealtimeService {
   // Test if the endpoint is available
   async testConnection(): Promise<boolean> {
     try {
+      // Skip connection test in server-side environment
+      if (typeof window === 'undefined') {
+        return false;
+      }
+      
       console.log('Testing real-time endpoint availability...');
       const response = await fetch(this.url, {
         method: 'HEAD',

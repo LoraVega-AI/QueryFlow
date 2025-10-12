@@ -462,6 +462,7 @@ class ApplicationDataManager {
         database_count INTEGER DEFAULT 0,
         total_tables INTEGER DEFAULT 0,
         total_rows INTEGER DEFAULT 0,
+        total_columns INTEGER DEFAULT 0,
         has_foreign_keys INTEGER DEFAULT 0,
         has_indexes INTEGER DEFAULT 0,
         icon TEXT,
@@ -480,6 +481,9 @@ class ApplicationDataManager {
         security_data TEXT,
         runtime_state TEXT,
         engine_features TEXT,
+        -- Actual database tables vs extracted ORM models
+        actual_database_tables TEXT,
+        extracted_models TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
@@ -601,11 +605,11 @@ class ApplicationDataManager {
         PRAGMA table_info(projects)
       `);
       
-      const hasComprehensiveSections = columns.some((col: any) => 
-        col.name === 'verification_data' || 
-        col.name === 'database_introspection' ||
-        col.name === 'schema_objects'
-      );
+      const columnNames = columns.map((col: any) => col.name);
+      
+      const hasComprehensiveSections = columnNames.includes('verification_data');
+      const hasTotalColumns = columnNames.includes('total_columns');
+      const hasActualDatabaseTables = columnNames.includes('actual_database_tables');
 
       if (!hasComprehensiveSections) {
         console.log('🔄 Migrating projects table to comprehensive sections...');
@@ -625,6 +629,23 @@ class ApplicationDataManager {
         `);
         
         console.log('✅ Projects table migrated to comprehensive sections');
+      }
+      
+      if (!hasTotalColumns) {
+        console.log('🔄 Adding total_columns column...');
+        await this.appDb.exec(`
+          ALTER TABLE projects ADD COLUMN total_columns INTEGER DEFAULT 0;
+        `);
+        console.log('✅ Added total_columns column');
+      }
+      
+      if (!hasActualDatabaseTables) {
+        console.log('🔄 Adding actual_database_tables and extracted_models columns...');
+        await this.appDb.exec(`
+          ALTER TABLE projects ADD COLUMN actual_database_tables TEXT;
+          ALTER TABLE projects ADD COLUMN extracted_models TEXT;
+        `);
+        console.log('✅ Added actual_database_tables and extracted_models columns');
       }
     } catch (error) {
       console.error('❌ Failed to migrate to comprehensive sections:', error);
@@ -662,12 +683,14 @@ class ApplicationDataManager {
     const securityData = project.security ? JSON.stringify(project.security) : null;
     const runtimeState = project.runtimeState ? JSON.stringify(project.runtimeState) : null;
     const engineFeatures = project.engineFeatures ? JSON.stringify(project.engineFeatures) : null;
+    const actualDatabaseTables = project.actualDatabaseTables ? JSON.stringify(project.actualDatabaseTables) : null;
+    const extractedModels = project.extractedModels ? JSON.stringify(project.extractedModels) : null;
 
     try {
       await this.appDb.run(`
         INSERT OR REPLACE INTO projects
-        (id, name, description, technology, status, last_synced, database_count, total_tables, total_rows, has_foreign_keys, has_indexes, icon, color, is_example, schema_data, system_catalog, verification_data, database_introspection, schema_objects, columns_data, constraints_data, statistics_data, functions_data, security_data, runtime_state, engine_features, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, name, description, technology, status, last_synced, database_count, total_tables, total_rows, total_columns, has_foreign_keys, has_indexes, icon, color, is_example, schema_data, system_catalog, verification_data, database_introspection, schema_objects, columns_data, constraints_data, statistics_data, functions_data, security_data, runtime_state, engine_features, actual_database_tables, extracted_models, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         project.id,
         project.name,
@@ -678,6 +701,7 @@ class ApplicationDataManager {
         project.databaseCount || 0,
         project.totalTables || 0,
         project.totalRows || 0,
+        project.totalColumns || 0,
         project.hasForeignKeys ? 1 : 0,
         project.hasIndexes ? 1 : 0,
         project.icon || '',
@@ -695,6 +719,8 @@ class ApplicationDataManager {
         securityData,
         runtimeState,
         engineFeatures,
+        actualDatabaseTables,
+        extractedModels,
         now
       ]);
       
@@ -725,6 +751,9 @@ class ApplicationDataManager {
       isExample: row.is_example === 1,
       databaseCount: row.database_count,
       lastSynced: row.last_synced,
+      totalTables: row.total_tables,
+      totalRows: row.total_rows,
+      totalColumns: row.total_columns,
       // Comprehensive sections
       verification: row.verification_data ? JSON.parse(row.verification_data) : null,
       databaseIntrospection: row.database_introspection ? JSON.parse(row.database_introspection) : null,
@@ -735,7 +764,10 @@ class ApplicationDataManager {
       functions: row.functions_data ? JSON.parse(row.functions_data) : null,
       security: row.security_data ? JSON.parse(row.security_data) : null,
       runtimeState: row.runtime_state ? JSON.parse(row.runtime_state) : null,
-      engineFeatures: row.engine_features ? JSON.parse(row.engine_features) : null
+      engineFeatures: row.engine_features ? JSON.parse(row.engine_features) : null,
+      // Actual database tables vs extracted models
+      actualDatabaseTables: row.actual_database_tables ? JSON.parse(row.actual_database_tables) : null,
+      extractedModels: row.extracted_models ? JSON.parse(row.extracted_models) : null
     };
   }
 
@@ -758,7 +790,7 @@ class ApplicationDataManager {
         id, name, description, technology, status, 
         last_synced, database_count, icon, color, 
         is_example, created_at, updated_at,
-        total_tables, total_rows, has_foreign_keys, has_indexes,
+        total_tables, total_rows, total_columns, has_foreign_keys, has_indexes,
         schema_data, system_catalog
       FROM projects 
       ORDER BY updated_at DESC

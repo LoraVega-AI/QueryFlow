@@ -159,6 +159,27 @@ export class SchemaNormalizationService {
     const uniqueTables = new Map<string, IRTable>();
     const duplicateGroups = new Map<string, IRTable[]>();
 
+    // Helper function to check if a file path is from a main model directory
+    const isMainModelFile = (filePath: string | undefined): boolean => {
+      if (!filePath) return false;
+      const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+      // Prefer files in model directories over test files or root files
+      return normalized.includes('/models/') || 
+             normalized.includes('/entities/') || 
+             normalized.includes('/schemas/');
+    };
+
+    // Helper function to check if file is a test file
+    const isTestFile = (filePath: string | undefined): boolean => {
+      if (!filePath) return false;
+      const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+      return normalized.includes('/test/') || 
+             normalized.includes('/tests/') ||
+             normalized.includes('__tests__') ||
+             normalized.includes('.test.') ||
+             normalized.includes('.spec.');
+    };
+
     // Group tables by name
     for (const table of tables) {
       const normalizedName = table.name.toLowerCase();
@@ -174,14 +195,38 @@ export class SchemaNormalizationService {
       }
     }
 
-    // Merge duplicate tables
+    // Merge duplicate tables, preferring main model files
     for (const [tableName, duplicates] of duplicateGroups) {
-      const mergedTable = await this.mergeTables(duplicates);
+      console.log(`🔄 Deduplicating table "${tableName}": found ${duplicates.length} definitions`);
+      
+      // Sort duplicates: prefer main model files > non-test files > test files
+      const sortedDuplicates = duplicates.sort((a, b) => {
+        const aIsMain = isMainModelFile((a as any).filePath);
+        const bIsMain = isMainModelFile((b as any).filePath);
+        const aIsTest = isTestFile((a as any).filePath);
+        const bIsTest = isTestFile((b as any).filePath);
+        
+        if (aIsMain && !bIsMain) return -1;
+        if (!aIsMain && bIsMain) return 1;
+        if (!aIsTest && bIsTest) return -1;
+        if (aIsTest && !bIsTest) return 1;
+        
+        // Prefer tables with more fields
+        return (b.fields?.length || 0) - (a.fields?.length || 0);
+      });
+      
+      const preferredTable = sortedDuplicates[0];
+      console.log(`   ✅ Kept definition from: ${(preferredTable as any).filePath || 'unknown'}`);
+      sortedDuplicates.slice(1).forEach(dup => {
+        console.log(`   ❌ Removed duplicate from: ${(dup as any).filePath || 'unknown'}`);
+      });
+      
+      const mergedTable = await this.mergeTables(sortedDuplicates);
       uniqueTables.set(tableName, mergedTable);
       
       this.addWarning({
         type: 'compatibility',
-        message: `Merged ${duplicates.length} duplicate definitions for table '${tableName}'`,
+        message: `Merged ${duplicates.length} duplicate definitions for table '${tableName}' (kept: ${(preferredTable as any).filePath || 'unknown'})`,
         suggestion: 'Review source files for conflicting table definitions'
       });
     }

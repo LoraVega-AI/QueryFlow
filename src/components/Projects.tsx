@@ -1390,7 +1390,7 @@ export function Projects() {
                       </div>
                       <div>
                         <div className="text-sm font-bold text-gray-800">Database Tables</div>
-                        <div className="text-xs text-gray-600">{(project.schema?.tables?.length || 0)} tables detected</div>
+                        <div className="text-xs text-gray-600">{(project.totalTables || project.schema?.tables?.length || 0)} tables detected</div>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -1412,7 +1412,7 @@ export function Projects() {
                   {expandedSections.has(`${project.id}-tables`) && (
                     <div className="px-3 pb-3 border-t border-blue-100">
                       <div className="pt-3 space-y-2">
-                    {(project.schema?.tables || []).slice(0, 3).map((table: any, index: number) => {
+                    {((project.actualDatabaseTables && project.actualDatabaseTables.length > 0 ? project.actualDatabaseTables : project.schema?.tables) || []).slice(0, 3).map((table: any, index: number) => {
                       const tableKey = `${project.id}-${table.name}`;
                       const isExpanded = expandedTableDetails.has(tableKey);
                       
@@ -1504,7 +1504,7 @@ export function Projects() {
                     })}
                     
                     {/* Additional tables (hidden by default) */}
-                    {expandedTables.has(project.id) && (project.schema?.tables || []).slice(3).map((table: any, index: number) => {
+                    {expandedTables.has(project.id) && ((project.actualDatabaseTables && project.actualDatabaseTables.length > 0 ? project.actualDatabaseTables : project.schema?.tables) || []).slice(3).map((table: any, index: number) => {
                       const tableKey = `${project.id}-${table.name}`;
                       const isExpanded = expandedTableDetails.has(tableKey);
                       

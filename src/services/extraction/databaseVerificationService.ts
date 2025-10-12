@@ -1994,6 +1994,7 @@ export class DatabaseVerificationService {
       let tableList: Array<{ name: string; schema: string; type: string }> = [];
       try {
         const pragmaResult = db.prepare('PRAGMA table_list').all();
+        console.log(`🔍 PRAGMA table_list returned ${pragmaResult.length} results`);
         tableList = pragmaResult.map((row: any) => ({
           name: row.name,
           schema: row.schema || 'main',
@@ -2007,6 +2008,7 @@ export class DatabaseVerificationService {
           FROM sqlite_master 
           WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'
         `).all();
+        console.log(`🔍 sqlite_master returned ${masterResult.length} results`);
         tableList = masterResult.map((row: any) => ({
           name: row.name,
           schema: 'main',
@@ -2014,9 +2016,20 @@ export class DatabaseVerificationService {
         }));
       }
 
-      // Filter actual tables (not views)
-      const tables = tableList.filter(t => t.type === 'table');
+      // Filter actual tables (not views) and exclude SQLite system tables
+      const tables = tableList.filter(t => 
+        t.type === 'table' && 
+        !t.name.startsWith('sqlite_') &&
+        t.name !== 'sqlite_schema' &&
+        t.name !== 'sqlite_sequence' &&
+        t.name !== 'sqlite_temp_schema' &&
+        t.name !== 'sqlite_master'
+      );
       const viewsList = tableList.filter(t => t.type === 'view');
+      console.log(`🔍 Filtered to ${tables.length} user tables and ${viewsList.length} views (excluded sqlite_ system tables)`);
+      if (tables.length > 0) {
+        console.log(`📋 User table names: ${tables.map(t => t.name).join(', ')}`);
+      }
 
       // Get detailed table information
       const tableMetadata = await Promise.all(
@@ -2330,10 +2343,11 @@ export class DatabaseVerificationService {
       // Extract dependency graph
       const dependencyGraph = await this.extractSQLiteDependencyGraph(db, enhancedTableMetadata, views, triggers, functions);
 
-      return {
+      const result = {
         actualTables: enhancedTableMetadata.map(t => t.name),
         databaseConfiguration,
         statistics,
+        tables: enhancedTableMetadata, // Add 'tables' field for backward compatibility
         tableMetadata: enhancedTableMetadata,
         views,
         indexes,
@@ -2346,6 +2360,10 @@ export class DatabaseVerificationService {
         dependencyGraph,
         pragmas
       };
+      
+      console.log(`✅ Returning introspection result with ${result.tables.length} tables, ${result.views.length} views`);
+      
+      return result;
     } catch (error) {
       console.error('❌ SQLite introspection failed:', error);
       throw error;
@@ -3742,14 +3760,25 @@ export class DatabaseVerificationService {
       // Extract table statistics
       tableMetadata.forEach(table => {
         try {
-          // Get table size information
-          const tableInfo = db.prepare(`
-            SELECT 
-              name,
-              (SELECT COUNT(*) FROM ${table.name}) as rowCount,
-              (SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()) as dataSize,
-              (SELECT page_count FROM pragma_page_count()) as pageCount
-          `).get();
+          // Get table size information - use table.name directly
+          const rowCountResult = db.prepare(`SELECT COUNT(*) as rowCount FROM ${table.name}`).get();
+          const tableInfo = {
+            name: table.name,
+            rowCount: (rowCountResult as any)?.rowCount || 0,
+            dataSize: 0,
+            pageCount: 0
+          };
+          
+          // Try to get page info (may not work on all SQLite versions)
+          try {
+            const pageInfo = db.prepare(`SELECT page_count * page_size as dataSize, page_count as pageCount FROM pragma_page_count(), pragma_page_size()`).get();
+            if (pageInfo) {
+              tableInfo.dataSize = (pageInfo as any).dataSize || 0;
+              tableInfo.pageCount = (pageInfo as any).pageCount || 0;
+            }
+          } catch (pageError) {
+            // Ignore - page info not available
+          }
           
           // Get index statistics for this table
           const indexStats = db.prepare(`
@@ -3850,9 +3879,13 @@ export class DatabaseVerificationService {
       const dataSize = statistics.tableStatistics.reduce((sum: number, table: any) => sum + (table.dataSize || 0), 0);
       const indexSize = statistics.tableStatistics.reduce((sum: number, table: any) => sum + (table.indexSize || 0), 0);
       
+      // Calculate total rows across all tables
+      const totalRows = statistics.tableStatistics.reduce((sum: number, t: any) => sum + (t.rowCount || 0), 0);
+      
       statistics.databaseStatistics = {
         totalTables,
         totalIndexes,
+        totalRows: totalRows,
         totalSize,
         dataSize,
         indexSize,
@@ -3872,6 +3905,9 @@ export class DatabaseVerificationService {
           totalReads: dbPerformance.totalReads || 0
         }
       };
+      
+      // Add totalRows at the top level for easy access
+      statistics.totalRows = totalRows;
       
       return statistics;
     } catch (error) {

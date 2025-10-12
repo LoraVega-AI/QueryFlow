@@ -116,9 +116,199 @@ export async function POST(request: NextRequest) {
     
     // Extract database definitions from source code
     const { extractDatabaseDefinitionsFromSourceCode } = await import('./simpleExtraction.js');
-    const sourceCodeDatabases = await extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir);
+    let sourceCodeDatabases = await extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir);
     console.log('📊 Found source code databases:', sourceCodeDatabases.length);
     console.log('📊 Source code databases details:', sourceCodeDatabases.map(db => ({ name: db.name, type: db.type, tables: db.tables?.length || 0 })));
+    
+    // Find SQLite database files for comprehensive verification
+    // BYPASS databaseFiles array and scan upload directory directly
+    console.log('🔍 Scanning upload directory for actual SQLite database files...');
+    
+    const sqliteDatabaseFiles: any[] = [];
+    try {
+      console.log('🔍 Starting file scan in:', uploadDir);
+      const { readdir, stat } = await import('fs/promises');
+      
+      const findDbFiles = async (dir: string, files: any[]): Promise<void> => {
+        try {
+          const entries = await readdir(dir, { withFileTypes: true });
+          console.log(`🔍 Scanning directory: ${dir} (${entries.length} entries)`);
+          
+          for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            
+            if (entry.isDirectory() && entry.name !== 'node_modules' && entry.name !== '.git') {
+              await findDbFiles(fullPath, files);
+            } else if (entry.isFile()) {
+              const ext = path.extname(entry.name).toLowerCase();
+              const fileName = entry.name.toLowerCase();
+              
+              // Check if it's a database file (not converted)
+              if ((ext === '.db' || ext === '.sqlite' || ext === '.sqlite3') && 
+                  !fileName.includes('_converted_') && 
+                  !fileName.includes('converted.sqlite')) {
+                
+                const stats = await stat(fullPath);
+                console.log(`📁 Found DB file: ${entry.name} (${stats.size} bytes)`);
+                
+                // Only include non-empty files
+                if (stats.size > 1024) { // At least 1KB
+                  files.push({
+                    id: `db_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    name: entry.name.replace(ext, ''),
+                    type: 'sqlite',
+                    filePath: fullPath,
+                    size: stats.size,
+                    status: 'ready'
+                  });
+                  console.log(`✅ Added to list: ${entry.name} (${(stats.size / 1024).toFixed(2)} KB)`);
+                } else {
+                  console.log(`⚠️ Skipped (too small): ${entry.name}`);
+                }
+              }
+            }
+          }
+        } catch (dirError) {
+          console.error(`❌ Error reading directory ${dir}:`, dirError);
+        }
+      };
+      
+      await findDbFiles(uploadDir, sqliteDatabaseFiles);
+      console.log(`🔍 File scan complete. Found ${sqliteDatabaseFiles.length} database files`);
+    } catch (error) {
+      console.error('❌ Error scanning for database files:', error);
+      console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
+    }
+    
+    console.log(`🔍 Found ${sqliteDatabaseFiles.length} actual SQLite database files`);
+    if (sqliteDatabaseFiles.length > 0) {
+      console.log('📊 SQLite files:', sqliteDatabaseFiles.map(db => ({ name: db.name, path: db.filePath, size: db.size })));
+    } else {
+      console.log('⚠️ No actual SQLite database files found in upload directory');
+      console.log('⚠️ Upload directory was:', uploadDir);
+    }
+    
+    // PRIORITY: If we have an actual SQLite database file, introspect it FIRST for real data
+    let actualDatabaseIntrospection = null;
+    let actualDatabaseTables = [];
+    let actualTotalRows = 0;
+    let actualTotalColumns = 0;
+    
+    if (sqliteDatabaseFiles.length > 0) {
+      console.log('🔍 PRIORITY: Introspecting actual database file for real statistics...');
+      console.log('🔍 First file to introspect:', sqliteDatabaseFiles[0]);
+      try {
+        const { DatabaseVerificationService } = await import('@/services/extraction/databaseVerificationService');
+        const verificationService = new DatabaseVerificationService();
+        
+        const actualDbFile = sqliteDatabaseFiles[0];
+        console.log(`📁 Using actual database file: ${actualDbFile.filePath}`);
+        
+        // Introspect the actual database FIRST to get real data
+        actualDatabaseIntrospection = await verificationService.introspectDatabase(
+          'sqlite',
+          { filePath: actualDbFile.filePath }
+        );
+        
+        console.log('✅ Actual database introspection completed:', {
+          tables: actualDatabaseIntrospection.tables?.length || 0,
+          indexes: actualDatabaseIntrospection.indexes?.length || 0,
+          totalRows: actualDatabaseIntrospection.statistics?.totalRows || 0
+        });
+        
+        // Extract actual tables from database
+        actualDatabaseTables = actualDatabaseIntrospection.tables || [];
+        // Calculate totalRows from actual table row counts
+        actualTotalRows = actualDatabaseTables.reduce((sum: number, table: any) => sum + (table.rowCount || 0), 0);
+        actualTotalColumns = actualDatabaseTables.reduce((sum, table) => sum + (table.columns?.length || 0), 0);
+        
+        console.log(`📊 Actual database statistics: ${actualDatabaseTables.length} tables, ${actualTotalRows} rows, ${actualTotalColumns} columns`);
+        
+      } catch (introspectionError) {
+        console.error('❌ Actual database introspection failed:', introspectionError);
+      }
+    }
+    
+    // Now perform verification if we have both actual DB and extracted schemas
+    if (sqliteDatabaseFiles.length > 0 && sourceCodeDatabases.length > 0) {
+      console.log('🔍 Running comprehensive verification (comparing ORM models vs actual DB)...');
+      try {
+        const extractedSchema = sourceCodeDatabases.find(db => db.type === 'extracted');
+        if (extractedSchema && extractedSchema.schema?.tables) {
+          const { DatabaseVerificationService } = await import('@/services/extraction/databaseVerificationService');
+          const verificationService = new DatabaseVerificationService();
+          
+          const actualDbFile = sqliteDatabaseFiles[0];
+          console.log(`📋 Verifying ${extractedSchema.schema.tables.length} extracted ORM models against actual DB`);
+          
+          // Perform comprehensive verification against the actual database
+          const comprehensiveVerification = await verificationService.verifyTables(
+            extractedSchema.schema.tables,
+            'sqlite',
+            { filePath: actualDbFile.filePath }
+          );
+          
+          console.log('✅ Comprehensive verification completed:', {
+            verifiedTables: comprehensiveVerification.verifiedTables.length,
+            phantomTables: comprehensiveVerification.phantomTables.length,
+            accuracy: comprehensiveVerification.verificationStats.accuracy
+          });
+          
+          // Use the already-introspected actual database data (from earlier)
+          // Update the extracted schema with verification results
+          extractedSchema.verification = comprehensiveVerification;
+          extractedSchema.databaseIntrospection = actualDatabaseIntrospection;
+          extractedSchema.schemaObjects = {
+            tables: actualDatabaseIntrospection.tables || [],
+            views: actualDatabaseIntrospection.views || [],
+            indexes: actualDatabaseIntrospection.indexes || [],
+            triggers: actualDatabaseIntrospection.triggers || [],
+            sequences: actualDatabaseIntrospection.sequences || [],
+            materializedViews: actualDatabaseIntrospection.materializedViews || []
+          };
+          extractedSchema.columns = {
+            totalColumns: actualTotalColumns,
+            columnTypes: [],
+            columnMetadata: actualDatabaseIntrospection.tables?.flatMap((t: any) => t.columns || []) || []
+          };
+          extractedSchema.constraints = {
+            primaryKeys: actualDatabaseIntrospection.constraints?.filter((c: any) => c.type === 'PRIMARY KEY') || [],
+            foreignKeys: actualDatabaseIntrospection.constraints?.filter((c: any) => c.type === 'FOREIGN KEY') || [],
+            unique: actualDatabaseIntrospection.constraints?.filter((c: any) => c.type === 'UNIQUE') || [],
+            check: actualDatabaseIntrospection.constraints?.filter((c: any) => c.type === 'CHECK') || [],
+            totalConstraints: actualDatabaseIntrospection.constraints?.length || 0
+          };
+          extractedSchema.statistics = {
+            totalTables: actualDatabaseTables.length,
+            totalRows: actualTotalRows,
+            databaseSize: actualDatabaseIntrospection.statistics?.databaseSize || 0,
+            tableStats: actualDatabaseIntrospection.statistics?.tableStatistics || []
+          };
+          extractedSchema.functions = {
+            storedProcedures: actualDatabaseIntrospection.procedures || [],
+            userDefinedFunctions: actualDatabaseIntrospection.functions || [],
+            triggers: actualDatabaseIntrospection.triggers || []
+          };
+          extractedSchema.security = actualDatabaseIntrospection.security || null;
+          extractedSchema.runtimeState = actualDatabaseIntrospection.runtimeState || null;
+          extractedSchema.engineFeatures = {
+            extensions: actualDatabaseIntrospection.extensions || [],
+            partitioning: actualDatabaseIntrospection.partitioning || [],
+            engineInfo: actualDatabaseIntrospection.engineInfo || {},
+            pragmas: actualDatabaseIntrospection.pragmas || {},
+            mongoOptions: actualDatabaseIntrospection.mongoOptions || null
+          };
+          
+          console.log('✅ Extracted schema updated with comprehensive verification data');
+        }
+      } catch (verificationError) {
+        console.error('❌ Comprehensive verification failed:', verificationError);
+        console.error('Error details:', {
+          message: verificationError instanceof Error ? verificationError.message : 'Unknown error',
+          stack: verificationError instanceof Error ? verificationError.stack : 'No stack'
+        });
+      }
+    }
 
     // Extract migration history and ORM models with enhanced logging
     console.log('🔍 Extracting migration history and ORM models...');
@@ -524,9 +714,13 @@ export async function POST(request: NextRequest) {
     }
     
     // Additional validation: Cross-reference with actual database schema if available
-    if (actualDatabaseFiles.length > 0) {
+    // Use actualDatabaseTables from comprehensive introspection if available, otherwise fall back to actualDatabaseFiles
+    const databaseTablesForValidation = actualDatabaseTables.length > 0 ? actualDatabaseTables : actualDatabaseFiles.flatMap(db => db.tables || []);
+    
+    if (databaseTablesForValidation.length > 0) {
+      console.log(`🔍 Validating against ${databaseTablesForValidation.length} actual database tables`);
       const actualTableNames = new Set(
-        actualDatabaseFiles.flatMap(db => db.tables || [])
+        databaseTablesForValidation
           .map(table => table.name?.toLowerCase())
           .filter(Boolean)
       );
@@ -624,6 +818,43 @@ export async function POST(request: NextRequest) {
       version: 1
     };
     
+    // Extract comprehensive data from the first database that has it
+    console.log('🔍 Looking for comprehensive data in allDatabases...');
+    console.log('📊 allDatabases structure:', allDatabases.map(db => ({
+      name: db.name,
+      type: db.type,
+      hasVerification: !!db.verification,
+      hasDatabaseIntrospection: !!db.databaseIntrospection,
+      hasSchemaObjects: !!db.schemaObjects,
+      hasColumns: !!db.columns,
+      hasConstraints: !!db.constraints,
+      hasStatistics: !!db.statistics,
+      hasFunctions: !!db.functions,
+      hasSecurity: !!db.security,
+      hasRuntimeState: !!db.runtimeState,
+      hasEngineFeatures: !!db.engineFeatures
+    })));
+    
+    const comprehensiveData = allDatabases.find(db => 
+      db.verification || db.databaseIntrospection || db.schemaObjects
+    );
+    
+    console.log('🔍 Comprehensive data found:', !!comprehensiveData);
+    if (comprehensiveData) {
+      console.log('📊 Comprehensive data details:', {
+        hasVerification: !!comprehensiveData.verification,
+        hasDatabaseIntrospection: !!comprehensiveData.databaseIntrospection,
+        hasSchemaObjects: !!comprehensiveData.schemaObjects,
+        hasColumns: !!comprehensiveData.columns,
+        hasConstraints: !!comprehensiveData.constraints,
+        hasStatistics: !!comprehensiveData.statistics,
+        hasFunctions: !!comprehensiveData.functions,
+        hasSecurity: !!comprehensiveData.security,
+        hasRuntimeState: !!comprehensiveData.runtimeState,
+        hasEngineFeatures: !!comprehensiveData.engineFeatures
+      });
+    }
+
     const project = {
       id: `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: projectName || detectionResult.projectName || 'Uploaded Project',
@@ -637,16 +868,32 @@ export async function POST(request: NextRequest) {
       isExample: false,
       databases: allDatabases,
       schema: mergedSchema,
-      tables: allTables,
+      // FIXED: Use actual database tables for schema designer, keep ORM extracted models separate
+      tables: actualDatabaseTables.length > 0 ? actualDatabaseTables : allTables,
+      extractedModels: allTables, // Keep extracted ORM models for comparison/verification
+      actualDatabaseTables: actualDatabaseTables, // Explicit actual DB tables
       queries: [],
       uploadPath: uploadDir,
       originalFiles: filePaths,
-      // Additional metadata
-      totalTables: allTables.length,
-      totalRows: allDatabases.reduce((sum, db) => sum + (db.totalRows || 0), 0),
+      // Additional metadata - USE ACTUAL DATABASE STATISTICS
+      totalTables: actualDatabaseTables.length > 0 ? actualDatabaseTables.length : allTables.length,
+      totalRows: actualTotalRows > 0 ? actualTotalRows : allDatabases.reduce((sum, db) => sum + (db.totalRows || 0), 0),
+      totalColumns: actualTotalColumns > 0 ? actualTotalColumns : allTables.reduce((sum, t) => sum + (t.columns?.length || 0), 0),
       hasForeignKeys: allRelationships.length > 0,
       hasIndexes: allIndexes.length > 0,
       systemCatalog: systemCatalogData,
+      // Comprehensive sections
+      verification: comprehensiveData?.verification || null,
+      databaseIntrospection: comprehensiveData?.databaseIntrospection || null,
+      schemaObjects: comprehensiveData?.schemaObjects || null,
+      columns: comprehensiveData?.columns || null,
+      constraints: comprehensiveData?.constraints || null,
+      statistics: comprehensiveData?.statistics || null,
+      functions: comprehensiveData?.functions || null,
+      security: comprehensiveData?.security || null,
+      runtimeState: comprehensiveData?.runtimeState || null,
+      engineFeatures: comprehensiveData?.engineFeatures || null,
+      verificationStatus: comprehensiveData?.verificationStatus || null,
         testValue: testValue, // Add test value to response
         testSqliteFilesCount: testSqliteFiles.length, // Add test SQLite files count
         testSqliteFiles: testSqliteFiles.map(db => ({ name: db.name, filePath: db.filePath })), // Add test SQLite files
@@ -1183,9 +1430,64 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles: string[], uplo
     const { DatabaseDefinitionExtractor } = await import('@/services/databaseDefinitionExtractor');
     
     // Filter source code files that might contain database definitions
+    // Exclude test files, spec files, and non-model directories
     const sourceCodeFiles = allFiles.filter(file => {
       const ext = path.extname(file).toLowerCase();
-      return ['.js', '.jsx', '.ts', '.tsx', '.py', '.php', '.java', '.prisma', '.sql'].includes(ext);
+      const normalizedPath = file.replace(/\\/g, '/').toLowerCase();
+      
+      // Only include supported file types
+      if (!['.js', '.jsx', '.ts', '.tsx', '.py', '.php', '.java', '.prisma', '.sql'].includes(ext)) {
+        return false;
+      }
+      
+      // Exclude test files and directories
+      const excludePatterns = [
+        '/test/',
+        '/tests/',
+        '/__tests__/',
+        '/spec/',
+        '/__mocks__/',
+        '.test.',
+        '.spec.',
+        '_test.',
+        '_spec.',
+        '/test-',
+        '/testing/'
+      ];
+      
+      if (excludePatterns.some(pattern => normalizedPath.includes(pattern))) {
+        return false;
+      }
+      
+      // For JS/TS files, prefer files in model directories
+      if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
+        const modelPatterns = [
+          '/models/',
+          '/model/',
+          '/entities/',
+          '/entity/',
+          '/schemas/',
+          '/schema/',
+          '/database/',
+          '/db/'
+        ];
+        
+        // If file is in a model directory, include it
+        if (modelPatterns.some(pattern => normalizedPath.includes(pattern))) {
+          return true;
+        }
+        
+        // Also check if it's a main index file that might aggregate models
+        if (normalizedPath.endsWith('/index.js') || normalizedPath.endsWith('/index.ts')) {
+          return true;
+        }
+        
+        // Exclude other JS/TS files that aren't in model directories
+        return false;
+      }
+      
+      // Include all other file types (Prisma, SQL, etc.)
+      return true;
     });
     
     console.log(`📄 Found ${sourceCodeFiles.length} source code files to analyze`);
@@ -1279,6 +1581,95 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles: string[], uplo
         indexes: extractionResult.databaseIntrospection.indexes?.length || 0,
         triggers: extractionResult.databaseIntrospection.triggers?.length || 0
       });
+    }
+    
+    // If we have an actual SQLite database file, perform comprehensive verification against it
+    console.log('🔍 Checking if we can run comprehensive verification...');
+    console.log(`   - SQLite database files found: ${sqliteDatabaseFiles.length}`);
+    console.log(`   - Extracted tables count: ${extractionResult.schema.tables.length}`);
+    
+    if (sqliteDatabaseFiles.length > 0 && extractionResult.schema.tables.length > 0) {
+      console.log('✅ Running comprehensive verification against actual database file...');
+      try {
+        const { DatabaseVerificationService } = await import('@/services/extraction/databaseVerificationService');
+        const verificationService = new DatabaseVerificationService();
+        
+        const actualDbFile = sqliteDatabaseFiles[0];
+        console.log(`📁 Using database file: ${actualDbFile.filePath}`);
+        
+        // Perform comprehensive verification against the actual database
+        const comprehensiveVerification = await verificationService.verifyTables(
+          extractionResult.schema.tables,
+          'sqlite',
+          { filePath: actualDbFile.filePath }
+        );
+        
+        // Perform comprehensive database introspection on the actual database
+        const comprehensiveIntrospection = await verificationService.introspectDatabase(
+          'sqlite',
+          { filePath: actualDbFile.filePath }
+        );
+        
+        console.log('✅ Comprehensive verification completed:', {
+          verifiedTables: comprehensiveVerification.verifiedTables.length,
+          phantomTables: comprehensiveVerification.phantomTables.length,
+          accuracy: comprehensiveVerification.verificationStats.accuracy,
+          introspectedTables: comprehensiveIntrospection.tables?.length || 0,
+          introspectedIndexes: comprehensiveIntrospection.indexes?.length || 0
+        });
+        
+        // Override the extraction result with comprehensive verification data
+        extractionResult.verification = comprehensiveVerification;
+        extractionResult.databaseIntrospection = comprehensiveIntrospection;
+        extractionResult.schemaObjects = {
+          tables: comprehensiveIntrospection.tables || [],
+          views: comprehensiveIntrospection.views || [],
+          indexes: comprehensiveIntrospection.indexes || [],
+          triggers: comprehensiveIntrospection.triggers || [],
+          sequences: comprehensiveIntrospection.sequences || [],
+          materializedViews: comprehensiveIntrospection.materializedViews || []
+        };
+        extractionResult.columns = {
+          totalColumns: comprehensiveIntrospection.tables?.reduce((sum: number, t: any) => sum + (t.columns?.length || 0), 0) || 0,
+          columnTypes: [],
+          columnMetadata: comprehensiveIntrospection.tables?.flatMap((t: any) => t.columns || []) || []
+        };
+        extractionResult.constraints = {
+          primaryKeys: comprehensiveIntrospection.constraints?.filter((c: any) => c.type === 'PRIMARY KEY') || [],
+          foreignKeys: comprehensiveIntrospection.constraints?.filter((c: any) => c.type === 'FOREIGN KEY') || [],
+          unique: comprehensiveIntrospection.constraints?.filter((c: any) => c.type === 'UNIQUE') || [],
+          check: comprehensiveIntrospection.constraints?.filter((c: any) => c.type === 'CHECK') || [],
+          totalConstraints: comprehensiveIntrospection.constraints?.length || 0
+        };
+        extractionResult.statistics = {
+          totalTables: comprehensiveIntrospection.statistics?.tableCount || 0,
+          totalRows: comprehensiveIntrospection.statistics?.totalRows || 0,
+          databaseSize: comprehensiveIntrospection.statistics?.databaseSize || 0,
+          tableStats: comprehensiveIntrospection.statistics?.tableStatistics || []
+        };
+        extractionResult.functions = {
+          storedProcedures: comprehensiveIntrospection.procedures || [],
+          userDefinedFunctions: comprehensiveIntrospection.functions || [],
+          triggers: comprehensiveIntrospection.triggers || []
+        };
+        extractionResult.security = comprehensiveIntrospection.security || null;
+        extractionResult.runtimeState = comprehensiveIntrospection.runtimeState || null;
+        extractionResult.engineFeatures = {
+          extensions: comprehensiveIntrospection.extensions || [],
+          partitioning: comprehensiveIntrospection.partitioning || [],
+          engineInfo: comprehensiveIntrospection.engineInfo || {},
+          pragmas: comprehensiveIntrospection.pragmas || {},
+          mongoOptions: comprehensiveIntrospection.mongoOptions || null
+        };
+        
+        console.log('✅ Extraction result updated with comprehensive verification data');
+      } catch (verificationError) {
+        console.error('❌ Comprehensive verification failed:', verificationError);
+        console.error('Error details:', {
+          message: verificationError instanceof Error ? verificationError.message : 'Unknown error',
+          stack: verificationError instanceof Error ? verificationError.stack : 'No stack'
+        });
+      }
     }
     
     // Convert extraction result to database format
@@ -1440,7 +1831,7 @@ async function detectBasicAnomalies(
   // Check for missing primary keys
   databases.forEach(db => {
     db.tables?.forEach((table: any) => {
-      const hasPrimaryKey = table.columns?.some((col: any) => col.isPrimaryKey || col.constraints?.includes('PRIMARY KEY'));
+      const hasPrimaryKey = table.columns?.some((col: any) => col.isPrimaryKey || (Array.isArray(col.constraints) && col.constraints.includes('PRIMARY KEY')));
       if (!hasPrimaryKey) {
         anomalies.push({
           id: `anomaly_missing_pk_${table.name}_${Date.now()}`,
