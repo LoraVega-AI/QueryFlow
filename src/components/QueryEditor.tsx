@@ -22,6 +22,7 @@ interface QueryEditorProps {
   connectionId: string;
   projectName: string;
   databaseName?: string;
+  projectData?: any;
 }
 
 interface QueryResult {
@@ -37,12 +38,47 @@ export function QueryEditor({
   onClose,
   connectionId,
   projectName,
-  databaseName
+  databaseName,
+  projectData
 }: QueryEditorProps) {
-  const [query, setQuery] = useState('SELECT * FROM ');
+  // Generate sample queries based on project data
+  const generateSampleQueries = () => {
+    if (!projectData?.schema?.tables || projectData.schema.tables.length === 0) {
+      return 'SELECT * FROM ';
+    }
+    
+    const tables = projectData.schema.tables;
+    const firstTable = tables[0];
+    const tableName = firstTable.name || 'table_name';
+    
+    // Generate a more meaningful query based on the table structure
+    if (firstTable.columns && firstTable.columns.length > 0) {
+      // Filter out system columns and get meaningful columns
+      const meaningfulColumns = firstTable.columns
+        .filter((col: any) => col.name && !col.name.startsWith('_') && col.name !== 'id')
+        .slice(0, 4); // Get up to 4 meaningful columns
+      
+      if (meaningfulColumns.length > 0) {
+        const columnNames = meaningfulColumns.map((col: any) => col.name).join(', ');
+        return `SELECT ${columnNames}\nFROM ${tableName}\nWHERE 1=1\nLIMIT 10;`;
+      } else {
+        // Fallback to common column names if no meaningful columns found
+        return `SELECT * FROM ${tableName}\nWHERE 1=1\nLIMIT 10;`;
+      }
+    }
+    
+    return `SELECT * FROM ${tableName}\nWHERE 1=1\nLIMIT 10;`;
+  };
+
+  const [query, setQuery] = useState(generateSampleQueries());
   const [isExecuting, setIsExecuting] = useState(false);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [queryHistory, setQueryHistory] = useState<string[]>([]);
+
+  // Update query when project data changes
+  React.useEffect(() => {
+    setQuery(generateSampleQueries());
+  }, [projectData]);
 
   const executeQuery = async () => {
     if (!query.trim()) return;
@@ -162,27 +198,27 @@ export function QueryEditor({
           {/* Query Panel */}
           <div className="w-1/2 flex flex-col border-r border-gray-700/50">
             {/* Query Input */}
-            <div className="p-8 border-b border-gray-700/50" style={{
+            <div className="p-10 border-b border-gray-700/50" style={{
               background: 'linear-gradient(135deg, rgba(31, 41, 55, 0.3) 0%, rgba(17, 24, 39, 0.3) 100%)'
             }}>
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-200 bg-clip-text text-transparent">SQL Query</h3>
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-200 bg-clip-text text-transparent">SQL Query</h3>
                 <button
                   onClick={executeQuery}
                   disabled={isExecuting || !query.trim()}
-                  className="flex items-center space-x-4 px-8 py-4 bg-gradient-to-r from-orange-500 via-orange-600 to-red-500 text-white text-lg font-bold rounded-3xl hover:from-orange-600 hover:via-orange-700 hover:to-red-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-110 hover:-translate-y-1 disabled:transform-none border border-orange-400/20"
+                  className="flex items-center space-x-4 px-10 py-5 bg-gradient-to-r from-orange-500 via-orange-600 to-red-500 text-white text-xl font-bold rounded-3xl hover:from-orange-600 hover:via-orange-700 hover:to-red-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-110 hover:-translate-y-1 disabled:transform-none border border-orange-400/20"
                   style={{
                     boxShadow: '0 10px 25px -5px rgba(251, 146, 60, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)'
                   }}
                 >
                   {isExecuting ? (
                     <>
-                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <Loader2 className="w-7 h-7 animate-spin" />
                       <span>Executing...</span>
                     </>
                   ) : (
                     <>
-                      <Play className="w-6 h-6" />
+                      <Play className="w-7 h-7" />
                       <span>Execute</span>
                     </>
                   )}
@@ -192,34 +228,46 @@ export function QueryEditor({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Enter your SELECT query here..."
-                className="w-full h-48 p-6 bg-gradient-to-br from-gray-900/80 to-gray-800/80 text-white rounded-3xl border border-gray-600/30 focus:border-orange-500 focus:outline-none font-mono text-lg resize-none shadow-2xl focus:shadow-3xl transition-all duration-300 backdrop-blur-sm"
+                className="w-full h-56 p-8 pr-12 bg-gradient-to-br from-gray-900/80 to-gray-800/80 text-white rounded-3xl border border-gray-600/30 focus:border-orange-500 focus:outline-none font-mono text-xl resize-none shadow-2xl focus:shadow-3xl transition-all duration-300 backdrop-blur-sm leading-relaxed custom-scrollbar"
                 disabled={isExecuting}
                 style={{
                   background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.8) 0%, rgba(31, 41, 55, 0.8) 100%)',
-                  backdropFilter: 'blur(10px)'
+                  backdropFilter: 'blur(10px)',
+                  lineHeight: '1.8',
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: 'rgba(156, 163, 175, 0.5) transparent'
+                }}
+                onScroll={(e) => {
+                  // Custom scrollbar styling for webkit browsers
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.setProperty('--scrollbar-thumb', 'rgba(156, 163, 175, 0.5)');
+                  target.style.setProperty('--scrollbar-track', 'transparent');
                 }}
               />
             </div>
 
             {/* Query History */}
             {queryHistory.length > 0 && (
-              <div className="flex-1 p-8 overflow-hidden" style={{
+              <div className="flex-1 p-10 overflow-hidden" style={{
                 background: 'linear-gradient(135deg, rgba(31, 41, 55, 0.2) 0%, rgba(17, 24, 39, 0.2) 100%)'
               }}>
-                <h3 className="text-xl font-bold bg-gradient-to-r from-white to-gray-200 bg-clip-text text-transparent mb-6">Query History</h3>
-                <div className="h-full overflow-y-auto">
-                  <div className="space-y-4">
+                <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-200 bg-clip-text text-transparent mb-8">Query History</h3>
+                <div className="h-full overflow-y-auto pr-2 custom-scrollbar" style={{
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: 'rgba(156, 163, 175, 0.5) transparent'
+                }}>
+                  <div className="space-y-5">
                     {queryHistory.map((historyQuery, index) => (
                       <button
                         key={index}
                         onClick={() => loadQueryFromHistory(historyQuery)}
-                        className="w-full text-left p-5 bg-gradient-to-r from-gray-700/60 to-gray-600/60 rounded-3xl hover:from-gray-600/60 hover:to-gray-500/60 transition-all duration-300 border border-gray-600/40 hover:border-orange-500/50 shadow-lg hover:shadow-xl transform hover:scale-105 hover:-translate-y-1"
+                        className="w-full text-left p-6 bg-gradient-to-r from-gray-700/60 to-gray-600/60 rounded-3xl hover:from-gray-600/60 hover:to-gray-500/60 transition-all duration-300 border border-gray-600/40 hover:border-orange-500/50 shadow-lg hover:shadow-xl transform hover:scale-105 hover:-translate-y-1"
                         style={{
                           background: 'linear-gradient(135deg, rgba(55, 65, 81, 0.6) 0%, rgba(31, 41, 55, 0.6) 100%)',
                           backdropFilter: 'blur(10px)'
                         }}
                       >
-                        <code className="text-orange-300 text-base font-mono">
+                        <code className="text-orange-300 text-lg font-mono leading-relaxed">
                           {historyQuery.length > 100 ? historyQuery.substring(0, 100) + '...' : historyQuery}
                         </code>
                       </button>
@@ -233,20 +281,20 @@ export function QueryEditor({
           {/* Results Panel */}
           <div className="w-1/2 flex flex-col">
             {/* Results Header */}
-            <div className="p-8 border-b border-gray-700/50" style={{
+            <div className="p-10 border-b border-gray-700/50" style={{
               background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(147, 51, 234, 0.05) 50%, rgba(236, 72, 153, 0.05) 100%)'
             }}>
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-200 bg-clip-text text-transparent">Query Results</h3>
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-3xl font-bold bg-gradient-to-r from-white to-gray-200 bg-clip-text text-transparent">Query Results</h3>
                 {result?.success && result.data && result.data.length > 0 && (
                   <button
                     onClick={exportResults}
-                    className="flex items-center space-x-3 px-6 py-3 bg-gradient-to-r from-green-500 via-green-600 to-emerald-600 text-white text-base font-bold rounded-3xl hover:from-green-600 hover:via-green-700 hover:to-emerald-700 shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-110 hover:-translate-y-1 border border-green-400/20"
+                    className="flex items-center space-x-3 px-8 py-4 bg-gradient-to-r from-green-500 via-green-600 to-emerald-600 text-white text-lg font-bold rounded-3xl hover:from-green-600 hover:via-green-700 hover:to-emerald-700 shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-110 hover:-translate-y-1 border border-green-400/20"
                     style={{
                       boxShadow: '0 10px 25px -5px rgba(34, 197, 94, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1)'
                     }}
                   >
-                    <Download className="w-5 h-5" />
+                    <Download className="w-6 h-6" />
                     <span>Export CSV</span>
                   </button>
                 )}
@@ -254,25 +302,25 @@ export function QueryEditor({
 
               {/* Result Status */}
               {result && (
-                <div className="flex items-center space-x-8 text-lg">
+                <div className="flex items-center space-x-10 text-xl">
                   {result.success ? (
                     <>
-                      <div className="flex items-center space-x-3 text-green-400 font-bold bg-green-500/10 px-4 py-2 rounded-2xl border border-green-500/20">
-                        <CheckCircle className="w-6 h-6" />
+                      <div className="flex items-center space-x-4 text-green-400 font-bold bg-green-500/10 px-6 py-3 rounded-2xl border border-green-500/20">
+                        <CheckCircle className="w-7 h-7" />
                         <span>Success</span>
                       </div>
-                      <div className="flex items-center space-x-3 text-gray-300 bg-gray-700/30 px-4 py-2 rounded-2xl border border-gray-600/30">
-                        <Clock className="w-6 h-6" />
+                      <div className="flex items-center space-x-4 text-gray-300 bg-gray-700/30 px-6 py-3 rounded-2xl border border-gray-600/30">
+                        <Clock className="w-7 h-7" />
                         <span>{result.executionTime}ms</span>
                       </div>
-                      <div className="flex items-center space-x-3 text-gray-300 bg-gray-700/30 px-4 py-2 rounded-2xl border border-gray-600/30">
-                        <Hash className="w-6 h-6" />
+                      <div className="flex items-center space-x-4 text-gray-300 bg-gray-700/30 px-6 py-3 rounded-2xl border border-gray-600/30">
+                        <Hash className="w-7 h-7" />
                         <span>{result.rowCount} rows</span>
                       </div>
                     </>
                   ) : (
-                    <div className="flex items-center space-x-3 text-red-400 font-bold bg-red-500/10 px-4 py-2 rounded-2xl border border-red-500/20">
-                      <AlertTriangle className="w-6 h-6" />
+                    <div className="flex items-center space-x-4 text-red-400 font-bold bg-red-500/10 px-6 py-3 rounded-2xl border border-red-500/20">
+                      <AlertTriangle className="w-7 h-7" />
                       <span>{result.error}</span>
                     </div>
                   )}
@@ -285,7 +333,10 @@ export function QueryEditor({
               background: 'linear-gradient(135deg, rgba(31, 41, 55, 0.2) 0%, rgba(17, 24, 39, 0.2) 100%)'
             }}>
               {result?.success && result.data && result.data.length > 0 ? (
-                <div className="h-full overflow-auto">
+                <div className="h-full overflow-auto pr-2 custom-scrollbar" style={{
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: 'rgba(156, 163, 175, 0.5) transparent'
+                }}>
                   <table className="w-full border-collapse">
                     <thead className="bg-gradient-to-r from-gray-700 via-gray-800 to-gray-900 sticky top-0 shadow-2xl" style={{
                       background: 'linear-gradient(135deg, rgba(55, 65, 81, 0.9) 0%, rgba(31, 41, 55, 0.9) 50%, rgba(17, 24, 39, 0.9) 100%)',
@@ -295,7 +346,7 @@ export function QueryEditor({
                         {Object.keys(result.data[0]).map((header) => (
                           <th
                             key={header}
-                            className="px-8 py-6 text-left text-base font-bold text-white uppercase tracking-wider border-b border-gray-600/50"
+                            className="px-10 py-8 text-left text-lg font-bold text-white uppercase tracking-wider border-b border-gray-600/50"
                           >
                             {header}
                           </th>
@@ -308,7 +359,7 @@ export function QueryEditor({
                           {Object.values(row).map((value: any, cellIndex) => (
                             <td
                               key={cellIndex}
-                              className="px-8 py-5 text-base text-gray-200 border-b border-gray-700/20 max-w-xs truncate"
+                              className="px-10 py-6 text-lg text-gray-200 border-b border-gray-700/20 max-w-xs truncate"
                               title={String(value || '')}
                             >
                               {value === null ? 'NULL' : String(value)}

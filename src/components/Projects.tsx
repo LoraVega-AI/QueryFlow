@@ -128,6 +128,7 @@ export function Projects() {
     connectionId: string;
     projectName: string;
     databaseName?: string;
+    projectId: string;
   } | null>(null);
 
   // Project uploader state
@@ -654,8 +655,8 @@ export function Projects() {
       // Update project with schema info
       const updatedProjectWithSchema = {
         ...project,
-        status: 'connected' as const,
-        databaseCount: 1,
+          status: 'connected' as const,
+          databaseCount: 1,
         schema: schema,
         lastSynced: new Date()
       };
@@ -725,7 +726,8 @@ export function Projects() {
       setQueryEditorConnection({
         connectionId: connectionId,
         projectName: project.name,
-        databaseName: project.name
+        databaseName: project.name,
+        projectId: project.id
       });
       setShowQueryEditor(true);
 
@@ -1339,7 +1341,7 @@ export function Projects() {
                   >
                     <Printer className="w-4 h-4" />
                   </button>
-                </div>
+                    </div>
                 <div className="text-sm text-gray-500 font-medium">
                   Database Statistics
                 </div>
@@ -1919,6 +1921,7 @@ export function Projects() {
           connectionId={queryEditorConnection.connectionId}
           projectName={queryEditorConnection.projectName}
           databaseName={queryEditorConnection.databaseName}
+          projectData={projects.find(p => p.id === queryEditorConnection.projectId)}
         />
       )}
 
