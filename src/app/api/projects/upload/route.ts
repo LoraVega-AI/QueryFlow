@@ -223,6 +223,8 @@ export async function POST(request: NextRequest) {
         actualTotalColumns = actualDatabaseTables.reduce((sum, table) => sum + (table.columns?.length || 0), 0);
         
         console.log(`📊 Actual database statistics: ${actualDatabaseTables.length} tables, ${actualTotalRows} rows, ${actualTotalColumns} columns`);
+    console.log(`📊 Extracted models count: ${allTables.length} tables`);
+    console.log(`📊 Database files table counts: ${allDatabases.map(db => ({ name: db.name, count: db.tableCount || 0 }))}`);
         
       } catch (introspectionError) {
         console.error('❌ Actual database introspection failed:', introspectionError);
@@ -755,6 +757,14 @@ export async function POST(request: NextRequest) {
       console.log(`📊 Table ${table.name}: ${source} (${table.columns?.length || 0} columns)`);
     });
     
+    // FIXED: Log the final counts that will be used for the project
+    const finalTableCount = actualDatabaseTables.length > 0 ? actualDatabaseTables.length : (allDatabases.reduce((sum, db) => sum + (db.tableCount || 0), 0) || allTables.length);
+    console.log(`🎯 FINAL PROJECT COUNTS:`);
+    console.log(`   - Actual database tables: ${actualDatabaseTables.length}`);
+    console.log(`   - Database files total: ${allDatabases.reduce((sum, db) => sum + (db.tableCount || 0), 0)}`);
+    console.log(`   - Extracted models: ${allTables.length}`);
+    console.log(`   - FINAL totalTables: ${finalTableCount}`);
+    
     const allRelationships = allDatabases.flatMap(db => db.schema?.relationships || []);
     const allIndexes = allDatabases.flatMap(db => db.schema?.indexes || []);
     
@@ -875,10 +885,11 @@ export async function POST(request: NextRequest) {
       queries: [],
       uploadPath: uploadDir,
       originalFiles: filePaths,
-      // Additional metadata - USE ACTUAL DATABASE STATISTICS
-      totalTables: actualDatabaseTables.length > 0 ? actualDatabaseTables.length : allTables.length,
-      totalRows: actualTotalRows > 0 ? actualTotalRows : allDatabases.reduce((sum, db) => sum + (db.totalRows || 0), 0),
-      totalColumns: actualTotalColumns > 0 ? actualTotalColumns : allTables.reduce((sum, t) => sum + (t.columns?.length || 0), 0),
+    // Additional metadata - USE ACTUAL DATABASE STATISTICS
+    // FIXED: Ensure we always use actual database tables count when available
+    totalTables: actualDatabaseTables.length > 0 ? actualDatabaseTables.length : (allDatabases.reduce((sum, db) => sum + (db.tableCount || 0), 0) || allTables.length),
+    totalRows: actualTotalRows > 0 ? actualTotalRows : allDatabases.reduce((sum, db) => sum + (db.totalRows || 0), 0),
+    totalColumns: actualTotalColumns > 0 ? actualTotalColumns : allTables.reduce((sum, t) => sum + (t.columns?.length || 0), 0),
       hasForeignKeys: allRelationships.length > 0,
       hasIndexes: allIndexes.length > 0,
       systemCatalog: systemCatalogData,

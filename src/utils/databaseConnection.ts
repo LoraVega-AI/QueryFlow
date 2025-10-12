@@ -666,7 +666,9 @@ class ApplicationDataManager {
       totalTables: project.totalTables,
       totalRows: project.totalRows,
       hasForeignKeys: project.hasForeignKeys,
-      hasIndexes: project.hasIndexes
+      hasIndexes: project.hasIndexes,
+      actualDatabaseTables: project.actualDatabaseTables?.length || 0,
+      extractedModels: project.extractedModels?.length || 0
     });
 
     const schemaData = JSON.stringify(project.schema || {});
@@ -798,7 +800,7 @@ class ApplicationDataManager {
     
     const projects = rows.map((row: any) => {
       try {
-        return {
+        const project = {
           ...row,
           schema: JSON.parse(row.schema_data || '{}'),
           systemCatalog: row.system_catalog ? JSON.parse(row.system_catalog) : null,
@@ -810,9 +812,14 @@ class ApplicationDataManager {
           hasIndexes: row.has_indexes === 1,
           lastSynced: row.last_synced
         };
+        
+        // FIXED: Log project data for debugging
+        console.log(`📊 Retrieved project: ${project.name} - totalTables: ${project.totalTables}`);
+        
+        return project;
       } catch (parseError) {
         console.warn('Failed to parse schema for project:', row.id, parseError);
-        return {
+        const project = {
           ...row,
           schema: {},
           systemCatalog: null,
@@ -824,6 +831,11 @@ class ApplicationDataManager {
           hasIndexes: row.has_indexes === 1,
           lastSynced: row.last_synced
         };
+        
+        // FIXED: Log project data for debugging
+        console.log(`📊 Retrieved project (fallback): ${project.name} - totalTables: ${project.totalTables}`);
+        
+        return project;
       }
     });
 
