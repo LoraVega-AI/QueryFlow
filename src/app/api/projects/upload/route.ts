@@ -886,8 +886,8 @@ export async function POST(request: NextRequest) {
       uploadPath: uploadDir,
       originalFiles: filePaths,
     // Additional metadata - USE ACTUAL DATABASE STATISTICS
-    // FIXED: Ensure we always use actual database tables count when available
-    totalTables: actualDatabaseTables.length > 0 ? actualDatabaseTables.length : (allDatabases.reduce((sum, db) => sum + (db.tableCount || 0), 0) || allTables.length),
+    // FIXED: Use actual schema tables count for accurate table count
+    totalTables: mergedSchema?.tables?.length || 0,
     totalRows: actualTotalRows > 0 ? actualTotalRows : allDatabases.reduce((sum, db) => sum + (db.totalRows || 0), 0),
     totalColumns: actualTotalColumns > 0 ? actualTotalColumns : allTables.reduce((sum, t) => sum + (t.columns?.length || 0), 0),
       hasForeignKeys: allRelationships.length > 0,

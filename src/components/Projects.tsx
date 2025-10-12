@@ -39,9 +39,76 @@ import { DatabaseConnector } from '../utils/databaseConnector';
 import { DatabaseSchema } from '../types/database';
 import { useRealtimeUpdates } from '../hooks/useRealtimeUpdates';
 import { useSessionManager } from '../hooks/useSessionManager';
+import { dbConnectionManager } from '../utils/databaseConnection';
 
 export function Projects() {
   const { connectDatabase, getConnectionInfo } = useDatabase();
+
+  // Helper function to determine database type from project data
+  const getDatabaseType = (project: Project): string | null => {
+    // Check systemCatalog metadata first
+    if (project.systemCatalog?.metadata?.databaseType) {
+      const dbType = project.systemCatalog.metadata.databaseType.toLowerCase();
+      return formatDatabaseType(dbType);
+    }
+    
+    // Check databases array
+    if (project.databases && project.databases.length > 0) {
+      const dbType = project.databases[0].type?.toLowerCase();
+      if (dbType) {
+        return formatDatabaseType(dbType);
+      }
+    }
+    
+    // Check schema metadata
+    if (project.schema?.metadata?.databaseType) {
+      const dbType = project.schema.metadata.databaseType.toLowerCase();
+      return formatDatabaseType(dbType);
+    }
+    
+    // Fallback: Extract database type from project name
+    const dbTypeFromName = extractDatabaseTypeFromName(project.name);
+    if (dbTypeFromName) {
+      return formatDatabaseType(dbTypeFromName);
+    }
+    
+    return null;
+  };
+
+  // Helper function to extract database type from project name
+  const extractDatabaseTypeFromName = (projectName: string): string | null => {
+    const name = projectName.toLowerCase();
+    
+    // Common database type patterns in project names
+    if (name.includes('postgresql') || name.includes('postgres')) return 'postgresql';
+    if (name.includes('mysql')) return 'mysql';
+    if (name.includes('sqlite')) return 'sqlite';
+    if (name.includes('mongodb') || name.includes('mongo')) return 'mongodb';
+    if (name.includes('redis')) return 'redis';
+    if (name.includes('dynamodb') || name.includes('dynamo')) return 'dynamodb';
+    if (name.includes('oracle')) return 'oracle';
+    if (name.includes('sql server') || name.includes('mssql')) return 'sqlserver';
+    
+    return null;
+  };
+
+  // Helper function to format database type for display
+  const formatDatabaseType = (dbType: string): string => {
+    const typeMap: { [key: string]: string } = {
+      'sqlite': 'SQLite',
+      'postgresql': 'PostgreSQL',
+      'postgres': 'PostgreSQL',
+      'mysql': 'MySQL',
+      'mongodb': 'MongoDB',
+      'redis': 'Redis',
+      'dynamodb': 'DynamoDB',
+      'oracle': 'Oracle',
+      'sqlserver': 'SQL Server',
+      'mssql': 'SQL Server'
+    };
+    
+    return typeMap[dbType] || dbType.toUpperCase();
+  };
   const [projects, setProjects] = useState<Project[]>([]);
   const [syncingProject, setSyncingProject] = useState<string | null>(null);
   const [notification, setNotification] = useState<{
@@ -265,11 +332,20 @@ export function Projects() {
       });
     };
 
-    const handleSyncComplete = (data: any) => {
+    const handleSyncComplete = async (data: any) => {
       setSyncingProject(null);
+      const updatedProject = { ...data.project, status: 'connected' as const, lastSynced: new Date() };
       setProjects(prev => prev.map(p =>
-        p.id === data.projectId ? { ...data.project, status: 'connected' as const } : p
+        p.id === data.projectId ? updatedProject : p
       ));
+
+      // Save to database
+      try {
+        await dbConnectionManager.saveProject(updatedProject);
+      } catch (error) {
+        console.error('Failed to save project to database:', error);
+      }
+
       showNotification('success', `Project "${data.project.name}" synced successfully! The entire application now uses this project's databases.`);
     };
 
@@ -402,9 +478,17 @@ export function Projects() {
         });
 
         // Update project status
+        const updatedProject = { ...project, status: 'connected' as const, lastSynced: new Date() };
         setProjects(prev => prev.map(p =>
-          p.id === project.id ? { ...p, status: 'connected' as const } : p
+          p.id === project.id ? updatedProject : p
         ));
+
+        // Save to database
+        try {
+          await dbConnectionManager.saveProject(updatedProject);
+        } catch (error) {
+          console.error('Failed to save project to database:', error);
+        }
 
         showNotification('success', `Project "${project.name}" synced successfully! Found ${project.totalTables || 0} tables.`);
       } else if (project.databases && project.databases.length > 0) {
@@ -434,9 +518,17 @@ export function Projects() {
         });
 
         // Update project status
+        const updatedProject = { ...project, status: 'connected' as const, lastSynced: new Date() };
         setProjects(prev => prev.map(p =>
-          p.id === project.id ? { ...p, status: 'connected' as const } : p
+          p.id === project.id ? updatedProject : p
         ));
+
+        // Save to database
+        try {
+          await dbConnectionManager.saveProject(updatedProject);
+        } catch (error) {
+          console.error('Failed to save project to database:', error);
+        }
 
         showNotification('success', `Project "${project.name}" synced successfully!`);
       } else {
@@ -467,9 +559,17 @@ export function Projects() {
         // Load the updated project with schema
         const updatedProject = await projectsManager.getProject(project.id);
         if (updatedProject) {
+          const projectWithLastSynced = { ...updatedProject, lastSynced: new Date() };
           setProjects(prev => prev.map(p =>
-            p.id === project.id ? updatedProject : p
+            p.id === project.id ? projectWithLastSynced : p
           ));
+
+          // Save to database
+          try {
+            await dbConnectionManager.saveProject(projectWithLastSynced);
+          } catch (error) {
+            console.error('Failed to save project to database:', error);
+          }
 
           // Connect the first database to the global context for app-wide access
           if (updatedProject.databases && updatedProject.databases.length > 0) {
@@ -533,9 +633,17 @@ export function Projects() {
       })));
 
       // Update project status
+      const updatedProject = { ...project, status: 'connected' as const, lastSynced: new Date() };
       setProjects(prev => prev.map(p =>
-        p.id === connectionProjectId ? { ...p, status: 'connected' as const } : p
+        p.id === connectionProjectId ? updatedProject : p
       ));
+
+      // Save to database
+      try {
+        await dbConnectionManager.saveProject(updatedProject);
+      } catch (error) {
+        console.error('Failed to save project to database:', error);
+      }
 
       const tableCount = schema?.tables?.length || 0;
       setNotification({
@@ -544,14 +652,23 @@ export function Projects() {
       });
 
       // Update project with schema info
+      const updatedProjectWithSchema = {
+        ...project,
+        status: 'connected' as const,
+        databaseCount: 1,
+        schema: schema,
+        lastSynced: new Date()
+      };
       setProjects(prev => prev.map(p =>
-        p.id === connectionProjectId ? {
-          ...p,
-          status: 'connected' as const,
-          databaseCount: 1,
-          schema: schema
-        } : p
+        p.id === connectionProjectId ? updatedProjectWithSchema : p
       ));
+
+      // Save to database
+      try {
+        await dbConnectionManager.saveProject(updatedProjectWithSchema);
+      } catch (error) {
+        console.error('Failed to save project to database:', error);
+      }
 
       // Close the modal
       setShowConnectionModal(false);
@@ -703,6 +820,14 @@ export function Projects() {
   const formatLastSynced = (lastSynced: Date | string | null | undefined) => {
     if (!lastSynced) return 'Never';
     const date = lastSynced instanceof Date ? lastSynced : new Date(lastSynced);
+    const now = new Date();
+    const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+    
+    if (diffInMinutes < 1) return 'Just now';
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
+    if (diffInMinutes < 10080) return `${Math.floor(diffInMinutes / 1440)}d ago`;
+    
     return date.toLocaleDateString();
   };
 
@@ -871,45 +996,57 @@ export function Projects() {
   return (
     <div className="h-full flex flex-col">
       {/* Header - Fixed */}
-      <div className="flex-shrink-0 p-8 pb-6">
+      <div className="flex-shrink-0 p-10 pb-8" style={{
+        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(147, 51, 234, 0.05) 50%, rgba(236, 72, 153, 0.05) 100%)',
+        borderBottom: '1px solid rgba(59, 130, 246, 0.1)'
+      }}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-3">Projects</h1>
-            <p className="text-lg text-gray-600 mb-4">
-              Manage and sync your database projects. Each project contains its own embedded database.
-            </p>
-            <div className="flex items-center gap-6">
+            <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent mb-8 drop-shadow-lg">
+              Projects
+            </h1>
+            <div className="flex items-center gap-8">
               {lastRefresh && (
-                <div className="flex items-center gap-2 bg-gray-100 px-3 py-2 rounded-xl">
-                  <RefreshCw className="w-4 h-4 text-gray-500" />
-                  <p className="text-sm text-gray-600 font-medium">
+                <div className="flex items-center gap-4 bg-gradient-to-r from-white via-blue-50 to-indigo-50 px-6 py-4 rounded-3xl border border-blue-200 shadow-lg hover:shadow-xl transition-all duration-300">
+                  <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
+                    <RefreshCw className="w-4 h-4 text-white" />
+                  </div>
+                  <p className="text-base text-gray-800 font-bold">
                     Last updated: {lastRefresh.toLocaleTimeString()}
                   </p>
                 </div>
               )}
-              <div className="flex items-center gap-2 bg-gradient-to-r from-green-50 to-emerald-50 px-3 py-2 rounded-xl border border-green-200">
-                <div className={`w-3 h-3 rounded-full ${realtimeConnected ? 'bg-green-500' : 'bg-yellow-500'} shadow-sm`}></div>
-                <span className="text-sm text-gray-700 font-medium">
+              <div className="flex items-center gap-4 bg-gradient-to-r from-green-50 via-emerald-50 to-teal-50 px-6 py-4 rounded-3xl border border-green-200 shadow-lg hover:shadow-xl transition-all duration-300">
+                <div className={`w-6 h-6 rounded-full ${realtimeConnected ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-yellow-500 to-orange-500'} shadow-lg flex items-center justify-center`}>
+                  <div className="w-3 h-3 bg-white rounded-full"></div>
+                </div>
+                <span className="text-base text-gray-800 font-bold">
                   {realtimeConnected ? 'Real-time connected' : 'Polling mode'}
                 </span>
               </div>
             </div>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-6">
             <button
               onClick={() => setShowProjectUploader(true)}
               data-upload-trigger
-              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-orange-600 to-orange-700 text-white text-sm font-semibold rounded-xl hover:from-orange-700 hover:to-orange-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              className="inline-flex items-center px-10 py-5 bg-gradient-to-r from-orange-500 via-orange-600 to-red-500 text-white text-lg font-bold rounded-3xl hover:from-orange-600 hover:via-orange-700 hover:to-red-600 transition-all duration-300 shadow-2xl hover:shadow-3xl transform hover:-translate-y-2 hover:scale-110 border border-orange-400/20"
+              style={{
+                boxShadow: '0 10px 25px -5px rgba(251, 146, 60, 0.4), 0 10px 10px -5px rgba(251, 146, 60, 0.04)'
+              }}
             >
-              <Upload className="w-5 h-5 mr-2" />
+              <Upload className="w-6 h-6 mr-4" />
               Upload Project
             </button>
             <button
               onClick={() => loadProjects(true)}
               disabled={isRefreshing}
-              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-semibold rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none"
+              className="inline-flex items-center px-10 py-5 bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 text-white text-lg font-bold rounded-3xl hover:from-blue-600 hover:via-indigo-700 hover:to-purple-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-2xl hover:shadow-3xl transform hover:-translate-y-2 hover:scale-110 disabled:transform-none border border-blue-400/20"
+              style={{
+                boxShadow: '0 10px 25px -5px rgba(59, 130, 246, 0.4), 0 10px 10px -5px rgba(59, 130, 246, 0.04)'
+              }}
             >
-              <RefreshCw className={`w-5 h-5 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-6 h-6 mr-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Refreshing...' : 'Refresh'}
             </button>
           </div>
@@ -917,68 +1054,71 @@ export function Projects() {
       </div>
 
       {/* Search and Filter Controls - Fixed */}
-      <div className="flex-shrink-0 px-8 pb-6">
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-lg p-8">
+      <div className="flex-shrink-0 px-8 pb-8">
+        <div className="bg-white border border-gray-200 rounded-3xl shadow-xl p-8" style={{
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.95) 100%)',
+          backdropFilter: 'blur(10px)'
+        }}>
           {/* Search Bar */}
-          <div className="flex items-center space-x-4 mb-6">
+          <div className="flex items-center space-x-6 mb-8">
             <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Search className="absolute left-5 top-1/2 transform -translate-y-1/2 text-gray-400 w-6 h-6" />
               <input
                 type="text"
                 placeholder="Search projects by name, description, or technology..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-12 py-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-gray-50 focus:bg-white text-lg font-medium shadow-sm"
+                className="w-full pl-14 pr-14 py-5 border border-gray-300 rounded-3xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 bg-gradient-to-r from-gray-50 to-gray-100 focus:bg-white text-lg font-semibold shadow-lg hover:shadow-xl"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-200 p-2 rounded-full hover:bg-gray-100"
+                  className="absolute right-5 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-all duration-200 p-2 rounded-full hover:bg-gray-200"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-6 h-6" />
                 </button>
               )}
             </div>
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`inline-flex items-center px-6 py-4 border rounded-2xl transition-all duration-200 font-semibold text-lg ${
+              className={`inline-flex items-center px-8 py-5 border rounded-3xl transition-all duration-300 font-bold text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 ${
                 showFilters 
-                  ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300 text-blue-700 shadow-lg' 
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 shadow-sm hover:shadow-md'
+                  ? 'bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-blue-300 text-blue-700 shadow-xl' 
+                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gradient-to-r hover:from-gray-50 hover:to-blue-50 hover:border-gray-400'
               }`}
             >
-              <Filter className="w-5 h-5 mr-2" />
+              <Filter className="w-6 h-6 mr-3" />
               Filters
-              {showFilters ? <ChevronUp className="w-5 h-5 ml-2" /> : <ChevronDown className="w-5 h-5 ml-2" />}
+              {showFilters ? <ChevronUp className="w-6 h-6 ml-3" /> : <ChevronDown className="w-6 h-6 ml-3" />}
             </button>
-            <div className="flex items-center space-x-1 bg-gray-100 rounded-2xl p-1 shadow-sm">
+            <div className="flex items-center space-x-1 bg-gradient-to-r from-gray-100 to-gray-200 rounded-3xl p-2 shadow-lg">
               <button
                 onClick={() => setViewMode('grid')}
-                className={`p-3 rounded-xl transition-all duration-200 ${viewMode === 'grid' ? 'bg-white text-blue-700 shadow-lg' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                className={`p-4 rounded-2xl transition-all duration-300 ${viewMode === 'grid' ? 'bg-white text-blue-700 shadow-xl transform scale-105' : 'text-gray-500 hover:text-gray-700 hover:bg-white hover:shadow-lg'}`}
                 title="Grid view"
               >
-                <Grid className="w-5 h-5" />
+                <Grid className="w-6 h-6" />
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`p-3 rounded-xl transition-all duration-200 ${viewMode === 'list' ? 'bg-white text-blue-700 shadow-lg' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                className={`p-4 rounded-2xl transition-all duration-300 ${viewMode === 'list' ? 'bg-white text-blue-700 shadow-xl transform scale-105' : 'text-gray-500 hover:text-gray-700 hover:bg-white hover:shadow-lg'}`}
                 title="List view"
               >
-                <List className="w-5 h-5" />
+                <List className="w-6 h-6" />
               </button>
             </div>
           </div>
 
           {/* Advanced Filters */}
           {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-8 border-t border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8 pt-10 border-t border-gradient-to-r from-gray-200 to-gray-300">
               {/* Status Filter */}
               <div>
-                <label className="block text-lg font-bold text-gray-800 mb-4">Status</label>
+                <label className="block text-xl font-bold bg-gradient-to-r from-gray-800 to-gray-900 bg-clip-text text-transparent mb-6">Status</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="w-full px-4 py-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400 text-gray-900 font-medium shadow-sm"
+                  className="w-full px-6 py-5 border border-gray-300 rounded-3xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 bg-gradient-to-r from-white to-gray-50 hover:from-gray-50 hover:to-white text-gray-900 font-semibold shadow-lg hover:shadow-xl"
                 >
                   <option value="all">All ({statusCounts.all})</option>
                   <option value="connected">Connected ({statusCounts.connected})</option>
@@ -990,11 +1130,11 @@ export function Projects() {
 
               {/* Technology Filter */}
               <div>
-                <label className="block text-lg font-bold text-gray-800 mb-4">Technology</label>
+                <label className="block text-xl font-bold bg-gradient-to-r from-gray-800 to-gray-900 bg-clip-text text-transparent mb-6">Technology</label>
                 <select
                   value={technologyFilter}
                   onChange={(e) => setTechnologyFilter(e.target.value)}
-                  className="w-full px-4 py-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400 text-gray-900 font-medium shadow-sm"
+                  className="w-full px-6 py-5 border border-gray-300 rounded-3xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 bg-gradient-to-r from-white to-gray-50 hover:from-gray-50 hover:to-white text-gray-900 font-semibold shadow-lg hover:shadow-xl"
                 >
                   <option value="all">All Technologies</option>
                   {availableTechnologies.map(tech => (
@@ -1005,11 +1145,11 @@ export function Projects() {
 
               {/* Sort By */}
               <div>
-                <label className="block text-lg font-bold text-gray-800 mb-4">Sort By</label>
+                <label className="block text-xl font-bold bg-gradient-to-r from-gray-800 to-gray-900 bg-clip-text text-transparent mb-6">Sort By</label>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="w-full px-4 py-4 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white hover:border-gray-400 text-gray-900 font-medium shadow-sm"
+                  className="w-full px-6 py-5 border border-gray-300 rounded-3xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 bg-gradient-to-r from-white to-gray-50 hover:from-gray-50 hover:to-white text-gray-900 font-semibold shadow-lg hover:shadow-xl"
                 >
                   <option value="name">Name</option>
                   <option value="lastSynced">Last Synced</option>
@@ -1020,28 +1160,28 @@ export function Projects() {
 
               {/* Sort Order */}
               <div>
-                <label className="block text-lg font-bold text-gray-800 mb-4">Order</label>
-                <div className="flex space-x-3">
+                <label className="block text-xl font-bold bg-gradient-to-r from-gray-800 to-gray-900 bg-clip-text text-transparent mb-6">Order</label>
+                <div className="flex space-x-4">
                   <button
                     onClick={() => setSortOrder('asc')}
-                    className={`flex-1 inline-flex items-center justify-center px-4 py-4 border rounded-2xl transition-all duration-200 font-semibold ${
+                    className={`flex-1 inline-flex items-center justify-center px-6 py-5 border rounded-3xl transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 ${
                       sortOrder === 'asc' 
-                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300 text-blue-700 shadow-lg' 
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 shadow-sm hover:shadow-md'
+                        ? 'bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-blue-300 text-blue-700 shadow-xl' 
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gradient-to-r hover:from-gray-50 hover:to-blue-50 hover:border-gray-400'
                     }`}
                   >
-                    <SortAsc className="w-5 h-5 mr-2" />
+                    <SortAsc className="w-6 h-6 mr-3" />
                     Asc
                   </button>
                   <button
                     onClick={() => setSortOrder('desc')}
-                    className={`flex-1 inline-flex items-center justify-center px-4 py-4 border rounded-2xl transition-all duration-200 font-semibold ${
+                    className={`flex-1 inline-flex items-center justify-center px-6 py-5 border rounded-3xl transition-all duration-300 font-bold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 ${
                       sortOrder === 'desc' 
-                        ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-300 text-blue-700 shadow-lg' 
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 shadow-sm hover:shadow-md'
+                        ? 'bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border-blue-300 text-blue-700 shadow-xl' 
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gradient-to-r hover:from-gray-50 hover:to-blue-50 hover:border-gray-400'
                     }`}
                   >
-                    <SortDesc className="w-5 h-5 mr-2" />
+                    <SortDesc className="w-6 h-6 mr-3" />
                     Desc
                   </button>
                 </div>
@@ -1051,16 +1191,16 @@ export function Projects() {
 
           {/* Filter Summary */}
           {(searchQuery || statusFilter !== 'all' || technologyFilter !== 'all') && (
-            <div className="flex items-center justify-between mt-8 pt-8 border-t border-gray-200">
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-3 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 rounded-2xl border border-blue-200">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full shadow-sm"></div>
-                  <span className="text-lg font-bold text-gray-800">
+            <div className="flex items-center justify-between mt-10 pt-10 border-t border-gradient-to-r from-gray-200 to-gray-300">
+              <div className="flex items-center space-x-6">
+                <div className="flex items-center space-x-4 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 px-6 py-4 rounded-3xl border border-blue-200 shadow-lg">
+                  <div className="w-4 h-4 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full shadow-lg"></div>
+                  <span className="text-xl font-bold bg-gradient-to-r from-gray-800 to-gray-900 bg-clip-text text-transparent">
                     Showing {filteredAndSortedProjects.length} of {projects.length} projects
                   </span>
                 </div>
                 {(searchQuery || statusFilter !== 'all' || technologyFilter !== 'all') && (
-                  <span className="text-sm text-gray-600 bg-gray-100 px-4 py-2 rounded-2xl font-medium border border-gray-200">
+                  <span className="text-sm text-gray-700 bg-gradient-to-r from-gray-100 to-gray-200 px-6 py-3 rounded-3xl font-semibold border border-gray-300 shadow-sm">
                     filtered by {[
                       searchQuery && 'search',
                       statusFilter !== 'all' && 'status',
@@ -1071,7 +1211,7 @@ export function Projects() {
               </div>
               <button
                 onClick={clearFilters}
-                className="text-lg font-bold text-blue-600 hover:text-blue-800 transition-all duration-200 px-6 py-3 rounded-2xl hover:bg-blue-50 border border-blue-200 hover:border-blue-300 shadow-sm hover:shadow-md"
+                className="text-lg font-bold text-blue-600 hover:text-blue-800 transition-all duration-300 px-8 py-4 rounded-3xl hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 border border-blue-200 hover:border-blue-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
                 Clear all filters
               </button>
@@ -1117,18 +1257,35 @@ export function Projects() {
               {filteredAndSortedProjects.map((project) => (
                 <div
                   key={project.id}
-                  className={`bg-white rounded-2xl border border-gray-200 hover:shadow-2xl hover:border-gray-300 transition-all duration-300 transform hover:-translate-y-1 ${
+                  className={`bg-white rounded-3xl border border-gray-200 hover:shadow-2xl hover:border-gray-300 transition-all duration-500 transform hover:-translate-y-2 hover:scale-[1.02] backdrop-blur-sm ${
                     viewMode === 'list' ? 'flex' : ''
                   }`}
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.9) 100%)',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+                  }}
                 >
                   <div className={`${viewMode === 'list' ? 'flex-1 p-8' : 'p-8'}`}>
               {/* Header */}
-              <div className="flex items-start justify-between mb-6">
+              <div className="flex items-start justify-between mb-8">
                 <div className="flex items-center">
-                  <div className="text-4xl mr-5">{project.icon}</div>
+                  <div className="text-5xl mr-6 p-2 bg-gradient-to-br from-purple-100 to-blue-100 rounded-2xl shadow-lg">
+                    {project.icon}
+                  </div>
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">{project.name}</h3>
-                    <p className="text-lg font-semibold text-gray-600">{project.technology}</p>
+                    <h3 className="text-2xl font-bold text-gray-900 mb-3 bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                      {project.name}
+                    </h3>
+                    <div className="flex items-center gap-4">
+                      <p className="text-lg font-semibold text-gray-600 px-3 py-1 bg-gray-100 rounded-lg">
+                        {project.technology}
+                      </p>
+                      {getDatabaseType(project) && (
+                        <div className="px-4 py-2 bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 text-white rounded-xl text-sm font-bold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105">
+                          {getDatabaseType(project)}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
@@ -1150,7 +1307,7 @@ export function Projects() {
                   )}
 
                   {/* Status */}
-                  <div className={`flex items-center px-4 py-2 rounded-2xl text-sm font-bold shadow-sm ${getStatusColor(project.status)}`}>
+                  <div className={`flex items-center px-5 py-3 rounded-2xl text-sm font-bold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 ${getStatusColor(project.status)}`}>
                     {getStatusIcon(project.status)}
                     <span className="ml-2">{getStatusText(project.status)}</span>
                   </div>
@@ -1158,147 +1315,71 @@ export function Projects() {
               </div>
 
               {/* Description */}
-              <p className="text-lg text-gray-600 mb-6 line-clamp-2 leading-relaxed">
+              <p className="text-lg text-gray-600 mb-8 line-clamp-2 leading-relaxed">
                 {project.description}
               </p>
 
-              {/* Framework Information */}
-              {project.schema?.metadata?.frameworks && project.schema.metadata.frameworks.length > 0 && (
-                <div className="mb-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-100 shadow-sm">
-                  <div 
-                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-indigo-100 transition-colors duration-200"
-                    onClick={() => toggleSection(`${project.id}-frameworks`)}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-6 h-6 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
-                        <span className="text-white text-xs font-bold">⚡</span>
-                      </div>
-                      <span className="text-sm font-bold text-gray-800">Framework Detection</span>
-                      <div className="flex space-x-1">
-                        {project.schema.metadata.frameworks.slice(0, 2).map((framework: string, index: number) => (
-                          <span
-                            key={index}
-                            className="px-2 py-0.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-full text-xs font-bold"
-                          >
-                            {framework.toUpperCase()}
-                          </span>
-                        ))}
-                        {project.schema.metadata.frameworks.length > 2 && (
-                          <span className="px-2 py-0.5 bg-gray-500 text-white rounded-full text-xs font-bold">
-                            +{project.schema.metadata.frameworks.length - 2}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
-                      expandedSections.has(`${project.id}-frameworks`) ? 'rotate-180' : ''
-                    }`} />
-                  </div>
-                  {expandedSections.has(`${project.id}-frameworks`) && (
-                    <div className="px-3 pb-3 border-t border-indigo-100">
-                      <div className="pt-3 space-y-3">
-                        <div className="flex items-center space-x-3">
-                          <span className="text-sm font-medium text-gray-700">Detected:</span>
-                          <div className="flex flex-wrap gap-2">
-                            {project.schema.metadata.frameworks.map((framework: string, index: number) => (
-                              <span
-                                key={index}
-                                className="px-2 py-1 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-full text-xs font-bold"
-                              >
-                                {framework.toUpperCase()}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        {project.schema.metadata.confidence && (
-                          <div className="flex items-center space-x-3">
-                            <span className="text-sm font-medium text-gray-700">Confidence:</span>
-                            <div className="flex items-center space-x-2">
-                              <div className="w-16 bg-gray-200 rounded-full h-2">
-                                <div 
-                                  className={`h-2 rounded-full transition-all duration-300 ${
-                                    project.schema.metadata.confidence >= 80 
-                                      ? 'bg-gradient-to-r from-green-400 to-green-600' 
-                                      : project.schema.metadata.confidence >= 60 
-                                      ? 'bg-gradient-to-r from-yellow-400 to-orange-500' 
-                                      : 'bg-gradient-to-r from-red-400 to-red-600'
-                                  }`}
-                                  style={{ width: `${project.schema.metadata.confidence}%` }}
-                                ></div>
-                              </div>
-                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                project.schema.metadata.confidence >= 80 
-                                  ? 'bg-green-100 text-green-800' 
-                                  : project.schema.metadata.confidence >= 60 
-                                  ? 'bg-yellow-100 text-yellow-800' 
-                                  : 'bg-red-100 text-red-800'
-                              }`}>
-                                {project.schema.metadata.confidence}%
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Stats */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-2 bg-gradient-to-r from-slate-100 to-gray-100 px-3 py-2 rounded-lg border border-gray-200">
-                  <RefreshCw className="w-4 h-4 text-blue-600" />
-                  <span className="text-xs font-medium text-gray-600">Last synced:</span>
-                  <span className="text-xs font-bold text-gray-800">{formatLastSynced(project.lastSynced)}</span>
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center space-x-4">
+                  {(project.totalTables !== undefined || project.schema?.tables?.length) && (
+                    <div className="flex items-center space-x-2 bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 text-white px-4 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105">
+                      <Database className="w-4 h-4" />
+                      <span className="text-sm font-bold">{project.totalTables || project.schema?.tables?.length || 0} tables</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleExportProject(project);
+                    }}
+                    className="p-3 bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white rounded-xl hover:from-orange-600 hover:via-red-600 hover:to-pink-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                    title="Export database info"
+                  >
+                    <Printer className="w-4 h-4" />
+                  </button>
                 </div>
-                <div className="flex items-center space-x-2">
-                  {project.totalTables !== undefined && (
-                    <div className="flex items-center space-x-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-3 py-2 rounded-lg shadow-sm">
-                      <Database className="w-3 h-3" />
-                      <span className="text-xs font-bold">{project.totalTables} tables</span>
-                    </div>
-                  )}
-                  {project.totalRows !== undefined && (
-                    <div className="flex items-center space-x-1 bg-gradient-to-r from-emerald-500 to-green-600 text-white px-3 py-2 rounded-lg shadow-sm">
-                      <span className="text-xs">📊</span>
-                      <span className="text-xs font-bold">{(project.totalRows || 0).toLocaleString()}</span>
-                    </div>
-                  )}
+                <div className="text-sm text-gray-500 font-medium">
+                  Database Statistics
                 </div>
               </div>
 
               {/* Additional Project Details */}
               {project.schema?.metadata && (
-                <div className="mb-4 bg-gradient-to-r from-slate-50 to-gray-50 rounded-lg border border-slate-200 shadow-sm">
+                <div className="mb-6 bg-gradient-to-r from-slate-50 via-gray-50 to-blue-50 rounded-xl border border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300">
                   <div 
-                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-100 transition-colors duration-200"
+                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-gradient-to-r hover:from-slate-100 hover:to-blue-100 transition-all duration-300 rounded-xl"
                     onClick={() => toggleSection(`${project.id}-details`)}
                   >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-6 h-6 bg-gradient-to-br from-slate-500 to-gray-600 rounded-lg flex items-center justify-center">
-                        <span className="text-white text-xs font-bold">🔧</span>
+                    <div className="flex items-center space-x-4">
+                      <div className="w-8 h-8 bg-gradient-to-br from-slate-500 via-gray-600 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <span className="text-white text-sm font-bold">🔧</span>
                       </div>
-                      <span className="text-sm font-bold text-gray-800">Project Details</span>
-                      <div className="flex space-x-1">
+                      <div className="flex flex-col">
+                        <span className="text-base font-bold text-gray-800">Project Details</span>
+                        <span className="text-xs text-gray-600">Technical specifications and metadata</span>
+                      </div>
+                      <div className="flex space-x-2">
                         {project.schema.metadata.languages && project.schema.metadata.languages.length > 0 && (
-                          <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                            {project.schema.metadata.languages[0]}
+                          <span className="px-3 py-1.5 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-full text-xs font-bold shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105">
+                            {project.schema.metadata.languages[0].toUpperCase()}
                           </span>
                         )}
                         {project.hasForeignKeys && (
-                          <span className="px-2 py-0.5 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                          <span className="px-3 py-1.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-full text-xs font-bold shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105">
                             FK
                           </span>
                         )}
                         {project.hasIndexes && (
-                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                          <span className="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-full text-xs font-bold shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105">
                             IDX
                           </span>
                         )}
                       </div>
                     </div>
-                    <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
-                      expandedSections.has(`${project.id}-details`) ? 'rotate-180' : ''
+                    <ChevronDown className={`w-5 h-5 text-gray-500 transition-all duration-300 ${
+                      expandedSections.has(`${project.id}-details`) ? 'rotate-180 text-blue-600' : 'hover:text-blue-600'
                     }`} />
                   </div>
                   {expandedSections.has(`${project.id}-details`) && (
@@ -1379,33 +1460,23 @@ export function Projects() {
 
               {/* Schema/Tables Info */}
               {project.schema ? (
-                <div className="mb-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-100 shadow-sm">
+                <div className="mb-8 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 rounded-xl border border-blue-200 shadow-lg hover:shadow-xl transition-all duration-300">
                   <div 
-                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-blue-100 transition-colors duration-200"
+                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-gradient-to-r hover:from-blue-100 hover:to-purple-100 transition-all duration-300 rounded-xl"
                     onClick={() => toggleSection(`${project.id}-tables`)}
                   >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                        <Database className="w-4 h-4 text-white" />
+                    <div className="flex items-center space-x-4">
+                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 via-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <Database className="w-5 h-5 text-white" />
                       </div>
-                      <div>
-                        <div className="text-sm font-bold text-gray-800">Database Tables</div>
+                      <div className="flex flex-col">
+                        <div className="text-base font-bold text-gray-800">Database Tables</div>
                         <div className="text-xs text-gray-600">{(project.totalTables || project.schema?.tables?.length || 0)} tables detected</div>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleExportProject(project);
-                        }}
-                        className="p-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition-all duration-200 shadow-sm hover:shadow-md"
-                        title="Export database info"
-                      >
-                        <Printer className="w-3 h-3" />
-                      </button>
-                      <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
-                        expandedSections.has(`${project.id}-tables`) ? 'rotate-180' : ''
+                    <div className="flex items-center">
+                      <ChevronDown className={`w-5 h-5 text-gray-500 transition-all duration-300 ${
+                        expandedSections.has(`${project.id}-tables`) ? 'rotate-180 text-blue-600' : 'hover:text-blue-600'
                       }`} />
                     </div>
                   </div>
@@ -1656,15 +1727,101 @@ export function Projects() {
                 />
               )}
 
+              {/* Framework Information */}
+              {project.schema?.metadata?.frameworks && project.schema.metadata.frameworks.length > 0 && (
+                <div className="mb-6 bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 rounded-xl border border-indigo-200 shadow-lg hover:shadow-xl transition-all duration-300">
+                  <div 
+                    className="flex items-center justify-between p-4 cursor-pointer hover:bg-gradient-to-r hover:from-indigo-100 hover:to-purple-100 transition-all duration-300 rounded-xl"
+                    onClick={() => toggleSection(`${project.id}-frameworks`)}
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 via-purple-600 to-pink-600 rounded-xl flex items-center justify-center shadow-lg">
+                        <span className="text-white text-sm font-bold">⚡</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-base font-bold text-gray-800">Framework Detection</span>
+                        <span className="text-xs text-gray-600">Detected frameworks and technologies</span>
+                      </div>
+                      <div className="flex space-x-2">
+                        {project.schema.metadata.frameworks.slice(0, 2).map((framework: string, index: number) => (
+                          <span
+                            key={index}
+                            className="px-3 py-1.5 bg-gradient-to-r from-purple-500 via-indigo-600 to-blue-600 text-white rounded-full text-xs font-bold shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-105"
+                          >
+                            {framework.toUpperCase()}
+                          </span>
+                        ))}
+                        {project.schema.metadata.frameworks.length > 2 && (
+                          <span className="px-3 py-1.5 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-full text-xs font-bold shadow-md">
+                            +{project.schema.metadata.frameworks.length - 2}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <ChevronDown className={`w-5 h-5 text-gray-500 transition-all duration-300 ${
+                      expandedSections.has(`${project.id}-frameworks`) ? 'rotate-180 text-indigo-600' : 'hover:text-indigo-600'
+                    }`} />
+                  </div>
+                  {expandedSections.has(`${project.id}-frameworks`) && (
+                    <div className="px-3 pb-3 border-t border-indigo-100">
+                      <div className="pt-3 space-y-3">
+                        <div className="flex items-center space-x-3">
+                          <span className="text-sm font-medium text-gray-700">Detected:</span>
+                          <div className="flex flex-wrap gap-2">
+                            {project.schema.metadata.frameworks.map((framework: string, index: number) => (
+                              <span
+                                key={index}
+                                className="px-2 py-1 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-full text-xs font-bold"
+                              >
+                                {framework.toUpperCase()}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        {project.schema.metadata.confidence && (
+                          <div className="flex items-center space-x-3">
+                            <span className="text-sm font-medium text-gray-700">Confidence:</span>
+                            <div className="flex items-center space-x-2">
+                              <div className="w-16 bg-gray-200 rounded-full h-2">
+                                <div 
+                                  className={`h-2 rounded-full transition-all duration-300 ${
+                                    project.schema.metadata.confidence >= 80 
+                                      ? 'bg-gradient-to-r from-green-400 to-green-600' 
+                                      : project.schema.metadata.confidence >= 60 
+                                      ? 'bg-gradient-to-r from-yellow-400 to-orange-500' 
+                                      : 'bg-gradient-to-r from-red-400 to-red-600'
+                                  }`}
+                                  style={{ width: `${project.schema.metadata.confidence}%` }}
+                                ></div>
+                              </div>
+                              <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                project.schema.metadata.confidence >= 80 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : project.schema.metadata.confidence >= 60 
+                                  ? 'bg-yellow-100 text-yellow-800' 
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {project.schema.metadata.confidence}%
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
                     {/* Actions */}
-                    <div className={`flex items-center ${viewMode === 'list' ? 'justify-end' : 'justify-between'}`}>
-                      <div className="flex space-x-3">
+                    <div className={`flex items-center ${viewMode === 'list' ? 'justify-end' : 'justify-between'} pt-8 border-t border-gradient-to-r from-gray-200 to-gray-300`}>
+                      <div className="flex space-x-4">
                         <button
                           onClick={() => handleOpenProject(project.id)}
-                          className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-orange-600 to-orange-700 text-white text-sm font-bold rounded-2xl hover:from-orange-700 hover:to-orange-800 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none"
+                          className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-orange-500 via-orange-600 to-red-500 text-white text-sm font-bold rounded-2xl hover:from-orange-600 hover:via-orange-700 hover:to-red-600 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-2xl transform hover:-translate-y-1 hover:scale-105 disabled:transform-none"
                           disabled={syncingProject === project.id}
                           title={project.status === 'connected' ? 'Open project in query editor' : 'Project not connected - sync first'}
                         >
+                          <span className="mr-2">🚀</span>
                           Open
                         </button>
                         <button
@@ -1677,7 +1834,7 @@ export function Projects() {
                             handleSync(project.id);
                           }}
                           disabled={syncingProject === project.id}
-                          className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-bold rounded-2xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none"
+                          className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 text-white text-sm font-bold rounded-2xl hover:from-blue-600 hover:via-indigo-700 hover:to-purple-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl hover:shadow-2xl transform hover:-translate-y-1 hover:scale-105 disabled:transform-none"
                           title={syncingProject === project.id ? 'Syncing...' : 'Sync project databases'}
                         >
                           <RefreshCw className={`w-5 h-5 mr-2 ${syncingProject === project.id ? 'animate-spin' : ''}`} />
@@ -1685,7 +1842,7 @@ export function Projects() {
                         </button>
                         <button
                           onClick={() => handleDeleteProject(project.id)}
-                          className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white text-sm font-bold rounded-2xl hover:from-red-700 hover:to-red-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                          className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-red-500 via-red-600 to-pink-500 text-white text-sm font-bold rounded-2xl hover:from-red-600 hover:via-red-700 hover:to-pink-600 transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 hover:scale-105"
                           title="Delete project"
                         >
                           <Trash2 className="w-5 h-5 mr-2" />
@@ -1699,14 +1856,14 @@ export function Projects() {
             </div>
           ) : (
             /* Empty State */
-            <div className="text-center py-20">
-              <div className="w-24 h-24 bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-lg">
-                <FolderOpen className="w-12 h-12 text-gray-500" />
+            <div className="text-center py-24">
+              <div className="w-32 h-32 bg-gradient-to-br from-gray-100 via-blue-50 to-purple-50 rounded-3xl flex items-center justify-center mx-auto mb-10 shadow-2xl border border-gray-200">
+                <FolderOpen className="w-16 h-16 text-gray-500" />
               </div>
-              <h3 className="text-3xl font-bold text-gray-900 mb-4">
+              <h3 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 bg-clip-text text-transparent mb-6">
                 {projects.length === 0 ? 'No projects found' : 'No projects match your filters'}
               </h3>
-              <p className="text-xl text-gray-600 mb-8 max-w-lg mx-auto leading-relaxed">
+              <p className="text-2xl text-gray-600 mb-10 max-w-2xl mx-auto leading-relaxed">
                 {projects.length === 0 
                   ? 'Get started by creating your first project.' 
                   : 'Try adjusting your search or filter criteria.'
@@ -1715,7 +1872,7 @@ export function Projects() {
               {projects.length > 0 && (
                 <button
                   onClick={clearFilters}
-                  className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-2xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                  className="inline-flex items-center px-10 py-5 bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 text-white text-xl font-bold rounded-3xl hover:from-blue-600 hover:via-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-2xl hover:shadow-3xl transform hover:-translate-y-1 hover:scale-105"
                 >
                   Clear all filters
                 </button>

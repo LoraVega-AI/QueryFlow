@@ -96,6 +96,72 @@ const STATUS_CONFIG = {
 };
 
 export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect, onSyncProject }: ProjectBrowserProps) {
+  // Helper function to determine database type from project data
+  const getDatabaseType = (project: Project): string | null => {
+    // Check systemCatalog metadata first
+    if (project.systemCatalog?.metadata?.databaseType) {
+      const dbType = project.systemCatalog.metadata.databaseType.toLowerCase();
+      return formatDatabaseType(dbType);
+    }
+    
+    // Check databases array
+    if (project.databases && project.databases.length > 0) {
+      const dbType = project.databases[0].type?.toLowerCase();
+      if (dbType) {
+        return formatDatabaseType(dbType);
+      }
+    }
+    
+    // Check schema metadata
+    if (project.schema?.metadata?.databaseType) {
+      const dbType = project.schema.metadata.databaseType.toLowerCase();
+      return formatDatabaseType(dbType);
+    }
+    
+    // Fallback: Extract database type from project name
+    const dbTypeFromName = extractDatabaseTypeFromName(project.name);
+    if (dbTypeFromName) {
+      return formatDatabaseType(dbTypeFromName);
+    }
+    
+    return null;
+  };
+
+  // Helper function to extract database type from project name
+  const extractDatabaseTypeFromName = (projectName: string): string | null => {
+    const name = projectName.toLowerCase();
+    
+    // Common database type patterns in project names
+    if (name.includes('postgresql') || name.includes('postgres')) return 'postgresql';
+    if (name.includes('mysql')) return 'mysql';
+    if (name.includes('sqlite')) return 'sqlite';
+    if (name.includes('mongodb') || name.includes('mongo')) return 'mongodb';
+    if (name.includes('redis')) return 'redis';
+    if (name.includes('dynamodb') || name.includes('dynamo')) return 'dynamodb';
+    if (name.includes('oracle')) return 'oracle';
+    if (name.includes('sql server') || name.includes('mssql')) return 'sqlserver';
+    
+    return null;
+  };
+
+  // Helper function to format database type for display
+  const formatDatabaseType = (dbType: string): string => {
+    const typeMap: { [key: string]: string } = {
+      'sqlite': 'SQLite',
+      'postgresql': 'PostgreSQL',
+      'postgres': 'PostgreSQL',
+      'mysql': 'MySQL',
+      'mongodb': 'MongoDB',
+      'redis': 'Redis',
+      'dynamodb': 'DynamoDB',
+      'oracle': 'Oracle',
+      'sqlserver': 'SQL Server',
+      'mssql': 'SQL Server'
+    };
+    
+    return typeMap[dbType] || dbType.toUpperCase();
+  };
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -433,7 +499,14 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">{project.name}</h3>
-                <p className="text-sm text-gray-600">{project.projectType ? PROJECT_TYPE_NAMES[project.projectType] : 'Unknown'}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-gray-600">{project.projectType ? PROJECT_TYPE_NAMES[project.projectType] : 'Unknown'}</p>
+                  {getDatabaseType(project) && (
+                    <div className="px-2 py-1 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded text-xs font-semibold shadow-sm">
+                      {getDatabaseType(project)}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

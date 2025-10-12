@@ -85,27 +85,29 @@ export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
           className="fixed inset-0 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         >
-          <div className="absolute inset-0 bg-black opacity-75"></div>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
         </div>
       )}
 
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-800 shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-gray-800 to-gray-900 shadow-xl border-r border-gray-700 transform transition-all duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Sidebar Header */}
-        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-700">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center">
-              <Database className="w-5 h-5 text-white" />
+        <div className="flex items-center justify-between h-20 px-8 border-b border-gray-700">
+          <div className="flex items-center space-x-6">
+            <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-xl border border-orange-400/20">
+              <Database className="w-7 h-7 text-white" />
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">QueryFlow</h1>
+            <div className="flex flex-col">
+              <h1 className="text-3xl font-bold text-white tracking-tight">
+                QueryFlow
+              </h1>
               {currentProject && (
-                <p className="text-xs text-gray-400 flex items-center">
-                  <span className="mr-1">{currentProject.icon}</span>
+                <p className="text-sm text-gray-300 flex items-center font-medium mt-1">
+                  <span className="mr-2 text-lg">{currentProject.icon}</span>
                   {currentProject.name}
                 </p>
               )}
@@ -113,15 +115,15 @@ export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-2 text-gray-400 hover:text-white"
+            className="lg:hidden p-3 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-xl transition-all duration-300"
           >
-            <X className="w-5 h-5" />
+            <X className="w-6 h-6" />
           </button>
         </div>
 
         {/* Navigation */}
-        <nav className="mt-6 px-3">
-          <div className="space-y-1">
+        <nav className="mt-8 px-4">
+          <div className="space-y-2">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -133,14 +135,25 @@ export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
                     onTabChange(tab.id);
                     setSidebarOpen(false);
                   }}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                  className={`w-full flex items-center space-x-4 px-4 py-4 text-base font-semibold rounded-2xl transition-all duration-300 group ${
                     isActive
-                      ? 'bg-orange-100 text-orange-700 border-r-2 border-orange-700'
-                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                      ? 'bg-orange-600/20 text-orange-300 border border-orange-500/30'
+                      : 'text-gray-300 hover:bg-gray-700/50 hover:text-white'
                   }`}
                 >
-                  <Icon className="w-5 h-5" />
-                  <span>{tab.label}</span>
+                  <div className={`p-2 rounded-xl transition-all duration-300 ${
+                    isActive 
+                      ? 'bg-orange-600' 
+                      : 'bg-gray-600/50 group-hover:bg-gray-500'
+                  }`}>
+                    <Icon className={`w-5 h-5 ${
+                      isActive ? 'text-white' : 'text-gray-400 group-hover:text-white'
+                    }`} />
+                  </div>
+                  <span className="flex-1 text-left">{tab.label}</span>
+                  {isActive && (
+                    <div className="w-2 h-2 bg-orange-400 rounded-full"></div>
+                  )}
                 </button>
               );
             })}
@@ -148,10 +161,12 @@ export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
         </nav>
 
         {/* Sidebar Footer */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-700">
-          <div className="flex items-center space-x-3 text-sm text-gray-400">
-            <Settings className="w-4 h-4" />
-            <span>Settings</span>
+        <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-gray-700">
+          <div className="flex items-center space-x-4 text-gray-300 hover:text-white cursor-pointer group">
+            <div className="p-3 bg-gray-600/50 group-hover:bg-gray-500 rounded-2xl transition-all duration-300">
+              <Settings className="w-5 h-5" />
+            </div>
+            <span className="text-base font-semibold">Settings</span>
           </div>
         </div>
       </div>
@@ -159,19 +174,21 @@ export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden lg:ml-0">
         {/* Top Bar */}
-        <header className="bg-gray-800 shadow-sm border-b border-gray-700 lg:hidden">
-          <div className="flex items-center justify-between h-16 px-4">
+        <header className="bg-gray-800 shadow-lg border-b border-gray-700 lg:hidden">
+          <div className="flex items-center justify-between h-20 px-6">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 text-gray-400 hover:text-white"
+              className="p-3 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-xl transition-all duration-300"
             >
               <Menu className="w-6 h-6" />
             </button>
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center">
-                <Database className="w-5 h-5 text-white" />
+            <div className="flex items-center space-x-6">
+              <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl flex items-center justify-center shadow-xl border border-orange-400/20">
+                <Database className="w-6 h-6 text-white" />
               </div>
-              <h1 className="text-xl font-bold text-white">QueryFlow</h1>
+              <h1 className="text-3xl font-bold text-white tracking-tight">
+                QueryFlow
+              </h1>
             </div>
             <div className="w-10"></div> {/* Spacer for centering */}
           </div>
