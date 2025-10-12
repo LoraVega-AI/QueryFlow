@@ -70,30 +70,43 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
   const handleUpdateTableRef = useRef<(updatedTable: Table) => void>(() => {});
   const handleDeleteTableRef = useRef<(tableId: string) => void>(() => {});
   
-  // Refs to store stable nodes and edges
-  const nodesRef = useRef<Node[]>([]);
-  const edgesRef = useRef<Edge[]>([]);
+  // Use React Flow's built-in state management
+  const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
   
   // Handle node changes - update schema directly
-  const onNodesChange = useCallback((changes: any) => {
+  const handleNodesChange = useCallback((changes: any) => {
     if (!schema || isUpdatingRef.current) return;
+    
+    let hasChanges = false;
+    const updatedSchema = { ...schema };
     
     // Update table positions in schema
     changes.forEach((change: any) => {
       if (change.type === 'position' && change.position) {
-        const table = schema.tables.find(t => t.id === change.id);
+        const table = updatedSchema.tables.find(t => t.id === change.id);
         if (table) {
           table.position = change.position;
+          hasChanges = true;
         }
       }
     });
-  }, [schema]);
+    
+    // Notify parent component if there were changes
+    if (hasChanges) {
+      onSchemaChange(updatedSchema);
+    }
+    
+    // Call React Flow's built-in handler
+    onNodesChange(changes);
+  }, [schema, onSchemaChange, onNodesChange]);
   
   // Handle edge changes - currently no-op since edges are derived from schema
-  const onEdgesChange = useCallback((changes: any) => {
+  const handleEdgesChange = useCallback((changes: any) => {
     // Edges are derived from schema relationships, so we don't need to handle changes
     // This is just to satisfy React Flow's requirements
-  }, []);
+    onEdgesChange(changes);
+  }, [onEdgesChange]);
   
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [isTableEditorOpen, setIsTableEditorOpen] = useState(false);
@@ -208,7 +221,13 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
 
   // Handle deleting a table
   const handleDeleteTable = useCallback((tableId: string) => {
-    if (!schema) return;
+    console.log('handleDeleteTable called with ID:', tableId);
+    console.log('Current schema:', schema);
+    
+    if (!schema) {
+      console.error('No schema available for deletion');
+      return;
+    }
 
     const updatedSchema: DatabaseSchema = {
       ...schema,
@@ -216,25 +235,36 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
       updatedAt: new Date(),
     };
 
+    console.log('Updated schema after deletion:', updatedSchema);
     onSchemaChange(updatedSchema);
-  }, [onSchemaChange, schema]);
+    
+    // Immediately update the nodes to remove the deleted table
+    const remainingNodes = nodes.filter(node => node.id !== tableId);
+    const remainingEdges = edges.filter(edge => 
+      edge.source !== tableId && edge.target !== tableId
+    );
+    
+    console.log('Updating nodes immediately:', remainingNodes);
+    setNodes(remainingNodes);
+    setEdges(remainingEdges);
+  }, [onSchemaChange, schema, nodes, edges, setNodes, setEdges]);
 
   // Update refs with latest functions
   handleUpdateTableRef.current = handleUpdateTable;
   handleDeleteTableRef.current = handleDeleteTable;
   
-  // Generate nodes and edges using refs to prevent re-renders
+  // Generate nodes and edges using React Flow state
   const generateNodesAndEdges = useCallback(() => {
     if (!schema || !schema.tables) {
-      nodesRef.current = [];
-      edgesRef.current = [];
+      setNodes([]);
+      setEdges([]);
       return;
     }
 
     const displayOptions = { showColumnTypes, showConstraints, compactMode };
     
     // Generate nodes
-    const nodes = schema.tables.map((table) => ({
+    const newNodes = schema.tables.map((table) => ({
       id: table.id,
       type: 'table',
       position: table.position || { x: 0, y: 0 },
@@ -252,13 +282,9 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
           onSchemaChange(updatedSchema);
         },
         onDeleteTable: (tableId: string) => {
-          if (!schema) return;
-          const updatedSchema: DatabaseSchema = {
-            ...schema,
-            tables: schema.tables.filter((t) => t.id !== tableId),
-            updatedAt: new Date(),
-          };
-          onSchemaChange(updatedSchema);
+          console.log('Delete table called with ID:', tableId);
+          // Use the handleDeleteTable function which has access to the latest schema
+          handleDeleteTableRef.current(tableId);
         },
         theme: 'default',
         showColumnTypes: displayOptions.showColumnTypes,
@@ -268,11 +294,11 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
     }));
 
     // Generate edges
-    const edges: Edge[] = [];
+    const newEdges: Edge[] = [];
     schema.tables.forEach((table) => {
       table.columns?.forEach((column) => {
         if (column.foreignKey) {
-          edges.push({
+          newEdges.push({
             id: `${table.id}-${column.id}-${column.foreignKey.tableId}-${column.foreignKey.columnId}`,
             source: table.id,
             target: column.foreignKey.tableId,
@@ -289,19 +315,28 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
       });
     });
 
-    nodesRef.current = nodes;
-    edgesRef.current = edges;
-  }, [schema, showColumnTypes, showConstraints, compactMode, onSchemaChange]);
+    setNodes(newNodes as Node[]);
+    setEdges(newEdges as Edge[]);
+  }, [schema, showColumnTypes, showConstraints, compactMode, onSchemaChange, setNodes, setEdges]);
 
   
   // Generate nodes and edges when dependencies change
   useEffect(() => {
+    isUpdatingRef.current = true;
     generateNodesAndEdges();
+    isUpdatingRef.current = false;
   }, [generateNodesAndEdges]);
 
-  // Use refs for stable nodes and edges
-  const memoizedNodes = nodesRef.current;
-  const memoizedEdges = edgesRef.current;
+  // Force update nodes when schema changes (for deletions)
+  useEffect(() => {
+    if (schema) {
+      generateNodesAndEdges();
+    }
+  }, [schema?.tables?.length, generateNodesAndEdges]);
+
+  // Use React Flow state directly
+  const memoizedNodes = nodes;
+  const memoizedEdges = edges;
 
   // Enhanced ERD features state
   const [showERDToolbar, setShowERDToolbar] = useState(true);
@@ -1195,8 +1230,8 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
           <ReactFlow
             nodes={memoizedNodes}
             edges={memoizedEdges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
             onConnect={onConnect}
             onNodeClick={handleNodeClick}
             nodeTypes={nodeTypes}

@@ -190,9 +190,9 @@ export function TableNode(props: any) {
     <div className={`rounded-lg transition-all duration-200 min-w-[250px] max-w-[400px] ${styles.container}`}>
       {/* Table Header */}
       <div className={`px-4 py-3 rounded-t-lg ${styles.header} ${styles.headerBorder}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Database className="w-4 h-4" />
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center space-x-2 min-w-0 flex-1">
+            <Database className="w-4 h-4 flex-shrink-0" />
             {isEditing ? (
               <input
                 type="text"
@@ -200,12 +200,12 @@ export function TableNode(props: any) {
                 onChange={handleNameChange}
                 onBlur={handleNameSubmit}
                 onKeyDown={handleKeyPress}
-                className={`flex-1 text-sm font-semibold rounded px-2 py-1 ${styles.input}`}
+                className={`flex-1 text-sm font-semibold rounded px-2 py-1 ${styles.input} min-w-0`}
                 autoFocus
               />
             ) : (
               <h3
-                className="text-sm font-bold cursor-pointer hover:opacity-80 transition-opacity"
+                className="text-sm font-bold cursor-pointer hover:opacity-80 transition-opacity truncate"
                 onDoubleClick={() => setIsEditing(true)}
                 title="Double-click to edit"
               >
@@ -214,49 +214,49 @@ export function TableNode(props: any) {
             )}
           </div>
           
-          <div className="flex items-center space-x-1">
-            {/* Table Statistics */}
-            <div className="flex items-center space-x-1 mr-2 opacity-75">
-              <span className="text-xs" title="Total columns">{table.columns.length}</span>
+          <div className="flex items-center space-x-1 flex-shrink-0">
+            {/* Table Statistics - Compact Layout */}
+            <div className="flex items-center space-x-0.5 mr-1 opacity-75 max-w-[200px] overflow-hidden">
+              <span className="text-xs whitespace-nowrap" title="Total columns">{table.columns.length}</span>
               {primaryKeyColumns.length > 0 && (
                 <div className="flex items-center space-x-0.5" title="Primary Keys">
-                  <Key className="w-3 h-3 text-yellow-500" />
+                  <Key className="w-2.5 h-2.5 text-yellow-500" />
                   <span className="text-xs">{primaryKeyColumns.length}</span>
                 </div>
               )}
               {foreignKeyColumns.length > 0 && (
                 <div className="flex items-center space-x-0.5" title="Foreign Keys">
-                  <Link className="w-3 h-3 text-blue-500" />
+                  <Link className="w-2.5 h-2.5 text-blue-500" />
                   <span className="text-xs">{foreignKeyColumns.length}</span>
                 </div>
               )}
               {indexedColumns.length > 0 && (
                 <div className="flex items-center space-x-0.5" title="Indexed Columns">
-                  <Hash className="w-3 h-3 text-green-500" />
+                  <Hash className="w-2.5 h-2.5 text-green-500" />
                   <span className="text-xs">{indexedColumns.length}</span>
                 </div>
               )}
               {tableIndexes.length > 0 && (
                 <div className="flex items-center space-x-0.5" title="Table Indexes">
-                  <Database className="w-3 h-3 text-purple-500" />
+                  <Database className="w-2.5 h-2.5 text-purple-500" />
                   <span className="text-xs">{tableIndexes.length}</span>
                 </div>
               )}
               {table.data && table.data.length > 0 && (
                 <div className="flex items-center space-x-0.5" title="Records">
-                  <FileText className="w-3 h-3 text-orange-500" />
+                  <FileText className="w-2.5 h-2.5 text-orange-500" />
                   <span className="text-xs">{table.data.length}</span>
                 </div>
               )}
               {table.columns.filter((col: any) => !col.nullable).length > 0 && (
                 <div className="flex items-center space-x-0.5" title="NOT NULL Columns">
-                  <Lock className="w-3 h-3 text-red-500" />
+                  <Lock className="w-2.5 h-2.5 text-red-500" />
                   <span className="text-xs">{table.columns.filter((col: any) => !col.nullable).length}</span>
                 </div>
               )}
               {table.columns.filter((col: any) => col.unique).length > 0 && (
                 <div className="flex items-center space-x-0.5" title="Unique Columns">
-                  <Star className="w-3 h-3 text-purple-500" />
+                  <Star className="w-2.5 h-2.5 text-purple-500" />
                   <span className="text-xs">{table.columns.filter((col: any) => col.unique).length}</span>
                 </div>
               )}
@@ -267,7 +267,7 @@ export function TableNode(props: any) {
                 e.stopPropagation();
                 setIsEditing(true);
               }}
-              className="p-1 hover:bg-white/20 rounded transition-colors"
+              className="p-1 hover:bg-white/20 rounded transition-colors flex-shrink-0"
               title="Edit table name"
             >
               <Edit className="w-3 h-3" />
@@ -278,13 +278,20 @@ export function TableNode(props: any) {
                 e.stopPropagation();
                 console.log('Delete button clicked, table ID:', table.id);
                 console.log('onDeleteTable function:', onDeleteTable);
+                
                 if (onDeleteTable) {
-                  onDeleteTable(table.id);
+                  const confirmed = window.confirm(`Are you sure you want to delete the table "${table.name}"? This action cannot be undone.`);
+                  if (confirmed) {
+                    console.log('User confirmed deletion');
+                    onDeleteTable(table.id);
+                  } else {
+                    console.log('User cancelled deletion');
+                  }
                 } else {
                   console.error('onDeleteTable function is not defined');
                 }
               }}
-              className="p-1 hover:bg-red-500/20 rounded transition-colors"
+              className="p-1 hover:bg-red-500/20 rounded transition-colors flex-shrink-0"
               title="Delete table"
             >
               <Trash2 className="w-3 h-3" />
@@ -536,47 +543,6 @@ export function TableNode(props: any) {
         </button>
       </div>
 
-      {/* Table Footer with Stats */}
-      {!compactMode && (
-        <div className={`px-3 py-2 text-xs ${styles.mutedText} border-t border-gray-600`}>
-          <div className="flex justify-between items-center">
-            <span>{table.columns.length} columns</span>
-            <div className="flex space-x-2 flex-wrap">
-              {primaryKeyColumns.length > 0 && (
-                <span className="flex items-center space-x-1">
-                  <Key className="w-3 h-3 text-yellow-500" />
-                  <span>{primaryKeyColumns.length} PK</span>
-                </span>
-              )}
-              {foreignKeyColumns.length > 0 && (
-                <span className="flex items-center space-x-1">
-                  <Link className="w-3 h-3 text-blue-500" />
-                  <span>{foreignKeyColumns.length} FK</span>
-                </span>
-              )}
-              {indexedColumns.length > 0 && (
-                <span className="flex items-center space-x-1">
-                  <Hash className="w-3 h-3 text-green-500" />
-                  <span>{indexedColumns.length} IDX</span>
-                </span>
-              )}
-              {tableIndexes.length > 0 && (
-                <span className="flex items-center space-x-1">
-                  <Database className="w-3 h-3 text-purple-500" />
-                  <span>{tableIndexes.length} TIDX</span>
-                </span>
-              )}
-              {uniqueColumns.length > 0 && (
-                <span className="flex items-center space-x-1">
-                  <Star className="w-3 h-3 text-purple-500" />
-                  <span>{uniqueColumns.length} UNQ</span>
-                </span>
-              )}
-              <span>{requiredColumns.length} Required</span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
