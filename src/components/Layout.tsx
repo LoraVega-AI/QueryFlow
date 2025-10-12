@@ -17,8 +17,6 @@ interface LayoutProps {
 
 const TABS = [
   { id: 'projects', label: 'Projects', icon: FolderOpen },
-  { id: 'databases', label: 'Databases', icon: Server },
-  { id: 'sync', label: 'Sync', icon: RefreshCw },
   { id: 'designer', label: 'Schema Designer', icon: Database },
   { id: 'query', label: 'Query Runner', icon: Code },
   { id: 'data', label: 'Data Editor', icon: Table },

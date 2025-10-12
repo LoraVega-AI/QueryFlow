@@ -20,8 +20,6 @@ import { CollaborationManager } from '@/components/CollaborationManager';
 import { ProjectBrowser } from '@/components/ProjectBrowser';
 import { ProjectUploader } from '@/components/ProjectUploader';
 import { GitHubConnector } from '@/components/GitHubConnector';
-import { DatabaseLinker } from '@/components/DatabaseLinker';
-import { SyncManager } from '@/components/SyncManager';
 import { DatabaseSchema, QueryResult, QueryError, DatabaseRecord } from '@/types/database';
 import { Database, RefreshCw } from 'lucide-react';
 import { ProjectDetectionResult } from '@/types/project';
@@ -378,86 +376,6 @@ export default function HomePage() {
     switch (activeTab) {
       case 'projects':
         return <Projects />;
-      case 'databases':
-        return currentProject ? (
-          <DatabaseLinker
-            projectId={currentProject.id}
-            databases={currentProject.databases}
-            onDatabasesChange={async (databases) => {
-              if (currentProject) {
-                const updatedProject = { ...currentProject, databases };
-                setCurrentProject(updatedProject);
-
-                // Update in projects list
-                setProjects(prev => prev.map(p =>
-                  p.id === currentProject.id ? updatedProject : p
-                ));
-
-                // Project changes are handled by projectsManager
-              }
-            }}
-            onSchemaLoaded={(databaseId, schema) => {
-              console.log('Schema loaded for database:', databaseId, schema);
-            }}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <Database className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                No Project Selected
-              </h3>
-              <p className="text-gray-600 mb-6">
-                Select a project from the Projects tab to manage databases
-              </p>
-              <button
-                onClick={() => setActiveTab('projects')}
-                className="inline-flex items-center px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-              >
-                Go to Projects
-              </button>
-            </div>
-          </div>
-        );
-      case 'sync':
-        return currentProject && currentDatabase ? (
-          <SyncManager
-            projectId={currentProject.id}
-            databaseId={currentDatabase?.id}
-            onSyncComplete={(session) => {
-              console.log('Sync completed:', session);
-            }}
-            onConflictResolved={(conflictId, resolution) => {
-              console.log('Conflict resolved:', conflictId, resolution);
-            }}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <RefreshCw className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                No Database Selected
-              </h3>
-              <p className="text-gray-600 mb-6">
-                Select a project and database to manage synchronization
-              </p>
-              <div className="space-x-4">
-                <button
-                  onClick={() => setActiveTab('projects')}
-                  className="inline-flex items-center px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-                >
-                  Select Project
-                </button>
-                <button
-                  onClick={() => setActiveTab('databases')}
-                  className="inline-flex items-center px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                  Manage Databases
-                </button>
-              </div>
-            </div>
-          </div>
-        );
       case 'designer':
         return (
           <SchemaDesigner
