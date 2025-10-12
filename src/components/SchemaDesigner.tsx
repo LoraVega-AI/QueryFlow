@@ -1728,8 +1728,8 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                           </div>
                           <div className="space-y-2">
                             {/* Table-level indexes */}
-                            {tableIndexes.map(index => (
-                              <div key={index.id} className="bg-gray-600 rounded p-3">
+                            {tableIndexes.map((index, indexIdx) => (
+                              <div key={`${table.id}-index-${index.name || indexIdx}-${indexIdx}`} className="bg-gray-600 rounded p-3">
                                 <div className="flex items-center justify-between mb-2">
                                   <div className="text-white font-medium text-sm">{index.name}</div>
                                   <div className="flex items-center space-x-1">
@@ -2027,7 +2027,7 @@ export function SchemaDesigner({ schema: propSchema, onSchemaChange }: SchemaDes
                     </div>
                     <div className="space-y-3 max-h-96 overflow-y-auto">
                       {schema.ormModels.map((model, index) => (
-                        <div key={model.id} className="bg-gray-600 rounded p-3 hover:bg-gray-550 transition-colors">
+                        <div key={`${model.id}-${model.framework}-${index}`} className="bg-gray-600 rounded p-3 hover:bg-gray-550 transition-colors">
                           <div className="flex items-center justify-between mb-2">
                             <div className="text-white font-medium text-sm truncate flex-1 mr-2">{model.name}</div>
                             <div className="flex items-center space-x-2">
