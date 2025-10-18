@@ -13,6 +13,7 @@ interface LayoutProps {
   children: React.ReactNode;
   activeTab: string;
   onTabChange: (tab: string) => void;
+  isSyncing?: boolean;
 }
 
 const TABS = [
@@ -30,7 +31,7 @@ const TABS = [
   { id: 'search', label: 'Advanced Search', icon: Search },
 ] as const;
 
-export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
+export function Layout({ children, activeTab, onTabChange, isSyncing = false }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [projectNotification, setProjectNotification] = useState<{
@@ -107,6 +108,12 @@ export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
                 <p className="text-sm text-gray-300 flex items-center font-medium mt-1">
                   <span className="mr-2 text-lg">{currentProject.icon}</span>
                   {currentProject.name}
+                  {isSyncing && (
+                    <span className="ml-2 flex items-center text-orange-400">
+                      <RefreshCw className="w-3 h-3 animate-spin mr-1" />
+                      Syncing...
+                    </span>
+                  )}
                 </p>
               )}
             </div>

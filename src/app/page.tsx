@@ -28,6 +28,7 @@ import { StorageManager } from '@/utils/storage';
 import { ProjectService } from '@/services/projectService';
 import { DatabaseConnector } from '@/utils/databaseConnector';
 import { Projects } from '@/components/Projects';
+import { dbConnectionManager } from '@/utils/databaseConnection';
 import { projectsManager } from '@/utils/projectsManager';
 import { useDatabase } from '@/contexts/DatabaseContext';
 
@@ -46,6 +47,7 @@ export default function HomePage() {
   const [showGitHubConnector, setShowGitHubConnector] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentDatabase, setCurrentDatabase] = useState<any>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // Mock current user for collaboration
   const [currentUser] = useState({
@@ -178,9 +180,59 @@ export default function HomePage() {
   }, [records]);
 
   // Handle schema changes
-  const handleSchemaChange = useCallback((newSchema: DatabaseSchema) => {
+  const handleSchemaChange = useCallback(async (newSchema: DatabaseSchema) => {
+    console.log('Schema changed, updating local state and project...');
     setSchema(newSchema);
-  }, []);
+    
+    // Sync with current project if available
+    if (currentProject) {
+      try {
+        setIsSyncing(true);
+        console.log('Syncing schema changes with project:', currentProject.name);
+        
+        // Update the project with the new schema
+        const updatedProject = {
+          ...currentProject,
+          schema: newSchema,
+          tables: newSchema.tables || [],
+          totalTables: newSchema.tables?.length || 0,
+          totalColumns: newSchema.tables?.reduce((sum, table) => sum + (table.columns?.length || 0), 0) || 0,
+          updatedAt: new Date()
+        };
+        
+        // Update the project in the projects manager
+        try {
+          await projectsManager.updateProject(currentProject.id, updatedProject);
+        } catch (error) {
+          console.error('Failed to update project via projectsManager, trying direct save:', error);
+          // Fallback: try to save directly via dbConnectionManager
+          try {
+            await dbConnectionManager.initializeAppData();
+            await dbConnectionManager.saveProject(updatedProject);
+            console.log('✅ Project saved directly via dbConnectionManager');
+          } catch (directSaveError) {
+            console.error('❌ Direct save also failed:', directSaveError);
+            // Last resort: save to localStorage
+            const projects = JSON.parse(localStorage.getItem('queryflow_projects') || '{}');
+            projects[updatedProject.id] = updatedProject;
+            localStorage.setItem('queryflow_projects', JSON.stringify(projects));
+            console.log('✅ Project saved to localStorage as fallback');
+          }
+        }
+        
+        // Update local state
+        setCurrentProject(updatedProject);
+        
+        console.log('✅ Project schema synced successfully');
+      } catch (error) {
+        console.error('❌ Failed to sync schema changes with project:', error);
+      } finally {
+        setIsSyncing(false);
+      }
+    } else {
+      console.log('No current project to sync with');
+    }
+  }, [currentProject]);
 
   // Handle records changes
   const handleRecordsChange = useCallback((newRecords: DatabaseRecord[]) => {
@@ -348,6 +400,23 @@ export default function HomePage() {
       } finally {
         setIsLoading(false);
       }
+    } else {
+      // No databases in project, load schema from project if available
+      if (project.schema && project.schema.tables) {
+        console.log('Loading schema from project:', project.name, project.schema.tables.length, 'tables');
+        setSchema(project.schema);
+      } else {
+        console.log('No schema available in project, creating default schema');
+        const defaultSchema: DatabaseSchema = {
+          id: `schema_${project.id}_${Date.now()}`,
+          name: `${project.name} Schema`,
+          tables: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          version: 1,
+        };
+        setSchema(defaultSchema);
+      }
     }
 
     setActiveTab('designer');
@@ -455,7 +524,7 @@ export default function HomePage() {
 
   return (
     <>
-      <Layout activeTab={activeTab} onTabChange={setActiveTab}>
+      <Layout activeTab={activeTab} onTabChange={setActiveTab} isSyncing={isSyncing}>
         {renderContent()}
       </Layout>
 

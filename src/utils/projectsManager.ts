@@ -654,6 +654,43 @@ export class ProjectsManager {
     return this.currentProject;
   }
 
+  async updateProject(projectId: string, updates: Partial<Project>): Promise<Project | null> {
+    try {
+      console.log(`🔄 ProjectsManager: Updating project ${projectId}...`);
+      
+      // Get the current project
+      const currentProject = await this.getProject(projectId);
+      if (!currentProject) {
+        console.error(`Project ${projectId} not found`);
+        return null;
+      }
+
+      // Merge updates with current project
+      const updatedProject = {
+        ...currentProject,
+        ...updates,
+        updatedAt: new Date()
+      };
+
+      // Save updated project to persistent storage
+      await dbConnectionManager.saveProject(updatedProject);
+
+      // Update in-memory cache
+      this.projects.set(projectId, updatedProject);
+
+      // Update current project if it's the active one
+      if (this.currentProject?.id === projectId) {
+        this.currentProject = updatedProject;
+      }
+
+      console.log(`✅ ProjectsManager: Project ${projectId} updated successfully`);
+      return updatedProject;
+    } catch (error) {
+      console.error(`❌ ProjectsManager: Failed to update project ${projectId}:`, error);
+      return null;
+    }
+  }
+
   async syncProject(projectId: string): Promise<boolean> {
     const project = await this.getProject(projectId);
     if (!project) return false;
@@ -841,6 +878,7 @@ export const projectsManager = {
   getAllProjects: async () => await getProjectsManager().getAllProjects(),
   getProject: async (id: string) => await getProjectsManager().getProject(id),
   getCurrentProject: () => getProjectsManager().getCurrentProject(),
+  updateProject: async (id: string, updates: Partial<Project>) => await getProjectsManager().updateProject(id, updates),
   syncProject: async (id: string) => await getProjectsManager().syncProject(id),
   disconnectProject: async () => await getProjectsManager().disconnectProject(),
   getProjectSchema: (id: string) => getProjectsManager().getProjectSchema(id),
