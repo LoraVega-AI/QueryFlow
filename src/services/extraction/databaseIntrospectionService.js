@@ -297,8 +297,9 @@ class DatabaseIntrospectionService {
       const views = this.parseViews(content);
       const indexes = this.parseIndexes(content);
       const constraints = this.parseConstraints(content);
+      const relationships = this.extractRelationships(tables);
 
-      console.log(`🎉 Parsed SQL dump: ${tables.length} tables, ${views.length} views, ${indexes.length} indexes`);
+      console.log(`🎉 Parsed SQL dump: ${tables.length} tables, ${views.length} views, ${indexes.length} indexes, ${relationships.length} relationships`);
 
       return {
         databaseName: fileName,
@@ -308,12 +309,14 @@ class DatabaseIntrospectionService {
         views: views,
         indexes: indexes,
         constraints: constraints,
+        relationships: relationships,
         metadata: {
           totalTables: tables.length,
           totalColumns: tables.reduce((sum, table) => sum + table.columns.length, 0),
           totalViews: views.length,
           totalIndexes: indexes.length,
-          totalConstraints: constraints.length
+          totalConstraints: constraints.length,
+          totalRelationships: relationships.length
         }
       };
 
@@ -600,8 +603,19 @@ class DatabaseIntrospectionService {
   }
 
   extractForeignKey(constraintStr) {
-    const fkMatch = constraintStr.match(/references\s+(\w+)\s*\((\w+)\)/i);
-    return fkMatch ? { table: fkMatch[1], column: fkMatch[2] } : null;
+    // Match REFERENCES table_name(column_name) with optional ON DELETE/UPDATE
+    const fkPattern = /references\s+`?"?(\w+)`?"?\s*\(\s*`?"?(\w+)`?"?\s*\)(?:\s+on\s+delete\s+(cascade|set\s+null|restrict|no\s+action))?(?:\s+on\s+update\s+(cascade|set\s+null|restrict|no\s+action))?/i;
+    const match = constraintStr.match(fkPattern);
+    
+    if (match) {
+      return {
+        table: match[1],
+        column: match[2],
+        onDelete: match[3] ? match[3].toUpperCase().replace(/\s+/g, ' ') : 'NO ACTION',
+        onUpdate: match[4] ? match[4].toUpperCase().replace(/\s+/g, ' ') : 'NO ACTION'
+      };
+    }
+    return null;
   }
 
   parseViews(content) {
@@ -620,15 +634,31 @@ class DatabaseIntrospectionService {
 
   parseIndexes(content) {
     const indexes = [];
-    const indexMatches = content.matchAll(/CREATE\s+(?:UNIQUE\s+)?INDEX\s+(\w+)\s+ON\s+(\w+)\s*\(([^)]+)\)/gi);
     
-    for (const match of indexMatches) {
-      indexes.push({
-        name: match[1],
-        table: match[2],
-        columns: match[3].split(',').map(col => col.trim()),
-        unique: match[0].toLowerCase().includes('unique')
-      });
+    // Match CREATE INDEX with various formats
+    const patterns = [
+      // Standard: CREATE [UNIQUE] INDEX index_name ON table_name (columns)
+      /CREATE\s+(?:(UNIQUE)\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?`?"?\[?(\w+)\]?`?"?\s+ON\s+`?"?\[?(\w+)\]?`?"?\s*\(([^)]+)\)/gi,
+      // With USING: CREATE INDEX index_name ON table_name USING btree (columns)
+      /CREATE\s+(?:(UNIQUE)\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?`?"?\[?(\w+)\]?`?"?\s+ON\s+`?"?\[?(\w+)\]?`?"?\s+USING\s+(\w+)\s*\(([^)]+)\)/gi
+    ];
+    
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(content)) !== null) {
+        const isStandard = match.length === 5;
+        indexes.push({
+          name: isStandard ? match[2] : match[2],
+          table: isStandard ? match[3] : match[3],
+          columns: (isStandard ? match[4] : match[5]).split(',').map(col => {
+            // Remove quotes, brackets, and ordering keywords
+            return col.trim().replace(/`|"|\[|\]/g, '').replace(/\s+(ASC|DESC)/gi, '').trim();
+          }),
+          unique: !!match[1],
+          type: isStandard ? 'btree' : match[4],
+          definition: match[0]
+        });
+      }
     }
     
     return indexes;
@@ -647,6 +677,114 @@ class DatabaseIntrospectionService {
     }
     
     return constraints;
+  }
+
+  /**
+   * Extract relationships from parsed tables
+   */
+  extractRelationships(tables) {
+    const relationships = [];
+    
+    for (const table of tables) {
+      for (const column of table.columns) {
+        // Check column constraints for foreign keys
+        if (column.constraints && column.constraints.references) {
+          const fk = column.constraints.references;
+          relationships.push({
+            id: `${table.name}_${column.name}_fk`,
+            sourceTable: table.name,
+            sourceColumn: column.name,
+            targetTable: fk.table,
+            targetColumn: fk.column,
+            type: 'foreign_key',
+            onDelete: fk.onDelete || 'NO ACTION',
+            onUpdate: fk.onUpdate || 'NO ACTION'
+          });
+        }
+        
+        // Also check for column names ending in _id or Id
+        if ((column.name.endsWith('_id') || column.name.endsWith('Id')) && 
+            !column.primaryKey && 
+            !column.constraints?.references) {
+          const potentialTable = column.name.replace(/(_id|Id)$/, '');
+          const targetTable = tables.find(t => 
+            t.name.toLowerCase() === potentialTable.toLowerCase() ||
+            t.name.toLowerCase() === `${potentialTable}s`.toLowerCase() ||
+            t.name.toLowerCase() === potentialTable.toLowerCase() + 's'
+          );
+          
+          if (targetTable) {
+            relationships.push({
+              id: `${table.name}_${column.name}_inferred`,
+              sourceTable: table.name,
+              sourceColumn: column.name,
+              targetTable: targetTable.name,
+              targetColumn: 'id',
+              type: 'foreign_key_inferred',
+              onDelete: 'NO ACTION',
+              onUpdate: 'NO ACTION'
+            });
+          }
+        }
+      }
+    }
+    
+    return relationships;
+  }
+
+  /**
+   * Verify parsed indexes against actual SQLite database
+   */
+  async verifyIndexes(dbPath, parsedIndexes) {
+    try {
+      const sqlite3 = require('sqlite3');
+      const { open } = require('sqlite');
+      
+      const db = await open({
+        filename: dbPath,
+        driver: sqlite3.Database
+      });
+      
+      const actualIndexes = await db.all(`
+        SELECT name, tbl_name as table_name, sql 
+        FROM sqlite_master 
+        WHERE type='index' 
+        AND name NOT LIKE 'sqlite_%'
+      `);
+      
+      await db.close();
+      
+      // Compare parsed vs actual
+      const verification = {
+        parsedCount: parsedIndexes.length,
+        actualCount: actualIndexes.length,
+        matched: [],
+        missing: [],
+        extra: []
+      };
+      
+      const actualNames = new Set(actualIndexes.map(i => i.name));
+      const parsedNames = new Set(parsedIndexes.map(i => i.name));
+      
+      parsedIndexes.forEach(pi => {
+        if (actualNames.has(pi.name)) {
+          verification.matched.push(pi.name);
+        } else {
+          verification.missing.push(pi.name);
+        }
+      });
+      
+      actualIndexes.forEach(ai => {
+        if (!parsedNames.has(ai.name)) {
+          verification.extra.push(ai.name);
+        }
+      });
+      
+      return verification;
+    } catch (error) {
+      console.error('Index verification failed:', error);
+      return null;
+    }
   }
 
   detectSQLDialect(content) {

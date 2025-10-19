@@ -5,9 +5,19 @@ const { DatabaseIntrospectionService } = require('../../../../services/extractio
 
 async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
   try {
-    console.log('🔍 Starting COMPREHENSIVE database definition extraction...');
+    console.log('🔍 ===== SIMPLE EXTRACTION START =====');
     console.log('🔍 Upload directory:', uploadDir);
     console.log('🔍 All files count:', allFiles.length);
+    
+    // Log ALL SQL files received
+    const sqlFilesReceived = allFiles.filter(f => {
+      const ext = path.extname(f).toLowerCase();
+      return ext === '.sql' || ext === '.ddl';
+    });
+    console.log(`🔍 SQL FILES RECEIVED: ${sqlFilesReceived.length}`);
+    sqlFilesReceived.forEach((file, index) => {
+      console.log(`   ${index + 1}. ${path.basename(file)}`);
+    });
     
     const introspectionService = new DatabaseIntrospectionService();
     const extractedTables = [];
@@ -43,18 +53,68 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
       return ['.sql', '.ddl'].includes(ext);
     });
     
-    console.log(`📄 Found ${sqlFiles.length} SQL files`);
+    console.log(`📄 Found ${sqlFiles.length} SQL files: ${sqlFiles.map(f => path.basename(f)).join(', ')}`);
+    const sqlResults = [];
+    const allSqlRelationships = [];  // NEW
+    const allSqlIndexes = [];  // NEW
+
     for (const filePath of sqlFiles) {
       try {
+        console.log(`🔍 Processing SQL file: ${path.basename(filePath)}`);
         const dbResult = await introspectionService.parseSQLDump(filePath);
         if (dbResult && dbResult.tables) {
-          extractedTables.push(...dbResult.tables);
+          sqlResults.push({
+            file: path.basename(filePath),
+            tableCount: dbResult.tables.length,
+            tables: dbResult.tables,
+            relationships: dbResult.relationships || [],  // NEW
+            indexes: dbResult.indexes || []  // NEW
+          });
+          
+          // Tag tables with source information
+          const taggedTables = dbResult.tables.map(table => ({
+            ...table,
+            source: 'sql_file',
+            sourceFile: path.basename(filePath),
+            sourceType: 'schema_definition'
+          }));
+          console.log(`🔍 DEBUG: Tagged ${taggedTables.length} tables from ${path.basename(filePath)} with source: sql_file`);
+          console.log(`   Sample table: ${taggedTables[0]?.name} - source: ${taggedTables[0]?.source}, sourceFile: ${taggedTables[0]?.sourceFile}`);
+          extractedTables.push(...taggedTables);
+          
+          // Collect relationships and indexes  // NEW
+          if (dbResult.relationships) {
+            allSqlRelationships.push(...dbResult.relationships);
+            console.log(`   Relationships: ${dbResult.relationships.length}`);
+          }
+          if (dbResult.indexes) {
+            allSqlIndexes.push(...dbResult.indexes);
+            console.log(`   Indexes: ${dbResult.indexes.length}`);
+          }
+          
           console.log(`✅ Parsed SQL ${path.basename(filePath)}: ${dbResult.tables.length} tables (${dbResult.databaseType})`);
+          console.log(`   Tables: ${dbResult.tables.map(t => t.name).join(', ')}`);
+        } else {
+          console.log(`⚠️ No tables extracted from ${path.basename(filePath)}`);
         }
       } catch (error) {
         console.log(`⚠️ Failed to parse SQL ${path.basename(filePath)}:`, error.message);
+        console.error(error);
       }
     }
+
+    console.log(`📊 SQL Processing Summary: ${sqlResults.length} files processed, ${extractedTables.length} total tables`);
+    console.log(`📊 Total relationships: ${allSqlRelationships.length}, Total indexes: ${allSqlIndexes.length}`);
+
+    // Enhanced per-file logging
+    console.log('📊 DETAILED SQL FILE BREAKDOWN:');
+    sqlResults.forEach((r, index) => {
+      console.log(`   ${index + 1}. ${r.file}:`);
+      console.log(`      - Tables: ${r.tableCount}`);
+      console.log(`      - Relationships: ${r.relationships?.length || 0}`);
+      console.log(`      - Indexes: ${r.indexes?.length || 0}`);
+      console.log(`      - Table names: ${r.tables.map(t => t.name).join(', ')}`);
+    });
     
     // 3. Extract from JavaScript/TypeScript files using enhanced parsing
     const jsFiles = allFiles.filter(file => {
@@ -68,12 +128,25 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
         // Try enhanced introspection service first
         const dbResult = await introspectionService.extractDatabaseContent(filePath);
         if (dbResult && dbResult.tables) {
-          extractedTables.push(...dbResult.tables);
+          // Tag tables with source information
+          const taggedTables = dbResult.tables.map(table => ({
+            ...table,
+            source: 'orm_model',
+            sourceFile: path.basename(filePath),
+            sourceType: 'orm_definition'
+          }));
+          extractedTables.push(...taggedTables);
           console.log(`✅ Enhanced extraction from ${path.basename(filePath)}: ${dbResult.tables.length} tables (${dbResult.databaseType})`);
         } else {
           // Fallback to old method
           const tables = await extractFromJSFile(filePath);
-          extractedTables.push(...tables);
+          const taggedTables = tables.map(table => ({
+            ...table,
+            source: 'orm_model',
+            sourceFile: path.basename(filePath),
+            sourceType: 'orm_definition'
+          }));
+          extractedTables.push(...taggedTables);
           if (tables.length > 0) {
             console.log(`✅ Fallback extraction from JS/TS: ${tables.length} tables from ${path.basename(filePath)}`);
           }
@@ -94,7 +167,14 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
       try {
         const dbResult = await introspectionService.parsePrismaSchema(filePath);
         if (dbResult && dbResult.tables) {
-          extractedTables.push(...dbResult.tables);
+          // Tag tables with source information
+          const taggedTables = dbResult.tables.map(table => ({
+            ...table,
+            source: 'orm_model',
+            sourceFile: path.basename(filePath),
+            sourceType: 'prisma_schema'
+          }));
+          extractedTables.push(...taggedTables);
           console.log(`✅ Parsed Prisma ${path.basename(filePath)}: ${dbResult.tables.length} models`);
         }
       } catch (error) {
@@ -114,12 +194,25 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
         // Try enhanced introspection service first
         const dbResult = await introspectionService.extractDatabaseContent(filePath);
         if (dbResult && dbResult.tables) {
-          extractedTables.push(...dbResult.tables);
+          // Tag tables with source information
+          const taggedTables = dbResult.tables.map(table => ({
+            ...table,
+            source: 'orm_model',
+            sourceFile: path.basename(filePath),
+            sourceType: 'python_orm'
+          }));
+          extractedTables.push(...taggedTables);
           console.log(`✅ Enhanced extraction from ${path.basename(filePath)}: ${dbResult.tables.length} tables (${dbResult.databaseType})`);
         } else {
           // Fallback to old method
           const tables = await extractFromPythonFile(filePath);
-          extractedTables.push(...tables);
+          const taggedTables = tables.map(table => ({
+            ...table,
+            source: 'orm_model',
+            sourceFile: path.basename(filePath),
+            sourceType: 'python_orm'
+          }));
+          extractedTables.push(...taggedTables);
           if (tables.length > 0) {
             console.log(`✅ Fallback extraction from Python: ${tables.length} tables from ${path.basename(filePath)}`);
           }
@@ -140,7 +233,14 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
       try {
         const dbResult = await introspectionService.extractDatabaseContent(filePath);
         if (dbResult && dbResult.tables) {
-          extractedTables.push(...dbResult.tables);
+          // Tag tables with source information
+          const taggedTables = dbResult.tables.map(table => ({
+            ...table,
+            source: 'orm_model',
+            sourceFile: path.basename(filePath),
+            sourceType: 'php_eloquent'
+          }));
+          extractedTables.push(...taggedTables);
           console.log(`✅ Extracted from PHP ${path.basename(filePath)}: ${dbResult.tables.length} tables (${dbResult.databaseType})`);
         }
       } catch (error) {
@@ -159,7 +259,14 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
       try {
         const dbResult = await introspectionService.extractDatabaseContent(filePath);
         if (dbResult && dbResult.tables) {
-          extractedTables.push(...dbResult.tables);
+          // Tag tables with source information
+          const taggedTables = dbResult.tables.map(table => ({
+            ...table,
+            source: 'orm_model',
+            sourceFile: path.basename(filePath),
+            sourceType: 'java_hibernate'
+          }));
+          extractedTables.push(...taggedTables);
           console.log(`✅ Extracted from Java ${path.basename(filePath)}: ${dbResult.tables.length} tables (${dbResult.databaseType})`);
         }
       } catch (error) {
@@ -178,7 +285,14 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
       try {
         const dbResult = await introspectionService.extractDatabaseContent(filePath);
         if (dbResult && dbResult.tables) {
-          extractedTables.push(...dbResult.tables);
+          // Tag tables with source information
+          const taggedTables = dbResult.tables.map(table => ({
+            ...table,
+            source: 'orm_model',
+            sourceFile: path.basename(filePath),
+            sourceType: 'csharp_entity_framework'
+          }));
+          extractedTables.push(...taggedTables);
           console.log(`✅ Extracted from C# ${path.basename(filePath)}: ${dbResult.tables.length} tables (${dbResult.databaseType})`);
         }
       } catch (error) {
@@ -196,6 +310,9 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
     console.log('📊 Total rows across all tables:', totalRows);
     console.log('📊 Has foreign keys:', hasForeignKeys);
     console.log('📊 Has indexes:', hasIndexes);
+    console.log('📊 SQL Relationships collected:', allSqlRelationships.length);
+    console.log('📊 SQL Indexes collected:', allSqlIndexes.length);
+    console.log('📊 SQL Files processed:', sqlResults.map(r => `${r.file} (${r.tableCount} tables, ${r.relationships?.length || 0} relationships, ${r.indexes?.length || 0} indexes)`));
     
     // Return the extracted database with enhanced metadata
     return [{
@@ -208,18 +325,23 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
       isConnected: false,
       lastSync: null,
       tables: extractedTables,
+      relationships: allSqlRelationships,  // CHANGED: Use collected relationships
+      indexes: allSqlIndexes,  // CHANGED: Use collected indexes
       schema: {
         id: `extracted_schema_${Date.now()}`,
         name: 'Extracted Schema',
         tables: extractedTables,
-        relationships: extractedTables.flatMap(t => t.foreignKeys || []),
-        indexes: extractedTables.flatMap(t => t.indexes || [])
+        relationships: allSqlRelationships,  // CHANGED
+        indexes: allSqlIndexes  // CHANGED
       },
       status: 'ready',
       processingStartTime: new Date().toISOString(),
       processingTime: 0,
       conversionLogs: [
         `[${new Date().toISOString()}] Extracted ${extractedTables.length} tables from multiple sources`,
+        `[${new Date().toISOString()}] SQL files processed: ${sqlResults.length}`,
+        `[${new Date().toISOString()}] Total relationships: ${allSqlRelationships.length}`,
+        `[${new Date().toISOString()}] Total indexes: ${allSqlIndexes.length}`,
         `[${new Date().toISOString()}] Total rows: ${totalRows}`,
         `[${new Date().toISOString()}] Foreign keys: ${hasForeignKeys ? 'Yes' : 'No'}`,
         `[${new Date().toISOString()}] Indexes: ${hasIndexes ? 'Yes' : 'No'}`
@@ -228,9 +350,12 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
         totalTables: extractedTables.length,
         totalColumns: extractedTables.reduce((sum, table) => sum + (table.columns?.length || 0), 0),
         totalRows: totalRows,
-        hasForeignKeys: hasForeignKeys,
-        hasIndexes: hasIndexes
-      }
+        totalRelationships: allSqlRelationships.length,  // NEW
+        totalIndexes: allSqlIndexes.length,  // NEW
+        hasForeignKeys: hasForeignKeys || allSqlRelationships.length > 0,  // ENHANCED
+        hasIndexes: hasIndexes || allSqlIndexes.length > 0  // ENHANCED
+      },
+      sqlFiles: sqlResults  // NEW: Track which SQL files were processed
     }];
     
   } catch (error) {
