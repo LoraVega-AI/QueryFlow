@@ -796,9 +796,13 @@ export class CloudDatabaseService {
         }
         
         case 'mongodb': {
-          const { MongoClient } = await import('mongodb');
-          const client = new MongoClient(connectionString);
-          await client.connect();
+          // Use server-side MongoDB wrapper
+          if (typeof window !== 'undefined') {
+            throw new Error('MongoDB connections are not supported in the browser');
+          }
+          
+          const { MongoDBServer } = await import('./mongodbServer');
+          const client = await MongoDBServer.getClient(connectionString);
           try {
             // Parse MongoDB query from string (simplified)
             const db = client.db();

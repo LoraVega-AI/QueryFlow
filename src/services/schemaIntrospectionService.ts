@@ -457,6 +457,11 @@ export class SchemaIntrospectionService {
    */
   private static async introspectMongoDBSchema(config: DatabaseConfig): Promise<DatabaseSchema> {
     try {
+      // Dynamic import to avoid bundling issues
+      if (typeof window !== 'undefined') {
+        throw new Error('MongoDB connections are not supported in the browser');
+      }
+
       const { MongoClient } = await import('mongodb');
       const connectionString = config.connectionString || 
         `mongodb://${config.username ? `${config.username}:${config.password}@` : ''}${config.host}:${config.port}/${config.database}`;

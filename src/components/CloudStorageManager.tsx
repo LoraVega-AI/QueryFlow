@@ -31,6 +31,22 @@ interface CloudStorageManagerProps {
 }
 
 export function CloudStorageManager({ schema: propSchema, onSchemaChange }: CloudStorageManagerProps) {
+  // Check if running in browser - cloud services are server-side only
+  if (typeof window !== 'undefined') {
+    return (
+      <div className="p-8 text-center">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+          <Cloud className="h-12 w-12 text-yellow-600 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-yellow-800 mb-2">Cloud Services Not Available</h3>
+          <p className="text-yellow-700">
+            Cloud database services are only available on the server side. 
+            Please use the local database features instead.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Use project data hook
   const {
     currentProject,

@@ -3,7 +3,6 @@
 
 import { Pool as PostgreSQLPool } from 'pg';
 import * as mysql from 'mysql2/promise';
-import { MongoClient } from 'mongodb';
 
 export interface ConnectionConfig {
   connectionString: string;
@@ -15,7 +14,7 @@ export interface ConnectionConfig {
 export class ConnectionPoolManager {
   private postgresqlPools: Map<string, PostgreSQLPool> = new Map();
   private mysqlPools: Map<string, mysql.Pool> = new Map();
-  private mongodbClients: Map<string, MongoClient> = new Map();
+  private mongodbClients: Map<string, any> = new Map();
   private static instance: ConnectionPoolManager | null = null;
 
   private constructor() {
@@ -112,7 +111,7 @@ export class ConnectionPoolManager {
   /**
    * Get or create MongoDB client
    */
-  async getMongoDBConnection(connectionString: string, config?: Partial<ConnectionConfig>): Promise<MongoClient> {
+  async getMongoDBConnection(connectionString: string, config?: Partial<ConnectionConfig>): Promise<any> {
     try {
       // Check if client already exists
       if (this.mongodbClients.has(connectionString)) {
@@ -122,17 +121,15 @@ export class ConnectionPoolManager {
         return client;
       }
 
-      // Create new client
-      console.log('🔌 Creating MongoDB client...');
-      const client = new MongoClient(connectionString, {
-        maxPoolSize: config?.maxConnections || 10,
-        connectTimeoutMS: config?.connectionTimeout || 30000,
-        serverSelectionTimeoutMS: config?.connectionTimeout || 30000,
-      });
+      // Use server-side MongoDB wrapper
+      if (typeof window !== 'undefined') {
+        throw new Error('MongoDB connections are not supported in the browser');
+      }
 
-      // Connect and test
-      await client.connect();
-      await client.db().admin().ping();
+      // Create new client using server-side wrapper
+      console.log('🔌 Creating MongoDB client...');
+      const { MongoDBServer } = await import('../mongodbServer');
+      const client = await MongoDBServer.getClient(connectionString);
 
       // Store client
       this.mongodbClients.set(connectionString, client);

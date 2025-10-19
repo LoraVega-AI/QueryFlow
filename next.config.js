@@ -28,6 +28,17 @@ const nextConfig = {
       util: false,
       buffer: false,
       process: false,
+      net: false,
+      tls: false,
+      child_process: false,
+      dns: false,
+      http: false,
+      https: false,
+      zlib: false,
+      querystring: false,
+      url: false,
+      mongodb: false,
+      'timers/promises': false,
     };
 
     // Optimize chunks for better loading
@@ -48,6 +59,13 @@ const nextConfig = {
           },
         },
       };
+      
+      // Exclude MongoDB from client-side bundling
+      config.externals = config.externals || [];
+      config.externals.push({
+        'mongodb': 'commonjs mongodb',
+        'timers/promises': 'commonjs timers/promises'
+      });
     }
 
     // Handle HMR properly

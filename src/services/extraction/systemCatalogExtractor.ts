@@ -953,6 +953,9 @@ export class SystemCatalogExtractor {
     console.log('🔍 Extracting MongoDB system catalog...');
     
     try {
+      if (typeof window !== 'undefined') {
+        throw new Error('MongoDB connections are not supported in the browser');
+      }
       const { MongoClient } = require('mongodb');
       const client = new MongoClient(connectionString);
       await client.connect();

@@ -11075,6 +11075,9 @@ export class DatabaseVerificationService {
   private async introspectMongoDB(connectionString: string): Promise<DatabaseIntrospectionResult> {
     try {
       // Use dynamic import to avoid bundling issues
+      if (typeof window !== 'undefined') {
+        throw new Error('MongoDB connections are not supported in the browser');
+      }
       const { MongoClient } = require('mongodb');
       const client = new MongoClient(connectionString);
 
