@@ -287,7 +287,11 @@ class DatabaseIntrospectionService {
               name: tableName,
               schema: schema,
               columns: columns,
-              dialect: patternName
+              dialect: patternName,
+              // ADD SOURCE TAGGING HERE
+              source: 'sql_file',
+              sourceFile: path.basename(filePath),
+              sourceType: 'schema_definition'
             });
           }
         }

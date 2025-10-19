@@ -1,13 +1,15 @@
 // Comprehensive database extraction function that handles multiple database types
-const fs = require('fs').promises;
-const path = require('path');
-const { DatabaseIntrospectionService } = require('../../../../services/extraction/databaseIntrospectionService');
+import { promises as fs } from 'fs';
+import path from 'path';
+import { DatabaseIntrospectionService } from '../../../../services/extraction/databaseIntrospectionService.js';
 
 async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
   try {
     console.log('🔍 ===== SIMPLE EXTRACTION START =====');
+    console.log('🔍 DEBUG: Function called with', allFiles.length, 'files');
     console.log('🔍 Upload directory:', uploadDir);
     console.log('🔍 All files count:', allFiles.length);
+    console.log('🔍 First 5 files:', allFiles.slice(0, 5).map(f => path.basename(f)));
     
     // Log ALL SQL files received
     const sqlFilesReceived = allFiles.filter(f => {
@@ -53,7 +55,9 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
       return ['.sql', '.ddl'].includes(ext);
     });
     
-    console.log(`📄 Found ${sqlFiles.length} SQL files: ${sqlFiles.map(f => path.basename(f)).join(', ')}`);
+    console.log(`🔍 DEBUG: Found ${sqlFiles.length} SQL files: ${sqlFiles.map(f => path.basename(f)).join(', ')}`);
+    console.log(`🔍 DEBUG: All files count: ${allFiles.length}`);
+    console.log(`🔍 DEBUG: All files: ${allFiles.map(f => path.basename(f)).join(', ')}`);
     const sqlResults = [];
     const allSqlRelationships = [];  // NEW
     const allSqlIndexes = [];  // NEW
@@ -314,6 +318,12 @@ async function extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir) {
     console.log('📊 SQL Indexes collected:', allSqlIndexes.length);
     console.log('📊 SQL Files processed:', sqlResults.map(r => `${r.file} (${r.tableCount} tables, ${r.relationships?.length || 0} relationships, ${r.indexes?.length || 0} indexes)`));
     
+    // DEBUG: Show source information for extracted tables
+    console.log(`🔍 DEBUG: Sample extracted tables with sources:`);
+    extractedTables.slice(0, 10).forEach((table, index) => {
+      console.log(`   Table ${index + 1}: ${table.name} - source: ${table.source || 'undefined'}, sourceFile: ${table.sourceFile || 'undefined'}`);
+    });
+    
     // Return the extracted database with enhanced metadata
     return [{
       id: `extracted_schema_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -511,4 +521,4 @@ async function extractFromPythonFile(filePath) {
   return tables;
 }
 
-module.exports = { extractDatabaseDefinitionsFromSourceCode };
+export { extractDatabaseDefinitionsFromSourceCode };

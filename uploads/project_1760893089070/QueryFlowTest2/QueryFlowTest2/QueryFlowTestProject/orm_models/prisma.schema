@@ -1,0 +1,281 @@
+// Prisma Schema for QueryFlow Testing
+// This schema includes comprehensive models for testing QueryFlow database extraction
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./ecommerce.sqlite"
+}
+
+// User Model
+model User {
+  id            Int      @id @default(autoincrement())
+  username      String   @unique @map("username")
+  email         String   @unique @map("email")
+  password_hash String   @map("password_hash")
+  first_name    String?  @map("first_name")
+  last_name     String?  @map("last_name")
+  phone         String?  @map("phone")
+  address       String?  @map("address")
+  city          String?  @map("city")
+  state         String?  @map("state")
+  zip_code      String?  @map("zip_code")
+  country       String?  @default("USA") @map("country")
+  date_of_birth DateTime? @map("date_of_birth") @db.Date
+  is_verified   Boolean  @default(false) @map("is_verified")
+  is_premium    Boolean  @default(false) @map("is_premium")
+  created_at    DateTime @default(now()) @map("created_at")
+  updated_at    DateTime @updatedAt @map("updated_at")
+  last_login    DateTime? @map("last_login")
+
+  // Relations
+  orders     Order[]
+  reviews    Review[]
+  pageViews  PageView[]
+  events     Event[]
+  sessions   UserSession[]
+
+  @@map("users")
+  @@index([email])
+  @@index([username])
+  @@index([created_at])
+  @@index([is_verified])
+  @@index([is_premium])
+}
+
+// Category Model
+model Category {
+  id          Int       @id @default(autoincrement())
+  name        String    @map("name")
+  description String?   @map("description")
+  parent_id   Int?      @map("parent_id")
+  slug        String    @unique @map("slug")
+  is_active   Boolean   @default(true) @map("is_active")
+  sort_order  Int       @default(0) @map("sort_order")
+  created_at  DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  parent   Category?  @relation("CategoryHierarchy", fields: [parent_id], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryHierarchy")
+  products Product[]
+
+  @@map("categories")
+  @@index([parent_id])
+  @@index([slug])
+  @@index([is_active])
+}
+
+// Product Model
+model Product {
+  id              Int      @id @default(autoincrement())
+  name            String   @map("name")
+  description     String?  @map("description")
+  sku             String   @unique @map("sku")
+  price           Decimal  @map("price") @db.Decimal(10, 2)
+  cost            Decimal  @map("cost") @db.Decimal(10, 2)
+  category_id     Int?     @map("category_id")
+  brand           String?  @map("brand")
+  weight          Decimal? @map("weight") @db.Decimal(8, 2)
+  dimensions      String?  @map("dimensions")
+  color           String?  @map("color")
+  size            String?  @map("size")
+  stock_quantity  Int      @default(0) @map("stock_quantity")
+  min_stock_level Int      @default(5) @map("min_stock_level")
+  is_active       Boolean  @default(true) @map("is_active")
+  is_featured     Boolean  @default(false) @map("is_featured")
+  tags            String?  @map("tags")
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  category   Category?    @relation(fields: [category_id], references: [id], onDelete: SetNull)
+  orderItems OrderItem[]
+  reviews    Review[]
+
+  @@map("products")
+  @@index([category_id])
+  @@index([sku])
+  @@index([price])
+  @@index([is_active])
+  @@index([is_featured])
+  @@index([category_id, is_active])
+}
+
+// Order Model
+model Order {
+  id               Int       @id @default(autoincrement())
+  user_id          Int       @map("user_id")
+  order_number     String    @unique @map("order_number")
+  status           String    @default("pending") @map("status")
+  subtotal         Decimal   @map("subtotal") @db.Decimal(10, 2)
+  tax_amount       Decimal   @default(0) @map("tax_amount") @db.Decimal(10, 2)
+  shipping_amount  Decimal   @default(0) @map("shipping_amount") @db.Decimal(10, 2)
+  discount_amount  Decimal   @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  total_amount     Decimal   @map("total_amount") @db.Decimal(10, 2)
+  payment_method   String?   @map("payment_method")
+  payment_status   String    @default("pending") @map("payment_status")
+  shipping_address String?   @map("shipping_address")
+  billing_address  String?   @map("billing_address")
+  notes            String?   @map("notes")
+  created_at       DateTime  @default(now()) @map("created_at")
+  updated_at       DateTime  @updatedAt @map("updated_at")
+  shipped_at       DateTime? @map("shipped_at")
+  delivered_at     DateTime? @map("delivered_at")
+
+  // Relations
+  user       User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@map("orders")
+  @@index([user_id])
+  @@index([status])
+  @@index([created_at])
+  @@index([order_number])
+  @@index([user_id, status])
+}
+
+// Order Item Model
+model OrderItem {
+  id         Int     @id @default(autoincrement())
+  order_id   Int     @map("order_id")
+  product_id Int     @map("product_id")
+  quantity   Int     @map("quantity")
+  unit_price Decimal @map("unit_price") @db.Decimal(10, 2)
+  total_price Decimal @map("total_price") @db.Decimal(10, 2)
+  created_at DateTime @default(now()) @map("created_at")
+
+  // Relations
+  order   Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+  @@index([order_id])
+  @@index([product_id])
+}
+
+// Review Model
+model Review {
+  id                   Int      @id @default(autoincrement())
+  product_id           Int      @map("product_id")
+  user_id              Int      @map("user_id")
+  rating               Int      @map("rating")
+  title                String?  @map("title")
+  comment              String?  @map("comment")
+  is_verified_purchase Boolean  @default(false) @map("is_verified_purchase")
+  is_approved          Boolean  @default(false) @map("is_approved")
+  helpful_votes        Int      @default(0) @map("helpful_votes")
+  created_at           DateTime @default(now()) @map("created_at")
+
+  // Relations
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+  @@index([product_id])
+  @@index([user_id])
+  @@index([rating])
+  @@index([product_id, rating])
+}
+
+// Page View Model (Analytics)
+model PageView {
+  id               Int      @id @default(autoincrement())
+  session_id       String   @map("session_id")
+  user_id          Int?     @map("user_id")
+  page_url         String   @map("page_url")
+  page_title       String?  @map("page_title")
+  referrer         String?  @map("referrer")
+  user_agent       String?  @map("user_agent")
+  ip_address       String?  @map("ip_address")
+  country          String?  @map("country")
+  city             String?  @map("city")
+  device_type      String?  @map("device_type")
+  browser          String?  @map("browser")
+  os               String?  @map("os")
+  timestamp        DateTime @default(now()) @map("timestamp")
+  duration_seconds Int      @default(0) @map("duration_seconds")
+
+  // Relations
+  user User? @relation(fields: [user_id], references: [id])
+
+  @@map("page_views")
+  @@index([session_id])
+  @@index([user_id])
+  @@index([timestamp])
+  @@index([page_url])
+  @@index([device_type])
+  @@index([country])
+  @@index([user_id, timestamp])
+}
+
+// Event Model (Analytics)
+model Event {
+  id             Int      @id @default(autoincrement())
+  event_name     String   @map("event_name")
+  event_category String   @map("event_category")
+  event_value    Decimal  @default(0) @map("event_value") @db.Decimal(10, 2)
+  user_id        Int?     @map("user_id")
+  session_id     String?  @map("session_id")
+  properties     String?  @map("properties")
+  timestamp      DateTime @default(now()) @map("timestamp")
+
+  // Relations
+  user User? @relation(fields: [user_id], references: [id])
+
+  @@map("events")
+  @@index([event_name])
+  @@index([event_category])
+  @@index([user_id])
+  @@index([session_id])
+  @@index([timestamp])
+  @@index([event_category, timestamp])
+}
+
+// User Session Model (Analytics)
+model UserSession {
+  id               Int       @id @default(autoincrement())
+  session_id       String    @unique @map("session_id")
+  user_id          Int?      @map("user_id")
+  start_time       DateTime  @map("start_time")
+  end_time         DateTime? @map("end_time")
+  duration_seconds Int?      @map("duration_seconds")
+  page_count       Int       @default(0) @map("page_count")
+  event_count      Int       @default(0) @map("event_count")
+  country          String?   @map("country")
+  device_type      String?   @map("device_type")
+  browser          String?   @map("browser")
+  os               String?   @map("os")
+  is_bounce        Boolean   @default(false) @map("is_bounce")
+  created_at       DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user User? @relation(fields: [user_id], references: [id])
+
+  @@map("user_sessions")
+  @@index([session_id])
+  @@index([user_id])
+  @@index([start_time])
+  @@index([user_id, start_time])
+}
+
+// Metrics Model (Analytics)
+model Metric {
+  id           Int      @id @default(autoincrement())
+  metric_name  String   @map("metric_name")
+  metric_value Decimal  @map("metric_value") @db.Decimal(15, 4)
+  metric_type  String   @map("metric_type")
+  dimensions   String?  @map("dimensions")
+  date         DateTime @map("date") @db.Date
+  hour         Int      @map("hour")
+  created_at   DateTime @default(now()) @map("created_at")
+
+  @@map("metrics")
+  @@index([metric_name])
+  @@index([metric_type])
+  @@index([date])
+  @@index([date, hour])
+  @@index([metric_name, date])
+}

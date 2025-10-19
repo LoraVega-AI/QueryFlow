@@ -122,10 +122,26 @@ export async function POST(request: NextRequest) {
     console.log('📁 Upload directory:', uploadDir);
     
     // Extract database definitions from source code
-    const { extractDatabaseDefinitionsFromSourceCode } = await import('./simpleExtraction.js');
-    let sourceCodeDatabases = await extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir);
-    console.log('📊 Found source code databases:', sourceCodeDatabases.length);
-    console.log('📊 Source code databases details:', sourceCodeDatabases.map(db => ({ name: db.name, type: db.type, tables: db.tables?.length || 0 })));
+    console.log('🔍 DEBUG: About to import simpleExtraction.js');
+    let sourceCodeDatabases: any[] = [];
+    try {
+      const { extractDatabaseDefinitionsFromSourceCode } = await import('./simpleExtraction.js');
+      console.log('🔍 DEBUG: Successfully imported simpleExtraction.js');
+      console.log('🔍 DEBUG: About to call simpleExtraction.js with', allFiles.length, 'files');
+      sourceCodeDatabases = await extractDatabaseDefinitionsFromSourceCode(allFiles, uploadDir);
+      console.log('📊 Found source code databases:', sourceCodeDatabases.length);
+      console.log('📊 Source code databases details:', sourceCodeDatabases.map(db => ({ name: db.name, type: db.type, tables: db.tables?.length || 0 })));
+      
+      // DEBUG: Check if tables have source information
+      if (sourceCodeDatabases.length > 0) {
+        const sampleTables = sourceCodeDatabases[0].tables?.slice(0, 3) || [];
+        console.log('🔍 DEBUG: Sample tables from simpleExtraction:', sampleTables.map(t => ({ name: t.name, source: t.source, sourceFile: t.sourceFile })));
+      }
+    } catch (error) {
+      console.log('❌ ERROR importing simpleExtraction.js:', error.message);
+      console.log('❌ ERROR stack:', error.stack);
+      sourceCodeDatabases = [];
+    }
     
     // Find SQLite database files for comprehensive verification
     // BYPASS databaseFiles array and scan upload directory directly
@@ -366,6 +382,15 @@ export async function POST(request: NextRequest) {
     // Combine both actual database files and extracted definitions
     const allDatabases = [...databaseFiles, ...sourceCodeDatabases];
     console.log('📊 Total databases found:', allDatabases.length);
+    console.log('🔍 DETAILED DATABASE BREAKDOWN:');
+    allDatabases.forEach((db, index) => {
+      console.log(`   Database ${index + 1}: ${db.name} (type: ${db.type}, status: ${db.status})`);
+      console.log(`      Tables: ${db.tables?.length || 0}`);
+      if (db.tables && db.tables.length > 0) {
+        console.log(`      Table names: ${db.tables.map(t => t.name).join(', ')}`);
+        console.log(`      Sample table sources: ${db.tables.slice(0, 3).map(t => `${t.name}(${t.source || 'no-source'})`).join(', ')}`);
+      }
+    });
     
       // Extract system catalog information from database files
       console.log('🔍 Starting system catalog extraction...');
@@ -513,44 +538,67 @@ export async function POST(request: NextRequest) {
     // Merge schemas from all databases (both actual files and extracted definitions)
     // Prioritize actual database files over extracted definitions to avoid duplicates and phantom tables
     const actualDatabaseFiles = allDatabases.filter(db => db.type === 'sqlite' && db.tables && db.tables.length > 0);
-    const extractedDatabases = allDatabases.filter(db => db.type === 'extracted' && db.tables && db.tables.length > 0);
     
-    console.log(`📊 Database sources: ${actualDatabaseFiles.length} actual files, ${extractedDatabases.length} extracted definitions`);
+    // Split extracted databases into SQL file tables and ORM/migration tables
+    const extractedDatabases = allDatabases.filter(db => db.type === 'extracted' && db.tables && db.tables.length > 0);
+    const sqlFileDatabases = extractedDatabases.map(db => {
+      const sqlTables = db.tables.filter(table => table.source === 'sql_file');
+      const ormTables = db.tables.filter(table => table.source !== 'sql_file');
+      
+      if (sqlTables.length > 0) {
+        return {
+          ...db,
+          type: 'sql_file',
+          name: 'SQL File Tables',
+          tables: sqlTables
+        };
+      }
+      return null;
+    }).filter(Boolean);
+    
+    const ormDatabases = extractedDatabases.map(db => {
+      const ormTables = db.tables.filter(table => table.source !== 'sql_file');
+      if (ormTables.length > 0) {
+        return {
+          ...db,
+          tables: ormTables
+        };
+      }
+      return null;
+    }).filter(Boolean);
+    
+    console.log(`📊 Database sources: ${actualDatabaseFiles.length} actual files, ${sqlFileDatabases.length} SQL file databases, ${ormDatabases.length} ORM databases`);
+    console.log('🔍 ACTUAL DATABASE FILES:');
+    actualDatabaseFiles.forEach((db, index) => {
+      console.log(`   ${index + 1}. ${db.name} (${db.type}) - ${db.tables.length} tables`);
+    });
+    console.log('🔍 SQL FILE DATABASES:');
+    sqlFileDatabases.forEach((db, index) => {
+      console.log(`   ${index + 1}. ${db.name} (${db.type}) - ${db.tables.length} tables`);
+      if (db.tables && db.tables.length > 0) {
+        console.log(`      Table sources: ${db.tables.map(t => `${t.name}(${t.source || 'no-source'})`).join(', ')}`);
+      }
+    });
+    console.log('🔍 ORM DATABASES:');
+    ormDatabases.forEach((db, index) => {
+      console.log(`   ${index + 1}. ${db.name} (${db.type}) - ${db.tables.length} tables`);
+      if (db.tables && db.tables.length > 0) {
+        console.log(`      Table sources: ${db.tables.map(t => `${t.name}(${t.source || 'no-source'})`).join(', ')}`);
+      }
+    });
     
     let allTables: any[] = [];
     let allRelationships: any[] = [];
 
-    if (actualDatabaseFiles.length > 0) {
-      console.log('🎯 Using actual database files as primary source');
-      allTables = actualDatabaseFiles.flatMap(db => db.tables || []);
-      allRelationships = actualDatabaseFiles.flatMap(db => db.schema?.relationships || db.relationships || []);
-      console.log(`📊 Found ${allTables.length} tables and ${allRelationships.length} relationships from actual database files`);
-      
-      // Also include extracted tables that might not be in the database yet
-      if (extractedDatabases.length > 0) {
-        console.log('🔄 Merging extracted definitions with actual database tables');
-        const existingTableNames = new Set(allTables.map(t => t.name.toLowerCase()));
-        const extractedTables = extractedDatabases.flatMap(db => db.tables || []);
-        const extractedRelationships = extractedDatabases.flatMap(db => db.relationships || []);
-        
-        const newTables = extractedTables.filter(t => !existingTableNames.has(t.name.toLowerCase()));
-        console.log(`📊 Adding ${newTables.length} additional tables from extracted definitions`);
-        allTables.push(...newTables);
-        allRelationships.push(...extractedRelationships);
-      }
-    } else if (extractedDatabases.length > 0) {
-      // Fallback to extracted definitions if no actual database files
-      console.log('⚠️ No actual database files found, using extracted definitions');
-      allTables = extractedDatabases.flatMap(db => db.tables || []);
-      allRelationships = extractedDatabases.flatMap(db => db.relationships || []);
-      console.log(`📊 Found ${allTables.length} tables and ${allRelationships.length} relationships from extracted definitions`);
-    } else {
-      // Fallback to all databases if no clear categorization
-      console.log('⚠️ No clear database categorization, using all databases');
-      allTables = allDatabases.flatMap(db => db.tables || []);
-      allRelationships = allDatabases.flatMap(db => db.relationships || []);
-      console.log(`📊 Found ${allTables.length} tables and ${allRelationships.length} relationships from all databases`);
-    }
+    // Combine all database sources: actual files + SQL files + ORM tables
+    const allDatabaseSources = [...actualDatabaseFiles, ...sqlFileDatabases, ...ormDatabases];
+    console.log(`🎯 Combining ${allDatabaseSources.length} database sources`);
+    
+    allTables = allDatabaseSources.flatMap(db => db.tables || []);
+    allRelationships = allDatabaseSources.flatMap(db => db.schema?.relationships || db.relationships || []);
+    
+    console.log(`📊 Found ${allTables.length} total tables and ${allRelationships.length} relationships from all sources`);
+    console.log(`📊 Source breakdown: ${actualDatabaseFiles.length} actual DB files, ${sqlFileDatabases.length} SQL file DBs, ${ormDatabases.length} ORM DBs`);
     
     // UNIVERSAL TABLE FILTERING - Remove ALL phantom, metadata, and duplicate tables
     const tableMap = new Map<string, any>();
@@ -596,24 +644,24 @@ export async function POST(request: NextRequest) {
       /^user_permissions$/,
       /^group_permissions$/,
       
-      // ORM model classes (only obvious ones)
-      /Model$/,
-      /Entity$/,
-      /Schema$/,
-      /Repository$/,
-      /Service$/,
+      // ORM model classes (only obvious ones) - REMOVED: These were too aggressive
+      // /Model$/,
+      // /Entity$/,
+      // /Schema$/,
+      // /Repository$/,
+      // /Service$/,
       
-      // Common phantom patterns (only obvious ones)
-      /^User$/,
-      /^Group$/,
-      /^Permission$/,
-      /^ContentType$/,
-      /^Session$/,
-      /^LogEntry$/,
-      /^Migration$/,
-      /^Schema$/,
-      /^Model$/,
-      /^Entity$/
+      // Common phantom patterns (only obvious ones) - REMOVED: These were too aggressive
+      // /^User$/,
+      // /^Group$/,
+      // /^Permission$/,
+      // /^ContentType$/,
+      // /^Session$/,
+      // /^LogEntry$/,
+      // /^Migration$/,
+      // /^Schema$/,
+      // /^Model$/,
+      // /^Entity$/
     ];
     
     // Check if a table name matches universal phantom patterns
@@ -675,6 +723,10 @@ export async function POST(request: NextRequest) {
     
     console.log(`🎯 BEFORE FILTERING: ${allTables.length} tables`);
     console.log(`   Tables: ${allTables.map(t => t.name).join(', ')}`);
+    console.log(`🔍 DETAILED TABLE INFO BEFORE FILTERING:`);
+    allTables.forEach((table, index) => {
+      console.log(`   Table ${index + 1}: "${table.name}" - source: ${table.source || 'undefined'}, sourceFile: ${table.sourceFile || 'undefined'}, columns: ${table.columns?.length || 0}, type: ${table.type || 'undefined'}`);
+    });
     
     // CONSERVATIVE filtering - only remove obvious phantom tables
     for (const table of allTables) {
@@ -709,15 +761,15 @@ export async function POST(request: NextRequest) {
         continue;
       }
       
-      // 5. Skip only extracted tables that are clearly ORM classes
-      if (table.type === 'extracted' && table.name && 
-          (table.name.endsWith('Model') || table.name.endsWith('Entity') || 
-           table.name.endsWith('Schema') || table.name.endsWith('Repository') ||
-           table.name.endsWith('Service') || table.name.endsWith('Controller'))) {
-        phantomTables.push(table.name);
-        console.log(`👻 Skipping ORM class: ${table.name} (not a database table)`);
-        continue;
-      }
+      // 5. Skip only extracted tables that are clearly ORM classes - DISABLED: Too aggressive
+      // if (table.type === 'extracted' && table.name && 
+      //     (table.name.endsWith('Model') || table.name.endsWith('Entity') || 
+      //      table.name.endsWith('Schema') || table.name.endsWith('Repository') ||
+      //      table.name.endsWith('Service') || table.name.endsWith('Controller'))) {
+      //   phantomTables.push(table.name);
+      //   console.log(`👻 Skipping ORM class: ${table.name} (not a database table)`);
+      //   continue;
+      // }
       
       // 6. Deduplicate by name (case-insensitive)
       if (tableMap.has(tableName)) {
@@ -735,6 +787,10 @@ export async function POST(request: NextRequest) {
     console.log(`   Tables: ${Array.from(tableMap.values()).map(t => t.name).join(', ')}`);
     console.log(`   Phantom tables removed: ${phantomTables.length}`);
     console.log(`   Duplicate tables removed: ${duplicateTables.length}`);
+    console.log(`🔍 DETAILED TABLE INFO AFTER FILTERING:`);
+    Array.from(tableMap.values()).forEach((table, index) => {
+      console.log(`   Table ${index + 1}: "${table.name}" - source: ${table.source || 'undefined'}, sourceFile: ${table.sourceFile || 'undefined'}, columns: ${table.columns?.length || 0}, type: ${table.type || 'undefined'}`);
+    });
     
     allTables = Array.from(tableMap.values());
     
@@ -758,16 +814,17 @@ export async function POST(request: NextRequest) {
           .filter(Boolean)
       );
       
-      // FIXED: Only validate ORM/migration tables, trust SQL files
+      // FIXED: Only validate ORM/migration tables, trust SQL files and actual database tables
       console.log(`🔍 DEBUG: Checking table sources...`);
       allTables.forEach((table, index) => {
         console.log(`   Table ${index + 1}: ${table.name} - source: ${table.source || 'undefined'}, sourceFile: ${table.sourceFile || 'undefined'}`);
       });
       
       const sqlSourceTables = allTables.filter(table => table.source === 'sql_file');
-      const ormSourceTables = allTables.filter(table => table.source !== 'sql_file');
+      const actualDbTables = allTables.filter(table => !table.source || table.source === 'sqlite');
+      const ormSourceTables = allTables.filter(table => table.source && table.source !== 'sql_file' && table.source !== 'sqlite');
       
-      console.log(`📊 Source breakdown: ${sqlSourceTables.length} SQL file tables, ${ormSourceTables.length} ORM/migration tables`);
+      console.log(`📊 Source breakdown: ${sqlSourceTables.length} SQL file tables, ${actualDbTables.length} actual DB tables, ${ormSourceTables.length} ORM/migration tables`);
       
       // Only validate ORM/migration tables against actual database
       const validatedOrmTables = ormSourceTables.filter(table => {
@@ -783,13 +840,14 @@ export async function POST(request: NextRequest) {
         return false;
       });
       
-      // Keep all SQL file tables (they are the source of truth) + validated ORM tables
-      allTables = [...sqlSourceTables, ...validatedOrmTables];
+      // Keep all SQL file tables + actual DB tables + validated ORM tables
+      allTables = [...sqlSourceTables, ...actualDbTables, ...validatedOrmTables];
       
       if (validatedOrmTables.length !== ormSourceTables.length) {
         const removedCount = ormSourceTables.length - validatedOrmTables.length;
         console.log(`🔍 Removed ${removedCount} ORM tables that don't exist in actual database`);
         console.log(`✅ Kept all ${sqlSourceTables.length} SQL file tables (trusted as source of truth)`);
+        console.log(`✅ Kept all ${actualDbTables.length} actual database tables`);
       }
     }
     
