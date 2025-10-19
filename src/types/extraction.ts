@@ -127,6 +127,8 @@ export interface IRTableMetadata {
   documentation?: string;
   tags: string[];
   confidence: number;
+  inferred: boolean;
+  inferredFields: string[];
 }
 
 export interface SourceLocation {
@@ -250,6 +252,12 @@ export interface ExtractionOptions {
     regexWeight: number;
     astWeight: number;
     frameworkWeight: number;
+  };
+  verification: {
+    enabled: boolean;
+    mode: 'strict' | 'lenient' | 'disabled';
+    failOnError: boolean;
+    introspectionDepth: 'shallow' | 'deep';
   };
 }
 
@@ -540,7 +548,6 @@ export interface SQLiteConversionOptions {
   createIndexes: boolean;
   addMetadata: boolean;
   enableConstraints: boolean;
-  generateSampleData: boolean;
 }
 
 export interface SQLiteSchema {

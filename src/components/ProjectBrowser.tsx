@@ -179,131 +179,49 @@ export function ProjectBrowser({ onProjectSelect, onAddProject, onGitHubConnect,
     activeSyncs: 0
   });
 
-  // Mock data - in real implementation, this would come from an API
+  // Fetch real projects from API
   useEffect(() => {
-    const mockProjects: Project[] = [
-      {
-        id: '1',
-        name: 'E-commerce API',
-        description: 'Node.js REST API for e-commerce platform',
-        technology: 'nodejs',
-        status: 'connected',
-        databaseCount: 0,
-        icon: '📦',
-        color: 'blue',
-        isExample: false,
-        databases: [],
-        tables: [],
-        queries: [],
-        path: '/Users/dev/projects/ecommerce-api',
-        projectType: 'nodejs',
-        type: 'local',
-        localPath: '/Users/dev/projects/ecommerce-api',
-        configFiles: [],
-        createdAt: new Date('2024-01-15'),
-        updatedAt: new Date('2024-01-20'),
-        lastSynced: new Date('2024-01-20'),
-        metadata: {
-          version: '1.0.0',
-          packageManager: 'npm',
-          language: 'javascript',
-          dependencies: ['express', 'mongoose', 'cors'],
-          scripts: { start: 'node server.js', dev: 'nodemon server.js' },
-          environment: 'development'
+    const fetchProjects = async () => {
+      setLoading(true);
+      try {
+        const response = await fetch('/api/projects');
+        if (!response.ok) {
+          throw new Error('Failed to fetch projects');
         }
-      },
-      {
-        id: '2',
-        name: 'Data Analytics Dashboard',
-        description: 'Python Django application with PostgreSQL',
-        technology: 'django',
-        status: 'connected',
-        databaseCount: 1,
-        icon: '🐍',
-        color: 'green',
-        isExample: false,
-        databases: [],
-        tables: [],
-        queries: [],
-        path: '/Users/dev/projects/analytics-dashboard',
-        projectType: 'django',
-        type: 'github',
-        repository: {
-          id: 12345,
-          name: 'analytics-dashboard',
-          full_name: 'myorg/analytics-dashboard',
-          private: true,
-          owner: {
-            id: 67890,
-            login: 'myorg',
-            type: 'Organization'
-          } as any,
-          html_url: 'https://github.com/myorg/analytics-dashboard',
-          description: 'Data analytics dashboard with Django and PostgreSQL',
-          default_branch: 'main'
-        } as any,
-        branch: 'main',
-        clonePath: '/tmp/queryflow/analytics-dashboard',
-        configFiles: [],
-        createdAt: new Date('2024-01-10'),
-        updatedAt: new Date('2024-01-19'),
-        lastSynced: new Date('2024-01-19'),
-        metadata: {
-          version: '2.1.0',
-          packageManager: 'pip',
-          language: 'python',
-          dependencies: ['django', 'pandas', 'plotly'],
-          scripts: {},
-          environment: 'production'
-        },
-        pullRequests: []
-      },
-      {
-        id: '3',
-        name: 'Legacy PHP System',
-        description: 'Old PHP application with MySQL database',
-        technology: 'php',
-        status: 'error',
-        databaseCount: 1,
-        icon: '🐘',
-        color: 'purple',
-        isExample: false,
-        databases: [],
-        tables: [],
-        queries: [],
-        path: '/var/www/legacy-system',
-        projectType: 'php',
-        type: 'local',
-        localPath: '/var/www/legacy-system',
-        configFiles: [],
-        createdAt: new Date('2024-01-05'),
-        updatedAt: new Date('2024-01-18'),
-        metadata: {
-          language: 'php',
-          packageManager: 'composer',
-          dependencies: ['php', 'mysql'],
-          scripts: {},
-          environment: 'staging'
-        }
+        
+        const realProjects = await response.json();
+        
+        // Parse date fields
+        const parsedProjects = realProjects.map((proj: any) => ({
+          ...proj,
+          createdAt: proj.createdAt ? new Date(proj.createdAt) : new Date(),
+          updatedAt: proj.updatedAt ? new Date(proj.updatedAt) : new Date(),
+          lastSynced: proj.lastSynced ? new Date(proj.lastSynced) : undefined,
+        }));
+        
+        setProjects(parsedProjects);
+        setFilteredProjects(parsedProjects);
+        
+        // Calculate stats from real projects
+        const stats: ProjectStats = {
+          totalProjects: parsedProjects.length,
+          connectedProjects: parsedProjects.filter((p: Project) => p.status === 'connected').length,
+          syncingProjects: parsedProjects.filter((p: Project) => p.status === 'syncing').length,
+          errorProjects: parsedProjects.filter((p: Project) => p.status === 'error').length,
+          totalDatabases: parsedProjects.reduce((sum: number, p: Project) => sum + (p.databases?.length || 0), 0),
+          activeSyncs: parsedProjects.filter((p: Project) => p.status === 'syncing').length
+        };
+        setStats(stats);
+      } catch (error) {
+        console.error('Failed to fetch projects:', error);
+        setLoading(false);
+        // On error, show empty list instead of mock data
+        setProjects([]);
+        setFilteredProjects([]);
       }
-    ];
-
-    setTimeout(() => {
-      setProjects(mockProjects);
-      setFilteredProjects(mockProjects);
-      setLoading(false);
-
-      // Calculate stats
-      const stats: ProjectStats = {
-        totalProjects: mockProjects.length,
-        connectedProjects: mockProjects.filter(p => p.status === 'connected').length,
-        syncingProjects: mockProjects.filter(p => p.status === 'syncing').length,
-        errorProjects: mockProjects.filter(p => p.status === 'error').length,
-        totalDatabases: mockProjects.reduce((sum, p) => sum + p.databases.length, 0),
-        activeSyncs: mockProjects.filter(p => p.status === 'syncing').length
-      };
-      setStats(stats);
-    }, 1000);
+    };
+    
+    fetchProjects();
   }, []);
 
   // Filter and sort projects

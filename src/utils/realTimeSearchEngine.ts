@@ -292,8 +292,8 @@ export class RealTimeSearchEngine {
       enableAutoComplete: true
     });
     
-    // Fallback to mock results if enhanced search fails
-    const searchResults = semanticResults.length > 0 ? semanticResults : this.generateMockResults(query);
+    // Fallback to real database search if enhanced search fails
+    const searchResults = semanticResults.length > 0 ? semanticResults : await this.generateMockResults(query);
     await this.delay(80);
 
     // Step 4: Apply filters and ranking (70%)
@@ -354,72 +354,122 @@ export class RealTimeSearchEngine {
     return formattedResults;
   }
 
-  private generateMockResults(query: string): any[] {
-    // Generate mock search results based on query
-    const mockData = [
-      {
-        id: '1',
-        title: 'User Authentication System',
-        content: 'Comprehensive user authentication and authorization system with JWT tokens, OAuth integration, and role-based access control.',
-        type: 'code',
-        source: 'GitHub Repository',
-        relevance: 0.95,
-        timestamp: new Date(),
-        tags: ['authentication', 'security', 'jwt', 'oauth'],
-        category: 'Security'
-      },
-      {
-        id: '2',
-        title: 'Database Schema Design',
-        content: 'Complete database schema for e-commerce platform with user management, product catalog, and order processing.',
-        type: 'database',
-        source: 'Database Designer',
-        relevance: 0.88,
-        timestamp: new Date(),
-        tags: ['database', 'schema', 'ecommerce', 'sql'],
-        category: 'Database'
-      },
-      {
-        id: '3',
-        title: 'API Documentation',
-        content: 'RESTful API documentation for the QueryFlow platform with endpoints, authentication, and examples.',
-        type: 'document',
-        source: 'API Docs',
-        relevance: 0.82,
-        timestamp: new Date(),
-        tags: ['api', 'documentation', 'rest', 'openapi'],
-        category: 'Documentation'
-      },
-      {
-        id: '4',
-        title: 'Performance Optimization Guide',
-        content: 'Best practices for optimizing database queries, caching strategies, and application performance.',
-        type: 'document',
-        source: 'Knowledge Base',
-        relevance: 0.79,
-        timestamp: new Date(),
-        tags: ['performance', 'optimization', 'database', 'caching'],
-        category: 'Performance'
-      },
-      {
-        id: '5',
-        title: 'System Architecture Diagram',
-        content: 'High-level system architecture showing microservices, databases, and external integrations.',
-        type: 'image',
-        source: 'Architecture Docs',
-        relevance: 0.76,
-        timestamp: new Date(),
-        tags: ['architecture', 'diagram', 'microservices', 'system'],
-        category: 'Architecture'
+  private async generateMockResults(query: string): Promise<any[]> {
+    // Search actual extracted schema data instead of returning mock data
+    try {
+      const Database = (await import('better-sqlite3')).default;
+      const path = await import('path');
+      const fs = await import('fs/promises');
+      
+      const results: any[] = [];
+      
+      // Search in queryflow app database for real project data
+      const dbPath = path.join(process.cwd(), 'queryflow_app.db');
+      
+      try {
+        await fs.access(dbPath);
+        const db = new Database(dbPath, { readonly: true });
+        
+        // Search tables
+        const tables = db.prepare(`
+          SELECT name, type, sql FROM sqlite_master 
+          WHERE type='table' AND name NOT LIKE 'sqlite_%'
+        `).all();
+        
+        for (const table of tables as any[]) {
+          if (table.name.toLowerCase().includes(query.toLowerCase())) {
+            results.push({
+              id: `table_${table.name}`,
+              title: `Table: ${table.name}`,
+              content: table.sql || `Database table ${table.name}`,
+              type: 'database',
+              source: 'QueryFlow Database',
+              relevance: this.calculateMatchScore(table.name, query),
+              timestamp: new Date(),
+              tags: ['table', 'database', 'schema'],
+              category: 'Database'
+            });
+          }
+        }
+        
+        // Search columns
+        for (const table of tables as any[]) {
+          try {
+            const columns = db.prepare(`PRAGMA table_info(${table.name})`).all() as any[];
+            for (const col of columns) {
+              if (col.name.toLowerCase().includes(query.toLowerCase())) {
+                results.push({
+                  id: `column_${table.name}_${col.name}`,
+                  title: `Column: ${table.name}.${col.name}`,
+                  content: `${col.type} column in ${table.name} table`,
+                  type: 'database',
+                  source: 'QueryFlow Database',
+                  relevance: this.calculateMatchScore(col.name, query),
+                  timestamp: new Date(),
+                  tags: ['column', 'field', table.name],
+                  category: 'Database'
+                });
+              }
+            }
+          } catch (err) {
+            // Skip tables that can't be introspected
+          }
+        }
+        
+        db.close();
+      } catch (dbError) {
+        console.warn('Could not search QueryFlow database:', dbError);
       }
-    ];
-
-    // Filter and rank based on query
-    return mockData.filter(item => 
-      item.title.toLowerCase().includes(query.toLowerCase()) ||
-      item.content.toLowerCase().includes(query.toLowerCase()) ||
-      item.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
-    );
+      
+      // If no results found, return empty array (NOT mock data)
+      return results;
+      
+    } catch (error) {
+      console.error('Search failed:', error);
+      return [];
+    }
+  }
+  
+  private calculateMatchScore(text: string, query: string): number {
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    
+    if (lowerText === lowerQuery) return 1.0;
+    if (lowerText.startsWith(lowerQuery)) return 0.9;
+    if (lowerText.includes(lowerQuery)) return 0.7;
+    
+    // Calculate Levenshtein distance for fuzzy matching
+    const distance = this.levenshteinDistance(lowerText, lowerQuery);
+    const maxLen = Math.max(lowerText.length, lowerQuery.length);
+    return Math.max(0, 1 - (distance / maxLen));
+  }
+  
+  private levenshteinDistance(str1: string, str2: string): number {
+    const matrix: number[][] = [];
+    
+    for (let i = 0; i <= str2.length; i++) {
+      matrix[i] = [i];
+    }
+    
+    for (let j = 0; j <= str1.length; j++) {
+      matrix[0][j] = j;
+    }
+    
+    for (let i = 1; i <= str2.length; i++) {
+      for (let j = 1; j <= str1.length; j++) {
+        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j] + 1
+          );
+        }
+      }
+    }
+    
+    return matrix[str2.length][str1.length];
   }
 
   private rankResults(results: any[], query: string): any[] {

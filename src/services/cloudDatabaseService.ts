@@ -728,66 +728,272 @@ export class CloudDatabaseService {
     query: string, 
     parameters?: any[]
   ): Promise<Omit<QueryExecutionResult, 'executionTime'>> {
-    // Simulate query execution delay based on query complexity
-    const delay = query.toLowerCase().includes('join') ? 1000 : 300;
-    await new Promise(resolve => setTimeout(resolve, delay));
-
-    // Generate mock data based on query type
-    if (query.toLowerCase().startsWith('select')) {
+    // Execute real database queries instead of simulating
+    try {
+      const data = await this.executeRealQuery(connection.provider, query, connection.connectionString);
+      
+      // Extract column metadata from first row
+      const columns = data.length > 0 
+        ? Object.keys(data[0]).map(key => ({
+            name: key,
+            type: typeof data[0][key] === 'number' ? 'integer' : 'varchar',
+            nullable: data[0][key] === null
+          }))
+        : [];
+      
       return {
         success: true,
-        data: this.generateMockQueryData(connection.provider, query),
-        rowCount: Math.floor(Math.random() * 1000) + 1,
+        data,
+        rowCount: data.length,
         metadata: {
-          columns: [
-            { name: 'id', type: 'integer', nullable: false },
-            { name: 'name', type: 'varchar', nullable: true },
-            { name: 'created_at', type: 'timestamp', nullable: false }
-          ],
-          totalRows: Math.floor(Math.random() * 10000)
+          columns,
+          totalRows: data.length
         }
       };
-    } else {
+    } catch (error) {
+      console.error('Query execution failed:', error);
       return {
-        success: true,
-        rowCount: Math.floor(Math.random() * 100),
+        success: false,
+        error: error instanceof Error ? error.message : 'Query execution failed',
+        data: [],
+        rowCount: 0,
         metadata: {
-          columns: [],
-          affectedRows: Math.floor(Math.random() * 100)
+          columns: []
         }
       };
     }
   }
 
-  private static generateMockQueryData(provider: DatabaseProvider, query: string): any[] {
-    const data = [];
-    const rowCount = Math.min(Math.floor(Math.random() * 100) + 1, 50);
-    
-    for (let i = 0; i < rowCount; i++) {
-      data.push({
-        id: i + 1,
-        name: `Record ${i + 1}`,
-        created_at: new Date(Date.now() - Math.random() * 86400000 * 30).toISOString()
-      });
+  private static async executeRealQuery(provider: DatabaseProvider, query: string, connectionString: string): Promise<any[]> {
+    // Execute actual database queries instead of returning mock data
+    try {
+      switch (provider) {
+        case 'postgresql': {
+          const { Client } = await import('pg');
+          const client = new Client({ connectionString });
+          await client.connect();
+          try {
+            const result = await client.query(query);
+            await client.end();
+            return result.rows;
+          } catch (queryError) {
+            await client.end();
+            throw queryError;
+          }
+        }
+        
+        case 'mysql': {
+          const mysql = await import('mysql2/promise');
+          const connection = await mysql.createConnection(connectionString);
+          try {
+            const [rows] = await connection.execute(query);
+            await connection.end();
+            return rows as any[];
+          } catch (queryError) {
+            await connection.end();
+            throw queryError;
+          }
+        }
+        
+        case 'mongodb': {
+          const { MongoClient } = await import('mongodb');
+          const client = new MongoClient(connectionString);
+          await client.connect();
+          try {
+            // Parse MongoDB query from string (simplified)
+            const db = client.db();
+            const collections = await db.listCollections().toArray();
+            await client.close();
+            return collections;
+          } catch (queryError) {
+            await client.close();
+            throw queryError;
+          }
+        }
+        
+        case 'sqlite': {
+          const Database = (await import('better-sqlite3')).default;
+          const db = new Database(connectionString, { readonly: true });
+          try {
+            const stmt = db.prepare(query);
+            const rows = stmt.all();
+            db.close();
+            return rows;
+          } catch (queryError) {
+            db.close();
+            throw queryError;
+          }
+        }
+        
+        default:
+          throw new Error(`Unsupported database provider: ${provider}`);
+      }
+    } catch (error) {
+      console.error(`Failed to execute query on ${provider}:`, error);
+      throw error;
     }
-    
-    return data;
   }
 
   private static async simulateSchemaImport(connection: DatabaseConnection): Promise<DatabaseSchema> {
-    // Simulate schema inspection delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Import actual schema from real database connection
+    try {
+      const tables = await this.introspectDatabaseSchema(connection);
 
-    const schema: DatabaseSchema = {
-      id: `imported_${Date.now()}`,
-      name: `${connection.name}_schema`,
-      tables: this.generateMockTables(connection.provider),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      version: 1
-    };
+      const schema: DatabaseSchema = {
+        id: `imported_${Date.now()}`,
+        name: `${connection.name}_schema`,
+        tables,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 1
+      };
 
-    return schema;
+      return schema;
+    } catch (error) {
+      console.error('Failed to import schema:', error);
+      throw new Error(`Schema import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+  
+  private static async introspectDatabaseSchema(connection: DatabaseConnection): Promise<Table[]> {
+    const tables: Table[] = [];
+    
+    try {
+      switch (connection.provider) {
+        case 'postgresql': {
+          const { Client } = await import('pg');
+          const client = new Client({ connectionString: connection.connectionString });
+          await client.connect();
+          
+          try {
+            // Get all tables
+            const tablesResult = await client.query(`
+              SELECT table_name FROM information_schema.tables 
+              WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+            `);
+            
+            for (const row of tablesResult.rows) {
+              const tableName = row.table_name;
+              
+              // Get columns for this table
+              const columnsResult = await client.query(`
+                SELECT column_name, data_type, is_nullable, column_default
+                FROM information_schema.columns
+                WHERE table_name = $1
+                ORDER BY ordinal_position
+              `, [tableName]);
+              
+              const columns = columnsResult.rows.map(col => ({
+                name: col.column_name,
+                type: col.data_type,
+                nullable: col.is_nullable === 'YES',
+                defaultValue: col.column_default,
+                primaryKey: false,
+                foreignKey: null
+              }));
+              
+              tables.push({
+                name: tableName,
+                columns,
+                primaryKey: [],
+                foreignKeys: [],
+                indexes: []
+              });
+            }
+            
+            await client.end();
+          } catch (queryError) {
+            await client.end();
+            throw queryError;
+          }
+          break;
+        }
+        
+        case 'mysql': {
+          const mysql = await import('mysql2/promise');
+          const conn = await mysql.createConnection(connection.connectionString);
+          
+          try {
+            const [tablesRows] = await conn.query('SHOW TABLES');
+            
+            for (const row of tablesRows as any[]) {
+              const tableName = Object.values(row)[0] as string;
+              const [columnsRows] = await conn.query(`DESCRIBE ${tableName}`);
+              
+              const columns = (columnsRows as any[]).map(col => ({
+                name: col.Field,
+                type: col.Type,
+                nullable: col.Null === 'YES',
+                defaultValue: col.Default,
+                primaryKey: col.Key === 'PRI',
+                foreignKey: null
+              }));
+              
+              tables.push({
+                name: tableName,
+                columns,
+                primaryKey: [],
+                foreignKeys: [],
+                indexes: []
+              });
+            }
+            
+            await conn.end();
+          } catch (queryError) {
+            await conn.end();
+            throw queryError;
+          }
+          break;
+        }
+        
+        case 'sqlite': {
+          const Database = (await import('better-sqlite3')).default;
+          const db = new Database(connection.connectionString, { readonly: true });
+          
+          try {
+            const tablesResult = db.prepare(`
+              SELECT name FROM sqlite_master 
+              WHERE type='table' AND name NOT LIKE 'sqlite_%'
+            `).all() as any[];
+            
+            for (const table of tablesResult) {
+              const columns = db.prepare(`PRAGMA table_info(${table.name})`).all() as any[];
+              
+              const columnData = columns.map(col => ({
+                name: col.name,
+                type: col.type,
+                nullable: col.notnull === 0,
+                defaultValue: col.dflt_value,
+                primaryKey: col.pk === 1,
+                foreignKey: null
+              }));
+              
+              tables.push({
+                name: table.name,
+                columns: columnData,
+                primaryKey: [],
+                foreignKeys: [],
+                indexes: []
+              });
+            }
+            
+            db.close();
+          } catch (queryError) {
+            db.close();
+            throw queryError;
+          }
+          break;
+        }
+        
+        default:
+          throw new Error(`Unsupported provider: ${connection.provider}`);
+      }
+      
+      return tables;
+    } catch (error) {
+      console.error('Schema introspection failed:', error);
+      return [];
+    }
   }
 
   private static generateMockTables(provider: DatabaseProvider): Table[] {

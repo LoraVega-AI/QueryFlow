@@ -530,6 +530,43 @@ class ApplicationDataManager {
       )
     `);
 
+    // Compliance reports table
+    await this.appDb.exec(`
+      CREATE TABLE IF NOT EXISTS compliance_reports (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        results_json TEXT,
+        details_json TEXT,
+        generated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        generated_by TEXT,
+        user_id TEXT,
+        organization_id TEXT
+      )
+    `);
+
+    // Performance alerts table
+    await this.appDb.exec(`
+      CREATE TABLE IF NOT EXISTS performance_alerts (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        severity TEXT NOT NULL,
+        timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+        resolved INTEGER DEFAULT 0,
+        resolved_at TEXT,
+        workflow_id TEXT,
+        execution_id TEXT,
+        metadata_json TEXT,
+        user_id TEXT,
+        organization_id TEXT
+      )
+    `);
+
     console.log('Application database tables created');
   }
 

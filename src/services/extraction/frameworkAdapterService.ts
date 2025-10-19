@@ -41,6 +41,7 @@ export class FrameworkAdapterService {
     console.log(`🏗️  Extracting definitions from ${candidates.length} candidates...`);
 
     const tables: IRTable[] = [];
+    const errors: Array<{framework: string, error: Error, candidateCount: number}> = [];
 
     // Group candidates by framework for efficient processing
     const candidatesByFramework = this.groupCandidatesByFramework(candidates);
@@ -61,12 +62,26 @@ export class FrameworkAdapterService {
 
         console.log(`✅ Extracted ${extractedTables.length} tables from ${framework}`);
       } catch (error) {
-        console.error(`Failed to extract from ${framework}:`, error instanceof Error ? error.message : 'Unknown error');
+        const errorObj = error instanceof Error ? error : new Error('Unknown error');
+        console.error(`❌ Framework adapter ${framework} failed:`, errorObj.message);
+        errors.push({
+          framework,
+          error: errorObj,
+          candidateCount: frameworkCandidates.length
+        });
       }
     }
 
     const extractTime = Date.now() - startTime;
     console.log(`🏗️  Extracted ${tables.length} total tables in ${extractTime}ms`);
+
+    // Report adapter errors if any
+    if (errors.length > 0) {
+      console.warn(`⚠️  ${errors.length} adapter(s) failed during extraction:`);
+      errors.forEach(({framework, error, candidateCount}) => {
+        console.warn(`  - ${framework}: ${error.message} (${candidateCount} candidates affected)`);
+      });
+    }
 
     return tables;
   }

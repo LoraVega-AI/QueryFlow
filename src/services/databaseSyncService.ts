@@ -644,8 +644,8 @@ export class DatabaseSyncService {
       return;
     }
 
-    // Get source data (mock)
-    const sourceData = await this.getSourceTableData(tableName);
+    // Get source data from actual database connection
+    const sourceData = await this.getSourceTableData(tableName, session.source?.connection);
 
     try {
       // Clear target table
@@ -655,31 +655,50 @@ export class DatabaseSyncService {
       if (sourceData.length > 0) {
         await this.insertSampleData(session.projectId, tableName, sourceData);
       }
+      
+      console.log(`✅ Synced ${sourceData.length} rows to ${tableName}`);
     } catch (error) {
       console.error(`Failed to sync data for table ${tableName}:`, error);
       throw error;
     }
   }
 
-  // Get source table data (mock)
-  private static async getSourceTableData(tableName: string): Promise<any[]> {
-    // In a real implementation, this would query the QueryFlow database
-    // For now, return mock data based on table name
-    switch (tableName) {
-      case 'users':
-        return [
-          { id: 1, email: 'john@example.com', name: 'John Doe', created_at: '2024-01-15T10:00:00Z' },
-          { id: 2, email: 'jane@example.com', name: 'Jane Smith', created_at: '2024-01-16T11:00:00Z' },
-          { id: 3, email: 'bob@example.com', name: 'Bob Johnson', created_at: '2024-01-17T12:00:00Z' }
-        ];
-      case 'products':
-        return [
-          { id: 1, name: 'Laptop', price: 999.99, category: 'Electronics', stock: 50 },
-          { id: 2, name: 'Book', price: 19.99, category: 'Books', stock: 100 },
-          { id: 3, name: 'Chair', price: 149.99, category: 'Furniture', stock: 25 }
-        ];
-      default:
-        return [];
+  // Get source table data from actual database
+  private static async getSourceTableData(tableName: string, sourceConnection?: any): Promise<any[]> {
+    if (!sourceConnection) {
+      console.warn('No source connection provided for table data sync');
+      return [];
+    }
+
+    try {
+      const Database = (await import('better-sqlite3')).default;
+      
+      // Handle different connection types
+      let db: any;
+      if (typeof sourceConnection === 'string') {
+        // File path
+        db = new Database(sourceConnection, { readonly: true });
+      } else if (sourceConnection.filePath) {
+        db = new Database(sourceConnection.filePath, { readonly: true });
+      } else {
+        throw new Error('Unsupported source connection format');
+      }
+
+      try {
+        // Query actual table data
+        const stmt = db.prepare(`SELECT * FROM "${tableName}" LIMIT 1000`);
+        const rows = stmt.all();
+        db.close();
+        
+        console.log(`✅ Retrieved ${rows.length} rows from ${tableName}`);
+        return rows;
+      } catch (queryError) {
+        db.close();
+        throw queryError;
+      }
+    } catch (error) {
+      console.error(`Failed to get source table data for ${tableName}:`, error);
+      throw new Error(`Failed to query source table ${tableName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

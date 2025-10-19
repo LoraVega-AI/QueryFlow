@@ -525,71 +525,319 @@ class PythonParser implements LanguageParser {
   readonly extensions = ['.py', '.pyx', '.pyi', '.pyw'];
 
   async parse(content: string, options: any = {}): Promise<any> {
+    // Try primary parser
     try {
-      // In a real implementation, we would use the Python AST module
-      // For now, we'll create a simplified AST structure
-      const lines = content.split('\n');
-      const ast = {
-        type: 'Module',
-        body: [] as any[],
-        source: content,
-        lines: lines.length
-      };
-      
-      // Simple pattern matching for Python constructs
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        
-        if (line.startsWith('class ') && line.includes('Model')) {
-          ast.body.push({
-            type: 'ClassDef',
-            name: this.extractClassName(line),
-            lineno: i + 1,
-            source: line
-          });
-        }
-        
-        if (line.includes('models.') && line.includes('Field')) {
-          ast.body.push({
-            type: 'Assign',
-            lineno: i + 1,
-            source: line
-          });
-        }
-      }
-      
+      const pythonAst = await import('python-ast');
+      const ast = pythonAst.parse(content);
       return ast;
-    } catch (error) {
-      throw new Error(`Python parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } catch (primaryError) {
+      console.warn('Primary Python parser (python-ast) failed, trying alternative...');
+      
+      // Try alternative parser
+      try {
+        const pythonParser = await import('python-parser');
+        const ast = pythonParser.parse(content);
+        return ast;
+      } catch (secondaryError) {
+        console.warn('Alternative Python parser failed, using enhanced regex fallback');
+        return this.enhancedFallbackParse(content);
+      }
     }
   }
 
-  async traverse(ast: any, visitor: ASTVisitor): Promise<void> {
-    if (visitor.enter) visitor.enter(ast);
+  private enhancedFallbackParse(content: string): any {
+    // Tokenize first to handle multi-line constructs properly
+    const tokens = this.tokenizePython(content);
+    return this.parseFromTokens(tokens, content);
+  }
+
+  private tokenizePython(content: string): Array<{type: string, value: string, line: number}> {
+    const tokens: Array<{type: string, value: string, line: number}> = [];
+    const lines = content.split('\n');
     
-    for (const node of ast.body || []) {
-      if (visitor.enter) visitor.enter(node, ast);
-      if (visitor.exit) visitor.exit(node, ast);
+    for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+      const line = lines[lineNum];
+      let pos = 0;
+      
+      while (pos < line.length) {
+        const remaining = line.slice(pos);
+        
+        // Skip whitespace (but track it for indentation)
+        const wsMatch = remaining.match(/^(\s+)/);
+        if (wsMatch) {
+          tokens.push({type: 'WHITESPACE', value: wsMatch[1], line: lineNum});
+          pos += wsMatch[1].length;
+          continue;
+        }
+        
+        // Comments
+        if (remaining.startsWith('#')) {
+          tokens.push({type: 'COMMENT', value: remaining, line: lineNum});
+          break;
+        }
+        
+        // String literals (handle triple quotes, f-strings)
+        const stringMatch = remaining.match(/^(f?r?)("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/);
+        if (stringMatch) {
+          tokens.push({type: 'STRING', value: stringMatch[0], line: lineNum});
+          pos += stringMatch[0].length;
+          continue;
+        }
+        
+        // Numbers
+        const numMatch = remaining.match(/^(\d+\.?\d*|\.\d+)/);
+        if (numMatch) {
+          tokens.push({type: 'NUMBER', value: numMatch[1], line: lineNum});
+          pos += numMatch[1].length;
+          continue;
+        }
+        
+        // Keywords and identifiers
+        const identMatch = remaining.match(/^([a-zA-Z_][a-zA-Z0-9_]*)/);
+        if (identMatch) {
+          const word = identMatch[1];
+          const keywords = ['class', 'def', 'async', 'import', 'from', 'return', 'if', 'elif', 'else', 'for', 'while', 'try', 'except', 'finally', 'with'];
+          const type = keywords.includes(word) ? 'KEYWORD' : 'IDENTIFIER';
+          tokens.push({type, value: word, line: lineNum});
+          pos += word.length;
+          continue;
+        }
+        
+        // Operators and punctuation
+        const opMatch = remaining.match(/^(->|==|!=|<=|>=|::|[+\-*\/%=<>!:()[\]{},.])/);
+        if (opMatch) {
+          tokens.push({type: 'OPERATOR', value: opMatch[1], line: lineNum});
+          pos += opMatch[1].length;
+          continue;
+        }
+        
+        // Skip unknown character
+        pos++;
+      }
+      
+      tokens.push({type: 'NEWLINE', value: '\n', line: lineNum});
     }
     
-    if (visitor.exit) visitor.exit(ast);
+    return tokens;
+  }
+
+  private parseFromTokens(tokens: Array<{type: string, value: string, line: number}>, content: string): any {
+    const lines = content.split('\n');
+    const ast = {
+      type: 'Module',
+      body: [] as any[],
+      source: content,
+      lines: lines.length
+    };
+
+    let currentClass: any = null;
+    let currentFunction: any = null;
+    let indentLevel = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      const leadingSpaces = line.search(/\S/);
+      const currentIndent = leadingSpaces >= 0 ? leadingSpaces : 0;
+
+      // Class definitions
+      const classMatch = trimmed.match(/^class\s+(\w+)(?:\(([^)]*)\))?:/);
+      if (classMatch) {
+        currentClass = {
+          type: 'ClassDef',
+          name: classMatch[1],
+          bases: classMatch[2] ? classMatch[2].split(',').map(b => b.trim()) : [],
+          body: [],
+          decorator_list: [],
+          lineno: i + 1,
+          col_offset: currentIndent,
+          source: line
+        };
+        ast.body.push(currentClass);
+        indentLevel = currentIndent;
+        continue;
+      }
+
+      // Function/method definitions
+      const funcMatch = trimmed.match(/^def\s+(\w+)\s*\(([^)]*)\)(?:\s*->\s*(.+))?:/);
+      if (funcMatch) {
+        const funcNode = {
+          type: 'FunctionDef',
+          name: funcMatch[1],
+          args: this.parseArguments(funcMatch[2]),
+          returns: funcMatch[3] ? funcMatch[3].trim() : null,
+          body: [],
+          decorator_list: [],
+          lineno: i + 1,
+          col_offset: currentIndent,
+          source: line
+        };
+
+        if (currentClass && currentIndent > indentLevel) {
+          currentClass.body.push(funcNode);
+        } else {
+          ast.body.push(funcNode);
+        }
+        currentFunction = funcNode;
+        continue;
+      }
+
+      // Decorators
+      const decoratorMatch = trimmed.match(/^@(\w+)(?:\(([^)]*)\))?/);
+      if (decoratorMatch) {
+        const decorator = {
+          type: 'Decorator',
+          name: decoratorMatch[1],
+          args: decoratorMatch[2] || null,
+          lineno: i + 1,
+          source: line
+        };
+        // Store for next class/function
+        if (i + 1 < lines.length) {
+          const nextLine = lines[i + 1].trim();
+          if (nextLine.startsWith('class ') || nextLine.startsWith('def ')) {
+            if (!ast.pendingDecorators) {
+              ast.pendingDecorators = [];
+            }
+            ast.pendingDecorators.push(decorator);
+          }
+        }
+        continue;
+      }
+
+      // Assignments (model fields)
+      const assignMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
+      if (assignMatch && currentClass) {
+        const assignNode = {
+          type: 'Assign',
+          targets: [{ type: 'Name', id: assignMatch[1] }],
+          value: assignMatch[2],
+          lineno: i + 1,
+          col_offset: currentIndent,
+          source: line
+        };
+        currentClass.body.push(assignNode);
+        continue;
+      }
+
+      // Import statements
+      const importMatch = trimmed.match(/^(?:from\s+([\w.]+)\s+)?import\s+(.+)$/);
+      if (importMatch) {
+        const importNode = {
+          type: importMatch[1] ? 'ImportFrom' : 'Import',
+          module: importMatch[1] || null,
+          names: importMatch[2].split(',').map(n => n.trim()),
+          lineno: i + 1,
+          source: line
+        };
+        ast.body.push(importNode);
+        continue;
+      }
+
+      // Call expressions (for migration operations, etc.)
+      const callMatch = trimmed.match(/^(\w+(?:\.\w+)*)\s*\(([^)]*)\)/);
+      if (callMatch) {
+        const callNode = {
+          type: 'Call',
+          func: callMatch[1],
+          args: callMatch[2],
+          lineno: i + 1,
+          col_offset: currentIndent,
+          source: line
+        };
+
+        if (currentFunction) {
+          currentFunction.body.push(callNode);
+        } else if (currentClass) {
+          currentClass.body.push(callNode);
+        } else {
+          ast.body.push(callNode);
+        }
+      }
+    }
+
+    return ast;
+  }
+
+  private parseArguments(argsString: string): any {
+    if (!argsString.trim()) {
+      return { args: [], defaults: [] };
+    }
+
+    const args = argsString.split(',').map(arg => {
+      const trimmed = arg.trim();
+      const parts = trimmed.split(':');
+      const name = parts[0].trim();
+      const annotation = parts[1] ? parts[1].trim() : null;
+      
+      return {
+        arg: name,
+        annotation: annotation
+      };
+    });
+
+    return { args, defaults: [] };
+  }
+
+  async traverse(ast: any, visitor: ASTVisitor): Promise<void> {
+    const traverseNode = (node: any, parent?: any) => {
+      if (!node || typeof node !== 'object') return;
+
+      if (visitor.enter) visitor.enter(node, parent);
+
+      // Traverse body
+      if (Array.isArray(node.body)) {
+        for (const child of node.body) {
+          traverseNode(child, node);
+        }
+      }
+
+      // Traverse other common Python AST properties
+      const properties = ['orelse', 'finalbody', 'handlers', 'decorator_list'];
+      for (const prop of properties) {
+        if (Array.isArray(node[prop])) {
+          for (const child of node[prop]) {
+            traverseNode(child, node);
+          }
+        }
+      }
+
+      if (visitor.exit) visitor.exit(node, parent);
+    };
+
+    traverseNode(ast);
   }
 
   extractNodes(ast: any, nodeTypes: string[]): any[] {
     const nodes: any[] = [];
     
-    for (const node of ast.body || []) {
+    const collectNodes = (node: any) => {
+      if (!node || typeof node !== 'object') return;
+
       if (nodeTypes.includes(node.type)) {
         nodes.push(node);
       }
-    }
-    
-    return nodes;
-  }
 
-  private extractClassName(line: string): string {
-    const match = line.match(/class\s+(\w+)/);
-    return match ? match[1] : 'Unknown';
+      // Recursively search body
+      if (Array.isArray(node.body)) {
+        for (const child of node.body) {
+          collectNodes(child);
+        }
+      }
+
+      // Search other properties
+      const properties = ['orelse', 'finalbody', 'handlers', 'decorator_list'];
+      for (const prop of properties) {
+        if (Array.isArray(node[prop])) {
+          for (const child of node[prop]) {
+            collectNodes(child);
+          }
+        }
+      }
+    };
+
+    collectNodes(ast);
+    return nodes;
   }
 }
 

@@ -202,24 +202,98 @@ export class WorkerPoolService {
    * Synchronous parse task
    */
   private async parseTaskSync(task: WorkerTask): Promise<any> {
-    // Placeholder for synchronous parsing
-    // In a real implementation, this would handle the parsing logic
-    return { parsed: true, taskId: task.id };
+    try {
+      const { ASTParsingService } = await import('./astParsingService');
+      const astService = new ASTParsingService();
+      
+      if (task.data?.content && task.data?.language) {
+        const ast = await astService.parse(
+          task.data.content,
+          task.data.language,
+          task.data.filePath || 'unknown'
+        );
+        
+        return {
+          parsed: true,
+          taskId: task.id,
+          ast,
+          language: task.data.language
+        };
+      }
+      
+      return { parsed: false, taskId: task.id, error: 'Missing content or language' };
+    } catch (error) {
+      return {
+        parsed: false,
+        taskId: task.id,
+        error: error instanceof Error ? error.message : 'Parse failed'
+      };
+    }
   }
 
   /**
    * Synchronous extract task
    */
   private async extractTaskSync(task: WorkerTask): Promise<any> {
-    // Placeholder for synchronous extraction
-    return { extracted: true, taskId: task.id };
+    try {
+      const { FrameworkAdapterService } = await import('./frameworkAdapterService');
+      
+      if (task.data?.file && task.data?.framework) {
+        const adapter = FrameworkAdapterService.getAdapter(task.data.framework);
+        
+        if (adapter) {
+          const candidates = await adapter.extractDefinitions(task.data.file);
+          const tables = await adapter.parseToIR(candidates);
+          
+          return {
+            extracted: true,
+            taskId: task.id,
+            tables,
+            candidatesCount: candidates.length
+          };
+        }
+      }
+      
+      return { extracted: false, taskId: task.id, error: 'Missing file or framework' };
+    } catch (error) {
+      return {
+        extracted: false,
+        taskId: task.id,
+        error: error instanceof Error ? error.message : 'Extract failed'
+      };
+    }
   }
 
   /**
    * Synchronous convert task
    */
   private async convertTaskSync(task: WorkerTask): Promise<any> {
-    // Placeholder for synchronous conversion
-    return { converted: true, taskId: task.id };
+    try {
+      const { SQLiteConversionService } = await import('./sqliteConversionService');
+      
+      if (task.data?.tables && task.data?.outputPath) {
+        const conversionService = new SQLiteConversionService();
+        await conversionService.convertToSQLite(
+          task.data.tables,
+          task.data.outputPath,
+          task.data.options || {}
+        );
+        
+        return {
+          converted: true,
+          taskId: task.id,
+          outputPath: task.data.outputPath,
+          tablesCount: task.data.tables.length
+        };
+      }
+      
+      return { converted: false, taskId: task.id, error: 'Missing tables or output path' };
+    } catch (error) {
+      return {
+        converted: false,
+        taskId: task.id,
+        error: error instanceof Error ? error.message : 'Convert failed'
+      };
+    }
   }
 }

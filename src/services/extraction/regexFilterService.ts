@@ -554,12 +554,25 @@ export class RegexFilterService {
   }
 
   /**
-   * Read file content (mock implementation - would use fs in real scenario)
+   * Read file content from filesystem
    */
   private async readFileContent(filePath: string): Promise<string> {
-    // In a real implementation, this would read from the file system
-    // For now, return empty string as placeholder
-    return '';
+    try {
+      const fs = await import('fs/promises');
+      const content = await fs.readFile(filePath, 'utf-8');
+      return content;
+    } catch (error) {
+      // Try alternative encodings if UTF-8 fails
+      try {
+        const fs = await import('fs/promises');
+        const buffer = await fs.readFile(filePath);
+        // Try latin1 encoding
+        return buffer.toString('latin1');
+      } catch (fallbackError) {
+        console.warn(`Failed to read file ${filePath}:`, error instanceof Error ? error.message : 'Unknown error');
+        return '';
+      }
+    }
   }
 
   /**

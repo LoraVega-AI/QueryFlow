@@ -107,6 +107,9 @@ export class DatabaseDefinitionExtractor {
       const irSchema = await this.normalization.normalize(extractedTables, extractionOptions);
       console.log(`✅ Normalized schema with ${irSchema.tables.length} tables`);
 
+      // Comprehensive schema validation
+      this.validateExtractedSchema(irSchema);
+
       // Stage 6: SQLite Conversion
       await this.updateProgress('converting');
       const sqliteDb = await this.sqliteConverter.convert(irSchema, {
@@ -114,7 +117,6 @@ export class DatabaseDefinitionExtractor {
         createIndexes: true,
         addMetadata: true,
         enableConstraints: true,
-        generateSampleData: false
       });
       console.log(`🗄️  Generated SQLite database`);
 
@@ -124,34 +126,53 @@ export class DatabaseDefinitionExtractor {
       let databaseIntrospection = null;
       let tempDbPath: string | undefined;
       
-      try {
-        // Create temp file from buffer for verification
-        if (sqliteDb) {
-          tempDbPath = await this.tempFileManager.createTempDatabase(sqliteDb, `extraction_${Date.now()}`);
-          console.log(`📁 Created temp database for verification: ${tempDbPath}`);
-          
-          // Perform table verification against actual database
-          verificationResult = await this.verificationService.verifyTables(
-            irSchema.tables,
-            'sqlite',
-            { filePath: tempDbPath }
-          );
-          
-          // Perform database introspection
-          databaseIntrospection = await this.verificationService.introspectDatabase(
-            'sqlite',
-            { filePath: tempDbPath }
-          );
-          
-          console.log(`✅ Verification completed with ${verificationResult.verifiedTables.length} verified tables`);
-          console.log(`🔍 Database introspection found ${databaseIntrospection.actualTables.length} actual tables`);
-        }
-      } catch (error) {
-        console.warn('⚠️ Verification failed, continuing without verification:', error);
-      } finally {
-        // Always cleanup temp file
-        if (tempDbPath) {
-          await this.tempFileManager.cleanup(tempDbPath);
+      // Check verification mode
+      if (options.verification.enabled && options.verification.mode !== 'disabled') {
+        try {
+          // Create temp file from buffer for verification
+          if (sqliteDb) {
+            tempDbPath = await this.tempFileManager.createTempDatabase(sqliteDb, `extraction_${Date.now()}`);
+            console.log(`📁 Created temp database for verification: ${tempDbPath}`);
+            
+            // Perform table verification against actual database
+            verificationResult = await this.verificationService.verifyTables(
+              irSchema.tables,
+              'sqlite',
+              { filePath: tempDbPath }
+            );
+            
+            // Perform database introspection based on depth setting
+            if (options.verification.introspectionDepth !== 'shallow') {
+              databaseIntrospection = await this.verificationService.introspectDatabase(
+                'sqlite',
+                { filePath: tempDbPath }
+              );
+            }
+            
+            console.log(`✅ Verification completed with ${verificationResult.verifiedTables.length} verified tables`);
+            if (databaseIntrospection) {
+              console.log(`🔍 Database introspection found ${databaseIntrospection.actualTables.length} actual tables`);
+            }
+            
+            // Handle strict mode
+            if (options.verification.mode === 'strict') {
+              if (verificationResult.verificationStats.accuracy < 0.9) {
+                throw new Error(`Verification accuracy too low: ${verificationResult.verificationStats.accuracy}`);
+              }
+            }
+          }
+        } catch (error) {
+          if (options.verification.failOnError) {
+            throw error;
+          } else {
+            console.warn('⚠️ Verification failed in lenient mode:', error);
+            this.addWarning(`Verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        } finally {
+          // Always cleanup temp file
+          if (tempDbPath) {
+            await this.tempFileManager.cleanup(tempDbPath);
+          }
         }
       }
 
@@ -564,7 +585,6 @@ export class DatabaseDefinitionExtractor {
         createIndexes: true,
         addMetadata: true,
         enableConstraints: true,
-        generateSampleData: false
       });
 
       // Stage 7: Database Verification and Introspection
@@ -740,6 +760,16 @@ export class DatabaseDefinitionExtractor {
     const errors: string[] = [];
     const warnings: string[] = [];
 
+    // Set default verification options if not provided
+    if (!options.verification) {
+      (options as any).verification = {
+        enabled: true,
+        mode: 'lenient',
+        failOnError: false,
+        introspectionDepth: 'shallow'
+      };
+    }
+
     if (options.maxDepth && options.maxDepth < 1) {
       errors.push('maxDepth must be at least 1');
     }
@@ -796,6 +826,114 @@ export class DatabaseDefinitionExtractor {
   async cleanup(): Promise<void> {
     await this.workerPool.terminate();
     await this.cache.clear();
+  }
+
+  /**
+   * Validate extracted schema for common issues
+   */
+  private validateExtractedSchema(schema: any): void {
+    console.log('🔍 Validating extracted schema...');
+    
+    const tableNames = new Set<string>();
+    const allTableNames = schema.tables.map((t: any) => t.name);
+    
+    for (const table of schema.tables) {
+      // Check for duplicate table names
+      if (tableNames.has(table.name)) {
+        this.addWarning(`Duplicate table name found: ${table.name}`);
+      }
+      tableNames.add(table.name);
+      
+      // Check for tables with no primary key
+      const hasPrimaryKey = table.fields.some((f: any) => f.primaryKey);
+      if (!hasPrimaryKey && !table.metadata?.inferred) {
+        this.addWarning(`Table '${table.name}' has no primary key defined`);
+      }
+      
+      // Check for fields with no type
+      for (const field of table.fields) {
+        if (!field.type) {
+          this.addError(`Field '${field.name}' in table '${table.name}' has no type defined`);
+        }
+      }
+      
+      // Validate foreign key references
+      for (const field of table.fields) {
+        if (field.foreignKey) {
+          const referencedTable = field.foreignKey.table;
+          if (!allTableNames.includes(referencedTable)) {
+            this.addWarning(
+              `Foreign key in '${table.name}.${field.name}' references non-existent table '${referencedTable}'`
+            );
+          }
+        }
+      }
+    }
+    
+    // Check for circular foreign key dependencies
+    const circularDeps = this.detectCircularDependencies(schema.tables);
+    if (circularDeps.length > 0) {
+      this.addWarning(`Circular foreign key dependencies detected: ${circularDeps.join(' -> ')}`);
+    }
+    
+    console.log(`✅ Schema validation complete`);
+  }
+
+  /**
+   * Detect circular foreign key dependencies
+   */
+  private detectCircularDependencies(tables: any[]): string[] {
+    const graph = new Map<string, string[]>();
+    
+    // Build dependency graph
+    for (const table of tables) {
+      const deps: string[] = [];
+      for (const field of table.fields) {
+        if (field.foreignKey) {
+          deps.push(field.foreignKey.table);
+        }
+      }
+      graph.set(table.name, deps);
+    }
+    
+    // DFS to detect cycles
+    const visited = new Set<string>();
+    const recursionStack = new Set<string>();
+    const path: string[] = [];
+    
+    const hasCycle = (node: string): boolean => {
+      visited.add(node);
+      recursionStack.add(node);
+      path.push(node);
+      
+      const neighbors = graph.get(node) || [];
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+          if (hasCycle(neighbor)) {
+            return true;
+          }
+        } else if (recursionStack.has(neighbor)) {
+          // Found cycle
+          const cycleStart = path.indexOf(neighbor);
+          path.push(neighbor); // Complete the cycle
+          return true;
+        }
+      }
+      
+      recursionStack.delete(node);
+      path.pop();
+      return false;
+    };
+    
+    for (const tableName of graph.keys()) {
+      if (!visited.has(tableName)) {
+        if (hasCycle(tableName)) {
+          return path;
+        }
+      }
+    }
+    
+    return [];
   }
 
   // Private methods

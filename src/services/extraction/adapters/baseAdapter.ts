@@ -292,6 +292,32 @@ export abstract class BaseAdapter implements FrameworkAdapter {
   }
 
   /**
+   * Determine if primary key should be inferred for a table
+   * Only returns true if framework always creates default primary keys and confidence is high
+   */
+  protected shouldInferPrimaryKey(candidate: ExtractionCandidate): boolean {
+    // Only infer for frameworks that always create default primary keys
+    const frameworksWithDefaultKeys = ['django', 'eloquent', 'mongoose'];
+    
+    if (!candidate.framework || !frameworksWithDefaultKeys.includes(candidate.framework)) {
+      return false;
+    }
+    
+    // Require high confidence score
+    if (candidate.confidence < 85) {
+      return false;
+    }
+    
+    // Check that no explicit primary key definition exists in the content
+    const hasPKPattern = /primary_key|primaryKey|@PrimaryKey|@Id/i.test(candidate.content);
+    if (hasPKPattern) {
+      return false;
+    }
+    
+    return true;
+  }
+
+  /**
    * Validate extracted table definition
    */
   protected validateTable(table: IRTable): {

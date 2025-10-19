@@ -52,13 +52,6 @@ export class SQLiteConversionService {
         await this.addMetadata(db, schema);
       }
 
-      // Generate sample data if requested
-      if (options.generateSampleData) {
-        for (const table of schema.tables) {
-          await this.generateSampleData(db, table);
-        }
-      }
-
       // Get database as buffer
       const buffer = db.serialize();
       db.close();
@@ -115,13 +108,6 @@ export class SQLiteConversionService {
       // Add metadata if requested
       if (options.addMetadata) {
         await this.addMetadata(db, schema);
-      }
-
-      // Generate sample data if requested
-      if (options.generateSampleData) {
-        for (const table of schema.tables) {
-          await this.generateSampleData(db, table);
-        }
       }
 
       // Close database
@@ -414,73 +400,6 @@ export class SQLiteConversionService {
         table.sourceLocation.file,
         JSON.stringify(table.metadata.tags)
       );
-    }
-  }
-
-  /**
-   * Generate sample data for tables
-   */
-  private async generateSampleData(db: Database.Database, table: IRTable): Promise<void> {
-    if (table.fields.length === 0) return;
-
-    const sampleSize = 5; // Generate 5 sample rows
-    
-    // Prepare insert statement
-    const columns = table.fields.map(f => `"${f.name}"`).join(', ');
-    const placeholders = table.fields.map(() => '?').join(', ');
-    const stmt = db.prepare(`INSERT INTO "${table.name}" (${columns}) VALUES (${placeholders})`);
-
-    // Generate sample rows
-    for (let i = 0; i < sampleSize; i++) {
-      const values = table.fields.map(field => this.generateSampleValue(field, i));
-      
-      try {
-        stmt.run(values);
-      } catch (error) {
-        // Skip if sample data violates constraints
-        console.warn(`Failed to insert sample data for ${table.name}:`, error instanceof Error ? error.message : 'Unknown error');
-        break;
-      }
-    }
-  }
-
-  /**
-   * Generate sample value for a field
-   */
-  private generateSampleValue(field: IRField, index: number): any {
-    if (field.autoIncrement || field.primaryKey) {
-      return index + 1;
-    }
-
-    if (field.defaultValue !== undefined) {
-      return field.defaultValue;
-    }
-
-    // Generate based on type
-    switch (field.type) {
-      case 'VARCHAR':
-      case 'TEXT':
-        return `sample_${field.name}_${index + 1}`;
-      case 'INTEGER':
-      case 'BIGINT':
-        return index + 1;
-      case 'FLOAT':
-      case 'DOUBLE':
-      case 'REAL':
-        return (index + 1) * 1.5;
-      case 'BOOLEAN':
-        return index % 2 === 0;
-      case 'DATE':
-        return '2024-01-01';
-      case 'DATETIME':
-      case 'TIMESTAMP':
-        return '2024-01-01 12:00:00';
-      case 'UUID':
-        return `00000000-0000-0000-0000-${String(index).padStart(12, '0')}`;
-      case 'JSON':
-        return JSON.stringify({ sample: true, index: index + 1 });
-      default:
-        return null;
     }
   }
 

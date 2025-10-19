@@ -73,17 +73,29 @@ class DatabaseService {
     this.config = config;
   }
 
+  /**
+   * Get SQLite database connection to queryflow_app.db
+   */
+  private getDatabase(): any {
+    try {
+      const Database = require('better-sqlite3');
+      const path = require('path');
+      const dbPath = path.join(process.cwd(), 'queryflow_app.db');
+      return new Database(dbPath);
+    } catch (error) {
+      console.error('Failed to get database connection:', error);
+      throw new Error('Database connection failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  }
+
   async connect(): Promise<void> {
     try {
-      // In a real implementation, this would connect to PostgreSQL/MySQL
-      // For now, we'll simulate a connection
-      console.log('Connecting to database...', this.config);
-      
-      // Simulate connection delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Test SQLite connection
+      const db = this.getDatabase();
+      db.close();
       
       this.isConnected = true;
-      console.log('Database connected successfully');
+      console.log('Database connected successfully to queryflow_app.db');
     } catch (error) {
       console.error('Database connection failed:', error);
       throw new Error('Failed to connect to database');
@@ -103,19 +115,38 @@ class DatabaseService {
       throw new Error('Database not connected');
     }
 
+    const db = this.getDatabase();
     try {
-      // In a real implementation, this would execute SQL queries
-      console.log('Executing query:', sql, params);
+      // Convert PostgreSQL-style $1, $2, $3 to SQLite ?, ?, ?
+      const sqliteQuery = sql.replace(/\$(\d+)/g, '?');
       
-      // Simulate query execution
-      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log('Executing query:', sqliteQuery, params);
       
-      // Return mock data for now
-      return {
-        data: [],
-        count: 0
-      };
+      // Determine if it's a SELECT query or a modification query
+      const isSelect = sqliteQuery.trim().toUpperCase().startsWith('SELECT');
+      
+      if (isSelect) {
+        const stmt = db.prepare(sqliteQuery);
+        const rows = stmt.all(...params);
+        db.close();
+        
+        return {
+          data: rows as T[],
+          count: rows.length
+        };
+      } else {
+        // INSERT, UPDATE, DELETE
+        const stmt = db.prepare(sqliteQuery);
+        const result = stmt.run(...params);
+        db.close();
+        
+        return {
+          data: [] as T[],
+          count: result.changes || 0
+        };
+      }
     } catch (error) {
+      db.close();
       console.error('Query execution failed:', error);
       return {
         data: [],
@@ -162,128 +193,30 @@ class DatabaseService {
   }
 
   async getWorkflows(userId: string, organizationId: string): Promise<WorkflowRecord[]> {
-    // For demo purposes, return mock data
-    const mockWorkflows: WorkflowRecord[] = [
-      {
-        id: 'wf_1',
-        name: 'Data Backup Workflow',
-        description: 'Automated daily backup of critical database tables',
-        trigger: 'scheduled',
-        steps: [
-          {
-            id: 'step_1',
-            type: 'backup',
-            name: 'Backup Users Table',
-            description: 'Create backup of users table',
-            config: { table: 'users', format: 'sql' },
-            enabled: true,
-            order: 1
-          },
-          {
-            id: 'step_2',
-            type: 'notification',
-            name: 'Send Backup Notification',
-            description: 'Notify admin of successful backup',
-            config: { type: 'email', recipients: ['admin@company.com'] },
-            enabled: true,
-            order: 2
-          }
-        ],
-        enabled: true,
-        created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-        updated_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-        last_run: new Date(Date.now() - 6 * 60 * 60 * 1000),
-        next_run: new Date(Date.now() + 18 * 60 * 60 * 1000),
-        user_id: userId,
-        organization_id: organizationId
-      },
-      {
-        id: 'wf_2',
-        name: 'Data Validation Pipeline',
-        description: 'Validate and clean incoming data from external sources',
-        trigger: 'manual',
-        steps: [
-          {
-            id: 'step_3',
-            type: 'schema_validation',
-            name: 'Validate Schema',
-            description: 'Validate data against predefined schema',
-            config: { schema: 'customer_data_schema' },
-            enabled: true,
-            order: 1
-          },
-          {
-            id: 'step_4',
-            type: 'data_migration',
-            name: 'Transform Data',
-            description: 'Transform data to target format',
-            config: { source: 'raw_data', target: 'processed_data' },
-            enabled: true,
-            order: 2
-          },
-          {
-            id: 'step_5',
-            type: 'performance_check',
-            name: 'Performance Check',
-            description: 'Check data processing performance',
-            config: { threshold: 5000 },
-            enabled: true,
-            order: 3
-          }
-        ],
-        enabled: true,
-        created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-        updated_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-        last_run: new Date(Date.now() - 2 * 60 * 60 * 1000),
-        next_run: undefined,
-        user_id: userId,
-        organization_id: organizationId
-      },
-      {
-        id: 'wf_3',
-        name: 'User Onboarding Automation',
-        description: 'Automated workflow for new user onboarding process',
-        trigger: 'event_driven',
-        steps: [
-          {
-            id: 'step_6',
-            type: 'notification',
-            name: 'Welcome Email',
-            description: 'Send welcome email to new user',
-            config: { type: 'email', template: 'welcome_template' },
-            enabled: true,
-            order: 1
-          },
-          {
-            id: 'step_7',
-            type: 'data_migration',
-            name: 'Create User Profile',
-            description: 'Create user profile in system',
-            config: { source: 'registration_data', target: 'user_profiles' },
-            enabled: true,
-            order: 2
-          },
-          {
-            id: 'step_8',
-            type: 'notification',
-            name: 'Admin Notification',
-            description: 'Notify admin of new user registration',
-            config: { type: 'slack', channel: '#new-users' },
-            enabled: true,
-            order: 3
-          }
-        ],
-        enabled: true,
-        created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-        updated_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-        last_run: new Date(Date.now() - 30 * 60 * 1000),
-        next_run: undefined,
-        user_id: userId,
-        organization_id: organizationId
-      }
-    ];
-
-    return mockWorkflows;
+    const db = this.getDatabase();
+    
+    try {
+      // Query actual workflows from database
+      const workflows = db.prepare(`
+        SELECT * FROM workflows 
+        WHERE user_id = ? AND organization_id = ? 
+        ORDER BY created_at DESC
+      `).all(userId, organizationId) as any[];
+      
+      // Parse JSON fields
+      return workflows.map(wf => ({
+        ...wf,
+        steps: typeof wf.steps === 'string' ? JSON.parse(wf.steps) : wf.steps,
+        created_at: new Date(wf.created_at),
+        updated_at: new Date(wf.updated_at),
+        last_run: wf.last_run ? new Date(wf.last_run) : undefined,
+        next_run: wf.next_run ? new Date(wf.next_run) : undefined
+      }));
+    } catch (error) {
+      console.error('Failed to get workflows from database:', error);
+      // Return empty array instead of mock data
+      return [];
+    }
   }
 
   async getWorkflow(id: string): Promise<WorkflowRecord | null> {
@@ -371,7 +304,33 @@ class DatabaseService {
   }
 
   async getWorkflowExecutions(workflowId: string, limit: number = 50): Promise<WorkflowExecutionRecord[]> {
-    // For demo purposes, return mock execution data
+    const db = this.getDatabase();
+    
+    try {
+      // Query actual workflow executions from database
+      const executions = db.prepare(`
+        SELECT * FROM workflow_executions 
+        WHERE workflow_id = ? 
+        ORDER BY start_time DESC 
+        LIMIT ?
+      `).all(workflowId, limit) as any[];
+      
+      // Parse JSON fields and dates
+      return executions.map(exec => ({
+        ...exec,
+        steps: typeof exec.steps === 'string' ? JSON.parse(exec.steps) : exec.steps,
+        start_time: new Date(exec.start_time),
+        end_time: exec.end_time ? new Date(exec.end_time) : undefined
+      }));
+    } catch (error) {
+      console.error('Failed to get workflow executions from database:', error);
+      // Return empty array instead of mock data
+      return [];
+    }
+  }
+
+  // Deprecated mock data - removed
+  private _OLD_getWorkflowExecutions_MOCK(workflowId: string, limit: number = 50): WorkflowExecutionRecord[] {
     const mockExecutions: WorkflowExecutionRecord[] = [
       {
         id: `exec_${workflowId}_1`,
@@ -456,6 +415,7 @@ class DatabaseService {
 
     return mockExecutions.slice(0, limit);
   }
+  // End of deprecated mock method - DO NOT USE
 
   async updateWorkflowExecution(id: string, updates: Partial<WorkflowExecutionRecord>): Promise<WorkflowExecutionRecord> {
     const setClause = Object.keys(updates)

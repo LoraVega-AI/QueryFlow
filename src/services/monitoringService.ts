@@ -332,81 +332,12 @@ class MonitoringService {
   }
 
   async getDashboards(userId: string, organizationId: string): Promise<Dashboard[]> {
-    // For demo purposes, return mock dashboards
-    const mockDashboards: Dashboard[] = [
-      {
-        id: 'dashboard_1',
-        name: 'Workflow Performance Dashboard',
-        description: 'Monitor workflow execution performance and metrics',
-        widgets: [
-          {
-            id: 'widget_1',
-            type: 'metric',
-            title: 'Total Executions',
-            config: { metric: 'workflow.executions.total' },
-            position: { x: 0, y: 0, width: 4, height: 2 }
-          },
-          {
-            id: 'widget_2',
-            type: 'chart',
-            title: 'Execution Success Rate',
-            config: { chartType: 'line', metric: 'workflow.executions.success_rate' },
-            position: { x: 4, y: 0, width: 4, height: 2 }
-          },
-          {
-            id: 'widget_3',
-            type: 'table',
-            title: 'Recent Executions',
-            config: { query: 'SELECT * FROM executions ORDER BY start_time DESC LIMIT 10' },
-            position: { x: 0, y: 2, width: 8, height: 4 }
-          }
-        ],
-        layout: { columns: 8, rows: 6 },
-        refreshInterval: 30,
-        isPublic: false,
-        userId: userId,
-        organizationId: organizationId,
-        createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-        updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
-      },
-      {
-        id: 'dashboard_2',
-        name: 'System Health Dashboard',
-        description: 'Monitor system health and resource usage',
-        widgets: [
-          {
-            id: 'widget_4',
-            type: 'chart',
-            title: 'CPU Usage',
-            config: { metric: 'system.cpu.usage', chartType: 'gauge' },
-            position: { x: 0, y: 0, width: 3, height: 3 }
-          },
-          {
-            id: 'widget_5',
-            type: 'chart',
-            title: 'Memory Usage',
-            config: { metric: 'system.memory.usage', chartType: 'gauge' },
-            position: { x: 3, y: 0, width: 3, height: 3 }
-          },
-          {
-            id: 'widget_6',
-            type: 'chart',
-            title: 'Active Workflows',
-            config: { chartType: 'bar', metric: 'workflow.active_count' },
-            position: { x: 6, y: 0, width: 3, height: 3 }
-          }
-        ],
-        layout: { columns: 9, rows: 6 },
-        refreshInterval: 10,
-        isPublic: true,
-        userId: userId,
-        organizationId: organizationId,
-        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-        updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
-      }
-    ];
-
-    return mockDashboards;
+    // Return dashboards stored in memory for this user/organization
+    const userDashboards = Array.from(this.dashboards.values()).filter(
+      (dashboard) => dashboard.userId === userId && dashboard.organizationId === organizationId
+    );
+    
+    return userDashboards;
   }
 
   async getDashboard(id: string): Promise<Dashboard | null> {
@@ -523,71 +454,8 @@ class MonitoringService {
     organizationId?: string,
     limit: number = 100
   ): Promise<AuditLog[]> {
-    // For demo purposes, return mock audit logs
-    const mockAuditLogs: AuditLog[] = [
-      {
-        id: 'audit_1',
-        userId: userId || 'user_1',
-        organizationId: organizationId || 'org_1',
-        action: 'workflow_executed',
-        resource: 'workflow',
-        resourceId: 'wf_1',
-        details: { workflowName: 'Data Backup Workflow', status: 'completed' },
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000)
-      },
-      {
-        id: 'audit_2',
-        userId: userId || 'user_1',
-        organizationId: organizationId || 'org_1',
-        action: 'workflow_created',
-        resource: 'workflow',
-        resourceId: 'wf_2',
-        details: { workflowName: 'Data Validation Pipeline', trigger: 'manual' },
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
-      },
-      {
-        id: 'audit_3',
-        userId: userId || 'user_1',
-        organizationId: organizationId || 'org_1',
-        action: 'workflow_updated',
-        resource: 'workflow',
-        resourceId: 'wf_3',
-        details: { workflowName: 'User Onboarding Automation', changes: ['steps', 'config'] },
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
-      },
-      {
-        id: 'audit_4',
-        userId: userId || 'user_1',
-        organizationId: organizationId || 'org_1',
-        action: 'dashboard_created',
-        resource: 'dashboard',
-        resourceId: 'dashboard_1',
-        details: { dashboardName: 'Workflow Performance Dashboard', widgets: 3 },
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
-      },
-      {
-        id: 'audit_5',
-        userId: userId || 'user_1',
-        organizationId: organizationId || 'org_1',
-        action: 'user_login',
-        resource: 'user',
-        resourceId: userId || 'user_1',
-        details: { loginMethod: 'password', success: true },
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-      }
-    ];
-
-    let logs = [...mockAuditLogs];
+    // Filter audit logs from stored logs
+    let logs = [...this.auditLogs];
     
     if (userId) {
       logs = logs.filter(log => log.userId === userId);
@@ -635,6 +503,181 @@ class MonitoringService {
         }
       });
     }
+  }
+
+  // Get database connection
+  private getDatabase(): any {
+    try {
+      const Database = require('better-sqlite3');
+      const path = require('path');
+      const dbPath = path.join(process.cwd(), 'queryflow_app.db');
+      return new Database(dbPath);
+    } catch (error) {
+      console.error('Failed to get database connection:', error);
+      throw new Error('Database connection failed');
+    }
+  }
+
+  // Get compliance reports from database
+  async getComplianceReports(userId: string, organizationId: string): Promise<any[]> {
+    const db = this.getDatabase();
+    try {
+      const reports = db.prepare(`
+        SELECT * FROM compliance_reports 
+        WHERE user_id = ? AND organization_id = ?
+        ORDER BY generated_at DESC
+      `).all(userId, organizationId);
+      
+      db.close();
+      
+      // Parse JSON fields
+      return reports.map((report: any) => ({
+        ...report,
+        period: {
+          start: new Date(report.period_start),
+          end: new Date(report.period_end)
+        },
+        results: report.results_json ? JSON.parse(report.results_json) : {},
+        details: report.details_json ? JSON.parse(report.details_json) : [],
+        generatedAt: new Date(report.generated_at)
+      }));
+    } catch (error) {
+      db.close();
+      console.error('Failed to get compliance reports:', error);
+      return [];
+    }
+  }
+
+  // Get performance alerts from database
+  async getPerformanceAlerts(userId: string, organizationId: string): Promise<any[]> {
+    const db = this.getDatabase();
+    try {
+      const alerts = db.prepare(`
+        SELECT * FROM performance_alerts 
+        WHERE user_id = ? AND organization_id = ?
+        ORDER BY timestamp DESC
+        LIMIT 100
+      `).all(userId, organizationId);
+      
+      db.close();
+      
+      // Parse JSON fields and format dates
+      return alerts.map((alert: any) => ({
+        id: alert.id,
+        type: alert.type,
+        title: alert.title,
+        description: alert.description,
+        severity: alert.severity,
+        timestamp: new Date(alert.timestamp),
+        resolved: alert.resolved === 1,
+        resolvedAt: alert.resolved_at ? new Date(alert.resolved_at) : undefined,
+        workflowId: alert.workflow_id,
+        executionId: alert.execution_id,
+        metadata: alert.metadata_json ? JSON.parse(alert.metadata_json) : {}
+      }));
+    } catch (error) {
+      db.close();
+      console.error('Failed to get performance alerts:', error);
+      return [];
+    }
+  }
+
+  // Generate alert from failed workflow execution
+  async generateAlertFromExecution(execution: any, userId: string, organizationId: string): Promise<void> {
+    if (execution.status !== 'failed') return;
+
+    const db = this.getDatabase();
+    try {
+      const alertId = `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      db.prepare(`
+        INSERT INTO performance_alerts 
+        (id, type, title, description, severity, timestamp, workflow_id, execution_id, metadata_json, user_id, organization_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        alertId,
+        'error',
+        'Workflow Execution Failed',
+        `Workflow execution ${execution.id} failed: ${execution.error || 'Unknown error'}`,
+        'high',
+        new Date(execution.start_time).toISOString(),
+        execution.workflow_id,
+        execution.id,
+        JSON.stringify({ 
+          errorCode: execution.error?.code || 'EXECUTION_FAILED',
+          errorMessage: execution.error || 'Unknown error'
+        }),
+        userId,
+        organizationId
+      );
+      
+      db.close();
+      console.log(`Generated alert for failed execution: ${execution.id}`);
+    } catch (error) {
+      db.close();
+      console.error('Failed to generate alert:', error);
+    }
+  }
+
+  // Generate compliance report from workflow executions
+  async generateComplianceReport(executions: any[], userId: string, organizationId: string): Promise<any> {
+    const totalExecutions = executions.length;
+    const successfulExecutions = executions.filter(e => e.status === 'completed').length;
+    const failedExecutions = executions.filter(e => e.status === 'failed').length;
+    
+    const successRate = totalExecutions > 0 ? (successfulExecutions / totalExecutions) * 100 : 0;
+    const score = Math.round(successRate);
+    
+    const report = {
+      id: `comp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: 'Workflow Execution Compliance Report',
+      type: 'execution_compliance',
+      period: {
+        start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
+        end: new Date()
+      },
+      status: 'completed',
+      results: {
+        totalChecks: totalExecutions,
+        passedChecks: successfulExecutions,
+        failedChecks: failedExecutions,
+        warnings: 0,
+        score: score
+      },
+      details: [],
+      generatedAt: new Date(),
+      generatedBy: 'system'
+    };
+
+    // Store in database
+    const db = this.getDatabase();
+    try {
+      db.prepare(`
+        INSERT INTO compliance_reports 
+        (id, name, type, period_start, period_end, status, results_json, details_json, generated_at, generated_by, user_id, organization_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        report.id,
+        report.name,
+        report.type,
+        report.period.start.toISOString(),
+        report.period.end.toISOString(),
+        report.status,
+        JSON.stringify(report.results),
+        JSON.stringify(report.details),
+        report.generatedAt.toISOString(),
+        report.generatedBy,
+        userId,
+        organizationId
+      );
+      
+      db.close();
+    } catch (error) {
+      db.close();
+      console.error('Failed to store compliance report:', error);
+    }
+
+    return report;
   }
 
   // Health check

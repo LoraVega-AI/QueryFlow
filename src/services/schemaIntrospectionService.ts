@@ -149,234 +149,439 @@ export class SchemaIntrospectionService {
    * Introspect SQLite schema
    */
   private static async introspectSQLiteSchema(config: DatabaseConfig): Promise<DatabaseSchema> {
-    // In a real implementation, this would query SQLite system tables
-    // For now, return mock data
-    const tables: Table[] = [
-      {
-        id: 'users',
-        name: 'users',
-        columns: [
-          {
-            id: 'id',
-            name: 'id',
-            type: 'INTEGER',
-            nullable: false,
-            primaryKey: true,
-            autoIncrement: true
-          },
-          {
-            id: 'email',
-            name: 'email',
-            type: 'VARCHAR',
-            nullable: false,
-            primaryKey: false,
-            unique: true,
-            constraints: {
-              maxLength: 255
-            }
-          },
-          {
-            id: 'password',
-            name: 'password',
-            type: 'VARCHAR',
-            nullable: false,
-            primaryKey: false,
-            constraints: {
-              maxLength: 255
-            }
-          },
-          {
-            id: 'created_at',
-            name: 'created_at',
-            type: 'DATETIME',
-            nullable: false,
-            primaryKey: false,
-            defaultValue: "strftime('%Y-%m-%d %H:%M:%S', 'now')"
-          }
-        ],
-        indexes: [
-          {
-            id: 'sqlite_autoindex_users_1',
-            name: 'sqlite_autoindex_users_1',
-            columns: ['email'],
-            unique: true,
-            type: 'btree'
-          }
-        ]
+    try {
+      const Database = (await import('better-sqlite3')).default;
+      const dbPath = config.path || config.connectionString;
+      
+      if (!dbPath) {
+        throw new Error('SQLite database path not provided');
       }
-    ];
 
-    return {
-      id: `schema_${Date.now()}`,
-      name: 'Introspected Schema',
-      tables: tables as any, // Cast to avoid type mismatch between database and project Table types
-      relationships: [],
-      indexes: tables.flatMap(t => t.indexes).filter(Boolean) as any // Cast to avoid type mismatch
-    };
+      const db = new Database(dbPath, { readonly: true });
+      const tables: Table[] = [];
+
+      try {
+        // Get all tables
+        const tableRows = db.prepare(`
+          SELECT name FROM sqlite_master 
+          WHERE type='table' AND name NOT LIKE 'sqlite_%'
+          ORDER BY name
+        `).all() as any[];
+
+        for (const tableRow of tableRows) {
+          const tableName = tableRow.name;
+          const columns: Column[] = [];
+
+          // Get table info
+          const columnRows = db.prepare(`PRAGMA table_info(${tableName})`).all() as any[];
+
+          for (const col of columnRows) {
+            columns.push({
+              id: `${tableName}_${col.name}`,
+              name: col.name,
+              type: col.type || 'TEXT',
+              nullable: col.notnull === 0,
+              primaryKey: col.pk === 1,
+              autoIncrement: col.pk === 1 && col.type?.toUpperCase() === 'INTEGER',
+              defaultValue: col.dflt_value,
+              constraints: {}
+            });
+          }
+
+          // Get indexes
+          const indexRows = db.prepare(`PRAGMA index_list(${tableName})`).all() as any[];
+          const indexes: Index[] = [];
+
+          for (const idx of indexRows) {
+            const indexInfo = db.prepare(`PRAGMA index_info(${idx.name})`).all() as any[];
+            indexes.push({
+              id: `${tableName}_${idx.name}`,
+              name: idx.name,
+              columns: indexInfo.map((i: any) => i.name),
+              unique: idx.unique === 1,
+              type: 'btree'
+            });
+          }
+
+          tables.push({
+            id: tableName,
+            name: tableName,
+            columns,
+            indexes
+          });
+        }
+
+        db.close();
+      } catch (queryError) {
+        db.close();
+        throw queryError;
+      }
+
+      return {
+        id: `schema_${Date.now()}`,
+        name: config.database || 'Introspected SQLite Schema',
+        tables: tables as any,
+        relationships: this.extractRelationshipsFromTables(tables),
+        indexes: tables.flatMap(t => t.indexes).filter(Boolean) as any
+      };
+    } catch (error) {
+      console.error('SQLite schema introspection failed:', error);
+      throw new Error(`Failed to introspect SQLite schema: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
    * Introspect PostgreSQL schema
    */
   private static async introspectPostgreSQLSchema(config: DatabaseConfig): Promise<DatabaseSchema> {
-    // Mock PostgreSQL introspection - would use information_schema in real implementation
-    const tables: Table[] = [
-      {
-        id: 'users',
-        name: 'users',
-        columns: [
-          {
-            id: 'id',
-            name: 'id',
-            type: 'BIGINT',
-            nullable: false,
-            primaryKey: true,
-            autoIncrement: true
-          },
-          {
-            id: 'email',
-            name: 'email',
-            type: 'VARCHAR',
-            nullable: false,
-            primaryKey: false,
-            unique: true,
-            constraints: {
-              maxLength: 255
-            }
-          },
-          {
-            id: 'created_at',
-            name: 'created_at',
-            type: 'TIMESTAMP',
-            nullable: false,
-            primaryKey: false,
-            defaultValue: 'NOW()'
-          }
-        ],
-        indexes: [],
-        position: { x: 0, y: 0 },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    ];
+    try {
+      const { Client } = await import('pg');
+      const client = new Client({
+        host: config.host,
+        port: config.port,
+        database: config.database,
+        user: config.username,
+        password: config.password,
+        ssl: config.ssl ? { rejectUnauthorized: false } : undefined
+      });
 
-    return {
-      id: `schema_${Date.now()}`,
-      name: 'Introspected Schema',
-      tables: tables as any,
-      relationships: [],
-      indexes: [],
-    };
+      await client.connect();
+      const tables: Table[] = [];
+
+      try {
+        // Get all tables from public schema
+        const tableResult = await client.query(`
+          SELECT table_name 
+          FROM information_schema.tables 
+          WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+          ORDER BY table_name
+        `);
+
+        for (const tableRow of tableResult.rows) {
+          const tableName = tableRow.table_name;
+          const columns: Column[] = [];
+
+          // Get columns information
+          const columnResult = await client.query(`
+            SELECT 
+              column_name,
+              data_type,
+              is_nullable,
+              column_default,
+              character_maximum_length
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = $1
+            ORDER BY ordinal_position
+          `, [tableName]);
+
+          // Get primary keys
+          const pkResult = await client.query(`
+            SELECT a.attname
+            FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = $1::regclass AND i.indisprimary
+          `, [tableName]);
+
+          const primaryKeys = new Set(pkResult.rows.map(r => r.attname));
+
+          for (const col of columnResult.rows) {
+            const isPrimary = primaryKeys.has(col.column_name);
+            const isAutoIncrement = col.column_default?.includes('nextval');
+
+            columns.push({
+              id: `${tableName}_${col.column_name}`,
+              name: col.column_name,
+              type: col.data_type.toUpperCase(),
+              nullable: col.is_nullable === 'YES',
+              primaryKey: isPrimary,
+              autoIncrement: isAutoIncrement,
+              defaultValue: col.column_default,
+              constraints: col.character_maximum_length ? { maxLength: col.character_maximum_length } : {}
+            });
+          }
+
+          // Get indexes
+          const indexResult = await client.query(`
+            SELECT
+              i.relname as index_name,
+              ix.indisunique as is_unique,
+              array_agg(a.attname ORDER BY a.attnum) as columns
+            FROM pg_class t
+            JOIN pg_index ix ON t.oid = ix.indrelid
+            JOIN pg_class i ON i.oid = ix.indexrelid
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+            WHERE t.relname = $1 AND t.relkind = 'r'
+            GROUP BY i.relname, ix.indisunique
+          `, [tableName]);
+
+          const indexes: Index[] = indexResult.rows.map(idx => ({
+            id: `${tableName}_${idx.index_name}`,
+            name: idx.index_name,
+            columns: idx.columns,
+            unique: idx.is_unique,
+            type: 'btree'
+          }));
+
+          tables.push({
+            id: tableName,
+            name: tableName,
+            columns,
+            indexes
+          });
+        }
+
+        await client.end();
+      } catch (queryError) {
+        await client.end();
+        throw queryError;
+      }
+
+      return {
+        id: `schema_${Date.now()}`,
+        name: config.database || 'Introspected PostgreSQL Schema',
+        tables: tables as any,
+        relationships: this.extractRelationshipsFromTables(tables),
+        indexes: tables.flatMap(t => t.indexes).filter(Boolean) as any
+      };
+    } catch (error) {
+      console.error('PostgreSQL schema introspection failed:', error);
+      throw new Error(`Failed to introspect PostgreSQL schema: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
    * Introspect MySQL schema
    */
   private static async introspectMySQLSchema(config: DatabaseConfig): Promise<DatabaseSchema> {
-    // Mock MySQL introspection - would use information_schema in real implementation
-    const tables: Table[] = [
-      {
-        id: 'users',
-        name: 'users',
-        columns: [
-          {
-            id: 'id',
-            name: 'id',
-            type: 'INTEGER',
-            nullable: false,
-            primaryKey: true,
-            autoIncrement: true
-          },
-          {
-            id: 'email',
-            name: 'email',
-            type: 'VARCHAR',
-            nullable: false,
-            primaryKey: false,
-            unique: true,
-            constraints: {
-              maxLength: 255
-            }
-          },
-          {
-            id: 'created_at',
-            name: 'created_at',
-            type: 'DATETIME',
-            nullable: false,
-            primaryKey: false,
-            defaultValue: 'CURRENT_TIMESTAMP'
-          }
-        ],
-        indexes: [],
-        position: { x: 0, y: 0 },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    ];
+    try {
+      const mysql = await import('mysql2/promise');
+      const connection = await mysql.createConnection({
+        host: config.host,
+        port: config.port,
+        database: config.database,
+        user: config.username,
+        password: config.password
+      });
 
-    return {
-      id: `schema_${Date.now()}`,
-      name: 'Introspected Schema',
-      tables: tables as any,
-      relationships: [],
-      indexes: [],
-    };
+      const tables: Table[] = [];
+
+      try {
+        // Get all tables
+        const [tableRows] = await connection.execute(
+          'SHOW TABLES'
+        ) as any[];
+
+        const dbName = config.database || '';
+
+        for (const tableRow of tableRows) {
+          const tableName = Object.values(tableRow)[0] as string;
+          const columns: Column[] = [];
+
+          // Get columns using DESCRIBE
+          const [columnRows] = await connection.execute(
+            `DESCRIBE ${tableName}`
+          ) as any[];
+
+          for (const col of columnRows) {
+            const isPrimary = col.Key === 'PRI';
+            const isAutoIncrement = col.Extra?.includes('auto_increment');
+            const isUnique = col.Key === 'UNI';
+
+            columns.push({
+              id: `${tableName}_${col.Field}`,
+              name: col.Field,
+              type: col.Type.toUpperCase(),
+              nullable: col.Null === 'YES',
+              primaryKey: isPrimary,
+              autoIncrement: isAutoIncrement,
+              unique: isUnique,
+              defaultValue: col.Default,
+              constraints: {}
+            });
+          }
+
+          // Get indexes
+          const [indexRows] = await connection.execute(
+            `SHOW INDEX FROM ${tableName}`
+          ) as any[];
+
+          const indexMap = new Map<string, { columns: string[], unique: boolean }>();
+
+          for (const idx of indexRows) {
+            if (!indexMap.has(idx.Key_name)) {
+              indexMap.set(idx.Key_name, {
+                columns: [],
+                unique: idx.Non_unique === 0
+              });
+            }
+            indexMap.get(idx.Key_name)!.columns.push(idx.Column_name);
+          }
+
+          const indexes: Index[] = Array.from(indexMap.entries()).map(([name, data]) => ({
+            id: `${tableName}_${name}`,
+            name,
+            columns: data.columns,
+            unique: data.unique,
+            type: 'btree'
+          }));
+
+          tables.push({
+            id: tableName,
+            name: tableName,
+            columns,
+            indexes
+          });
+        }
+
+        await connection.end();
+      } catch (queryError) {
+        await connection.end();
+        throw queryError;
+      }
+
+      return {
+        id: `schema_${Date.now()}`,
+        name: config.database || 'Introspected MySQL Schema',
+        tables: tables as any,
+        relationships: this.extractRelationshipsFromTables(tables),
+        indexes: tables.flatMap(t => t.indexes).filter(Boolean) as any
+      };
+    } catch (error) {
+      console.error('MySQL schema introspection failed:', error);
+      throw new Error(`Failed to introspect MySQL schema: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
    * Introspect MongoDB schema (inferred from documents)
    */
   private static async introspectMongoDBSchema(config: DatabaseConfig): Promise<DatabaseSchema> {
-    // Mock MongoDB introspection - would analyze document structure in real implementation
-    const tables: Table[] = [
-      {
-        id: 'users',
-        name: 'users',
-        columns: [
-          {
-            id: '_id',
-            name: '_id',
-            type: 'VARCHAR',
-            nullable: false,
-            primaryKey: true
-          },
-          {
-            id: 'email',
-            name: 'email',
-            type: 'TEXT',
-            nullable: false,
-            primaryKey: false,
-            unique: true
-          },
-          {
-            id: 'profile',
-            name: 'profile',
-            type: 'JSON',
-            nullable: true,
-            primaryKey: false
-          },
-          {
-            id: 'created_at',
-            name: 'created_at',
-            type: 'DATE',
-            nullable: false,
-            primaryKey: false
-          }
-        ],
-        indexes: [],
-        position: { x: 0, y: 0 },
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    ];
+    try {
+      const { MongoClient } = await import('mongodb');
+      const connectionString = config.connectionString || 
+        `mongodb://${config.username ? `${config.username}:${config.password}@` : ''}${config.host}:${config.port}/${config.database}`;
+      
+      const client = new MongoClient(connectionString);
+      await client.connect();
 
-    return {
-      id: `schema_${Date.now()}`,
-      name: 'Introspected Schema',
-      tables: tables as any,
-      relationships: [],
-      indexes: [],
-    };
+      const tables: Table[] = [];
+
+      try {
+        const db = client.db(config.database);
+        const collections = await db.listCollections().toArray();
+
+        for (const collectionInfo of collections) {
+          const collectionName = collectionInfo.name;
+          const collection = db.collection(collectionName);
+          const columns: Column[] = [];
+
+          // Sample documents to infer schema
+          const sampleDocs = await collection.find().limit(100).toArray();
+          
+          if (sampleDocs.length === 0) {
+            // Empty collection - add just _id
+            columns.push({
+              id: `${collectionName}__id`,
+              name: '_id',
+              type: 'OBJECTID',
+              nullable: false,
+              primaryKey: true,
+              constraints: {}
+            });
+          } else {
+            // Analyze field structure from samples
+            const fieldTypes = new Map<string, Set<string>>();
+
+            for (const doc of sampleDocs) {
+              this.analyzeDocumentFields(doc, fieldTypes, '');
+            }
+
+            // Convert to columns
+            for (const [fieldName, types] of fieldTypes.entries()) {
+              const isPrimary = fieldName === '_id';
+              const inferredType = this.inferMongoFieldType(types);
+
+              columns.push({
+                id: `${collectionName}_${fieldName}`,
+                name: fieldName,
+                type: inferredType,
+                nullable: true, // MongoDB fields are generally nullable
+                primaryKey: isPrimary,
+                constraints: {}
+              });
+            }
+          }
+
+          // Get indexes
+          const indexInfo = await collection.indexes();
+          const indexes: Index[] = indexInfo
+            .filter(idx => idx.name !== '_id_') // Skip default _id index
+            .map(idx => ({
+              id: `${collectionName}_${idx.name}`,
+              name: idx.name || '',
+              columns: Object.keys(idx.key || {}),
+              unique: idx.unique || false,
+              type: 'btree'
+            }));
+
+          tables.push({
+            id: collectionName,
+            name: collectionName,
+            columns,
+            indexes
+          });
+        }
+
+        await client.close();
+      } catch (queryError) {
+        await client.close();
+        throw queryError;
+      }
+
+      return {
+        id: `schema_${Date.now()}`,
+        name: config.database || 'Introspected MongoDB Schema',
+        tables: tables as any,
+        relationships: [], // MongoDB doesn't have explicit relationships
+        indexes: tables.flatMap(t => t.indexes).filter(Boolean) as any
+      };
+    } catch (error) {
+      console.error('MongoDB schema introspection failed:', error);
+      throw new Error(`Failed to introspect MongoDB schema: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Helper to analyze document fields recursively
+   */
+  private static analyzeDocumentFields(doc: any, fieldTypes: Map<string, Set<string>>, prefix: string): void {
+    for (const [key, value] of Object.entries(doc)) {
+      const fieldName = prefix ? `${prefix}.${key}` : key;
+      
+      if (!fieldTypes.has(fieldName)) {
+        fieldTypes.set(fieldName, new Set());
+      }
+
+      const type = Array.isArray(value) ? 'array' : typeof value;
+      fieldTypes.get(fieldName)!.add(type);
+
+      // For nested objects, analyze recursively (but limit depth)
+      if (type === 'object' && value !== null && !prefix.includes('.')) {
+        this.analyzeDocumentFields(value, fieldTypes, fieldName);
+      }
+    }
+  }
+
+  /**
+   * Infer MongoDB field type from observed types
+   */
+  private static inferMongoFieldType(types: Set<string>): string {
+    if (types.has('object')) return 'JSON';
+    if (types.has('array')) return 'ARRAY';
+    if (types.has('number')) return 'NUMBER';
+    if (types.has('boolean')) return 'BOOLEAN';
+    if (types.has('string')) return 'VARCHAR';
+    return 'VARCHAR';
   }
 
   /**
@@ -640,6 +845,42 @@ export class SchemaIntrospectionService {
     }
 
     return sql;
+  }
+
+  /**
+   * Extract relationships from tables based on foreign key patterns
+   */
+  private static extractRelationshipsFromTables(tables: Table[]): Relationship[] {
+    const relationships: Relationship[] = [];
+    
+    // Look for foreign key patterns in column names and types
+    for (const table of tables) {
+      for (const column of table.columns) {
+        // Check if column name suggests a foreign key (ends with _id or Id)
+        if ((column.name.endsWith('_id') || column.name.endsWith('Id')) && !column.primaryKey) {
+          const referencedTableName = column.name.replace(/(_id|Id)$/, '');
+          const referencedTable = tables.find(t => 
+            t.name.toLowerCase() === referencedTableName.toLowerCase() ||
+            t.name.toLowerCase() === `${referencedTableName}s`.toLowerCase()
+          );
+
+          if (referencedTable) {
+            relationships.push({
+              id: `${table.name}_${column.name}_${referencedTable.name}`,
+              type: 'many-to-one',
+              sourceTable: table.name,
+              targetTable: referencedTable.name,
+              sourceColumn: column.name,
+              targetColumn: 'id',
+              onDelete: 'CASCADE',
+              onUpdate: 'CASCADE'
+            });
+          }
+        }
+      }
+    }
+
+    return relationships;
   }
 
   /**

@@ -570,18 +570,304 @@ export class ImportService {
       recordsImported: 0,
       recordsSkipped: 0,
       recordsErrors: 0,
-      errors: [{
-        type: 'format',
-        message: 'Database import not implemented yet - requires database drivers',
-        severity: 'error'
-      }],
+      errors: [],
       warnings: []
     };
 
-    // TODO: Implement database connections for Postgres, MySQL, etc.
-    // This would require installing and configuring database drivers
-    
-    return result;
+    try {
+      switch (connection.type) {
+        case 'postgres':
+          return await this.importFromPostgreSQL(connection, options);
+        case 'mysql':
+          return await this.importFromMySQL(connection, options);
+        case 'sqlite':
+          return await this.importFromSQLite(connection, options);
+        default:
+          result.errors.push({
+            type: 'format',
+            message: `Database type ${connection.type} not supported for import`,
+            severity: 'error'
+          });
+          return result;
+      }
+    } catch (error) {
+      result.errors.push({
+        type: 'format',
+        message: `Database import failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+      return result;
+    }
+  }
+
+  /**
+   * Import from PostgreSQL database
+   */
+  private static async importFromPostgreSQL(
+    connection: DatabaseConnection,
+    options: ImportOptions
+  ): Promise<ImportResult> {
+    const result: ImportResult = {
+      success: true,
+      tablesCreated: 0,
+      tablesUpdated: 0,
+      recordsImported: 0,
+      recordsSkipped: 0,
+      recordsErrors: 0,
+      errors: [],
+      warnings: [],
+      records: []
+    };
+
+    try {
+      const { Client } = await import('pg');
+      const client = new Client({
+        host: connection.host,
+        port: connection.port,
+        database: connection.database,
+        user: connection.username,
+        password: connection.password,
+        ssl: connection.ssl ? { rejectUnauthorized: false } : undefined,
+        connectionTimeoutMillis: connection.connectionTimeout || 30000,
+        query_timeout: connection.queryTimeout || 30000
+      });
+
+      await client.connect();
+
+      try {
+        // Get tables to import
+        const schema = connection.schema || 'public';
+        let tableQuery = `
+          SELECT table_name 
+          FROM information_schema.tables 
+          WHERE table_schema = $1 AND table_type = 'BASE TABLE'
+        `;
+        
+        const tableResult = await client.query(tableQuery, [schema]);
+        let tables = tableResult.rows.map(r => r.table_name);
+
+        // Apply filters
+        if (options.filters?.tables) {
+          tables = tables.filter(t => options.filters!.tables!.includes(t));
+        }
+        if (options.filters?.excludeTables) {
+          tables = tables.filter(t => !options.filters!.excludeTables!.includes(t));
+        }
+
+        // Import data from each table
+        for (const tableName of tables) {
+          try {
+            const dataQuery = `SELECT * FROM "${schema}"."${tableName}"`;
+            const dataResult = await client.query(dataQuery);
+            
+            result.recordsImported += dataResult.rows.length;
+            result.tablesUpdated++;
+            
+            if (result.records) {
+              result.records.push(...dataResult.rows.map(row => ({
+                table: tableName,
+                data: row
+              })));
+            }
+          } catch (tableError) {
+            result.errors.push({
+              type: 'data',
+              message: `Failed to import table ${tableName}: ${tableError instanceof Error ? tableError.message : 'Unknown error'}`,
+              table: tableName,
+              severity: 'error'
+            });
+            result.recordsErrors++;
+          }
+        }
+
+        await client.end();
+      } catch (queryError) {
+        await client.end();
+        throw queryError;
+      }
+
+      result.success = result.errors.length === 0 || options.skipErrors;
+      return result;
+    } catch (error) {
+      result.success = false;
+      result.errors.push({
+        type: 'format',
+        message: `PostgreSQL import failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+      return result;
+    }
+  }
+
+  /**
+   * Import from MySQL database
+   */
+  private static async importFromMySQL(
+    connection: DatabaseConnection,
+    options: ImportOptions
+  ): Promise<ImportResult> {
+    const result: ImportResult = {
+      success: true,
+      tablesCreated: 0,
+      tablesUpdated: 0,
+      recordsImported: 0,
+      recordsSkipped: 0,
+      recordsErrors: 0,
+      errors: [],
+      warnings: [],
+      records: []
+    };
+
+    try {
+      const mysql = await import('mysql2/promise');
+      const conn = await mysql.createConnection({
+        host: connection.host,
+        port: connection.port,
+        database: connection.database,
+        user: connection.username,
+        password: connection.password
+      });
+
+      try {
+        // Get tables
+        const [tableRows] = await conn.execute('SHOW TABLES') as any[];
+        let tables = tableRows.map((row: any) => Object.values(row)[0] as string);
+
+        // Apply filters
+        if (options.filters?.tables) {
+          tables = tables.filter(t => options.filters!.tables!.includes(t));
+        }
+        if (options.filters?.excludeTables) {
+          tables = tables.filter(t => !options.filters!.excludeTables!.includes(t));
+        }
+
+        // Import data from each table
+        for (const tableName of tables) {
+          try {
+            const [rows] = await conn.execute(`SELECT * FROM ${tableName}`) as any[];
+            
+            result.recordsImported += rows.length;
+            result.tablesUpdated++;
+            
+            if (result.records) {
+              result.records.push(...rows.map((row: any) => ({
+                table: tableName,
+                data: row
+              })));
+            }
+          } catch (tableError) {
+            result.errors.push({
+              type: 'data',
+              message: `Failed to import table ${tableName}: ${tableError instanceof Error ? tableError.message : 'Unknown error'}`,
+              table: tableName,
+              severity: 'error'
+            });
+            result.recordsErrors++;
+          }
+        }
+
+        await conn.end();
+      } catch (queryError) {
+        await conn.end();
+        throw queryError;
+      }
+
+      result.success = result.errors.length === 0 || options.skipErrors;
+      return result;
+    } catch (error) {
+      result.success = false;
+      result.errors.push({
+        type: 'format',
+        message: `MySQL import failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+      return result;
+    }
+  }
+
+  /**
+   * Import from SQLite database
+   */
+  private static async importFromSQLite(
+    connection: DatabaseConnection,
+    options: ImportOptions
+  ): Promise<ImportResult> {
+    const result: ImportResult = {
+      success: true,
+      tablesCreated: 0,
+      tablesUpdated: 0,
+      recordsImported: 0,
+      recordsSkipped: 0,
+      recordsErrors: 0,
+      errors: [],
+      warnings: [],
+      records: []
+    };
+
+    try {
+      const Database = (await import('better-sqlite3')).default;
+      const dbPath = connection.database;
+      const db = new Database(dbPath, { readonly: true });
+
+      try {
+        // Get tables
+        const tableRows = db.prepare(`
+          SELECT name FROM sqlite_master 
+          WHERE type='table' AND name NOT LIKE 'sqlite_%'
+        `).all() as any[];
+        
+        let tables = tableRows.map(r => r.name);
+
+        // Apply filters
+        if (options.filters?.tables) {
+          tables = tables.filter(t => options.filters!.tables!.includes(t));
+        }
+        if (options.filters?.excludeTables) {
+          tables = tables.filter(t => !options.filters!.excludeTables!.includes(t));
+        }
+
+        // Import data from each table
+        for (const tableName of tables) {
+          try {
+            const rows = db.prepare(`SELECT * FROM "${tableName}"`).all();
+            
+            result.recordsImported += rows.length;
+            result.tablesUpdated++;
+            
+            if (result.records) {
+              result.records.push(...rows.map(row => ({
+                table: tableName,
+                data: row
+              })));
+            }
+          } catch (tableError) {
+            result.errors.push({
+              type: 'data',
+              message: `Failed to import table ${tableName}: ${tableError instanceof Error ? tableError.message : 'Unknown error'}`,
+              table: tableName,
+              severity: 'error'
+            });
+            result.recordsErrors++;
+          }
+        }
+
+        db.close();
+      } catch (queryError) {
+        db.close();
+        throw queryError;
+      }
+
+      result.success = result.errors.length === 0 || options.skipErrors;
+      return result;
+    } catch (error) {
+      result.success = false;
+      result.errors.push({
+        type: 'format',
+        message: `SQLite import failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+      return result;
+    }
   }
 
   /**

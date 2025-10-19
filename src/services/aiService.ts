@@ -110,7 +110,8 @@ class AIService {
       }
 
       if (!hasOpenAI && !hasAnthropic && !hasCustom && !this.transformersReady) {
-        console.warn('No AI service API keys or Transformers.js available. AI features will be disabled.');
+        console.warn('No AI service API keys or Transformers.js available. Using rule-based workflow generation.');
+        // Allow service to work with rule-based generation
         this.isInitialized = true;
         return;
       }
@@ -119,15 +120,20 @@ class AIService {
       console.log('AI Service initialized successfully');
     } catch (error) {
       console.error('AI Service initialization failed:', error);
-      // Don't throw error, just log it and continue without AI features
+      // Don't throw error, just log it and continue with rule-based generation
       this.isInitialized = true;
     }
   }
 
   private async initializeTransformers(): Promise<void> {
-    // Initialize the Transformers.js integration
-    const modelInfo = transformersIntegration.getModelInfo();
-    console.log('Transformers.js model info:', modelInfo);
+    try {
+      // Initialize the Transformers.js integration
+      const modelInfo = transformersIntegration.getModelInfo();
+      console.log('Transformers.js model info:', modelInfo);
+    } catch (error) {
+      console.warn('Transformers.js not available, will use rule-based generation');
+      throw error; // Re-throw to set transformersReady = false
+    }
   }
 
   private async generateWorkflowWithTransformers(request: NaturalLanguageRequest): Promise<WorkflowGeneration> {
@@ -361,34 +367,159 @@ class AIService {
     return Math.min(confidence, 0.95);
   }
 
-  private async generateIntelligentMockWorkflow(request: NaturalLanguageRequest): Promise<WorkflowGeneration> {
-    // Use Transformers.js for intelligent mock generation if available
+  private async generateRuleBasedWorkflow(request: NaturalLanguageRequest): Promise<WorkflowGeneration> {
+    // Use Transformers.js for local ML-based generation if available
     if (this.transformersReady) {
       try {
         return await this.generateWorkflowWithTransformers(request);
       } catch (error) {
-        console.warn('Transformers.js failed for mock generation:', error);
+        console.warn('Transformers.js generation failed:', error);
       }
     }
     
-    // Fallback to basic mock
+    // Rule-based workflow generation using keyword matching
+    const prompt = request.prompt.toLowerCase();
+    const steps: any[] = [];
+    let stepOrder = 1;
+    let complexity: 'simple' | 'moderate' | 'complex' = 'simple';
+    let estimatedTime = 300;
+
+    // Detect database operations
+    if (prompt.includes('select') || prompt.includes('query') || prompt.includes('fetch') || prompt.includes('get')) {
+      steps.push({
+        type: 'data_query',
+        name: 'Query Database',
+        description: 'Fetch data from database based on criteria',
+        config: { operation: 'SELECT' },
+        order: stepOrder++
+      });
+    }
+
+    if (prompt.includes('insert') || prompt.includes('add') || prompt.includes('create')) {
+      steps.push({
+        type: 'data_manipulation',
+        name: 'Insert Data',
+        description: 'Insert new records into database',
+        config: { operation: 'INSERT' },
+        order: stepOrder++
+      });
+    }
+
+    if (prompt.includes('update') || prompt.includes('modify') || prompt.includes('change')) {
+      steps.push({
+        type: 'data_manipulation',
+        name: 'Update Data',
+        description: 'Update existing records',
+        config: { operation: 'UPDATE' },
+        order: stepOrder++
+      });
+    }
+
+    if (prompt.includes('delete') || prompt.includes('remove')) {
+      steps.push({
+        type: 'data_manipulation',
+        name: 'Delete Data',
+        description: 'Remove records from database',
+        config: { operation: 'DELETE' },
+        order: stepOrder++
+      });
+    }
+
+    // Detect data processing
+    if (prompt.includes('transform') || prompt.includes('process') || prompt.includes('convert')) {
+      steps.push({
+        type: 'data_processing',
+        name: 'Transform Data',
+        description: 'Process and transform data',
+        config: {},
+        order: stepOrder++
+      });
+      complexity = 'moderate';
+      estimatedTime += 600;
+    }
+
+    // Detect validation
+    if (prompt.includes('validate') || prompt.includes('check') || prompt.includes('verify')) {
+      steps.push({
+        type: 'validation',
+        name: 'Validate Data',
+        description: 'Validate data integrity and constraints',
+        config: {},
+        order: stepOrder++
+      });
+    }
+
+    // Detect export/reporting
+    if (prompt.includes('export') || prompt.includes('report') || prompt.includes('generate')) {
+      steps.push({
+        type: 'export',
+        name: 'Export Results',
+        description: 'Export processed data',
+        config: {},
+        order: stepOrder++
+      });
+    }
+
+    // Detect notifications
+    if (prompt.includes('notify') || prompt.includes('alert') || prompt.includes('email')) {
+      steps.push({
+        type: 'notification',
+        name: 'Send Notification',
+        description: 'Send notification about workflow completion',
+        config: {},
+        order: stepOrder++
+      });
+    }
+
+    // If no specific operations detected, add a generic step
+    if (steps.length === 0) {
+      steps.push({
+        type: 'data_processing',
+        name: 'Process Request',
+        description: request.prompt,
+        config: {},
+        order: 1
+      });
+    }
+
+    // Adjust complexity based on number of steps
+    if (steps.length >= 5) {
+      complexity = 'complex';
+      estimatedTime = steps.length * 400;
+    } else if (steps.length >= 3) {
+      complexity = 'moderate';
+      estimatedTime = steps.length * 300;
+    } else {
+      estimatedTime = steps.length * 200;
+    }
+
     return {
-      name: 'Generated from: ' + request.prompt,
+      name: this.extractWorkflowName(request.prompt),
       description: request.prompt,
       trigger: 'manual',
-      steps: [
-        {
-          type: 'data_processing',
-          name: 'Process Input Data',
-          description: 'Process the input data based on your request',
-          config: {},
-          order: 1
-        }
-      ],
-      estimatedExecutionTime: 300,
-      complexity: 'simple',
+      steps,
+      estimatedExecutionTime: estimatedTime,
+      complexity,
       confidence: 0.5
     };
+  }
+
+  private extractWorkflowName(prompt: string): string {
+    // Extract a concise workflow name from the prompt
+    const words = prompt.trim().split(/\s+/).slice(0, 5);
+    let name = words.join(' ');
+    
+    // Capitalize first letter
+    if (name.length > 0) {
+      name = name.charAt(0).toUpperCase() + name.slice(1);
+    }
+    
+    // Limit length
+    if (name.length > 50) {
+      name = name.substring(0, 47) + '...';
+    }
+    
+    return name || 'Workflow';
   }
 
   private createKeywordEmbedding(keywords: string): number[] {
@@ -638,7 +769,7 @@ class AIService {
 
   async generateWorkflowFromNaturalLanguage(request: NaturalLanguageRequest): Promise<WorkflowGeneration> {
     if (!this.isInitialized) {
-      throw new Error('AI Service not initialized');
+      await this.initialize();
     }
 
     // Check if API keys are available
@@ -649,15 +780,17 @@ class AIService {
     // Try local AI first if Transformers.js is available
     if (this.transformersReady) {
       try {
+        console.log('Attempting workflow generation with Transformers.js...');
         return await this.generateWorkflowWithTransformers(request);
       } catch (error) {
-        console.warn('Transformers.js workflow generation failed, falling back to API services:', error);
+        console.warn('Transformers.js workflow generation failed, falling back to rule-based:', error);
       }
     }
 
+    // If no API keys, use rule-based generation
     if (!hasOpenAI && !hasAnthropic && !hasCustom) {
-      // Return intelligent mock data when no API keys are available
-      return await this.generateIntelligentMockWorkflow(request);
+      console.log('No AI API keys available, using rule-based workflow generation');
+      return await this.generateRuleBasedWorkflow(request);
     }
 
     try {
@@ -689,29 +822,9 @@ class AIService {
     const hasAnthropic = this.config.anthropic.apiKey && this.config.anthropic.apiKey.trim() !== '';
     const hasCustom = this.config.custom.apiKey && this.config.custom.apiKey.trim() !== '';
 
-         if (!hasOpenAI && !hasAnthropic && !hasCustom) {
-       // Return mock analysis when no API keys are available
-       return {
-         performance: {
-           score: 75,
-           bottlenecks: ['Mock bottleneck identified'],
-           recommendations: ['Add API keys for real analysis']
-         },
-         security: {
-           score: 80,
-           vulnerabilities: [],
-           recommendations: ['Security analysis requires API keys']
-         },
-         maintainability: {
-           score: 70,
-           issues: ['Mock issue identified'],
-           recommendations: ['Code complexity analysis requires API keys']
-         },
-         cost: {
-           estimatedMonthlyCost: 100,
-           optimizationOpportunities: ['Add API keys for real cost analysis']
-         }
-       };
+    if (!hasOpenAI && !hasAnthropic && !hasCustom) {
+      // Throw error when analysis is requested without API keys
+      throw new Error('Workflow analysis requires AI API keys (OpenAI, Anthropic, or Custom provider). Please configure API keys to use this feature.');
      }
 
     try {

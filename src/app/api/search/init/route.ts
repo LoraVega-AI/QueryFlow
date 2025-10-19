@@ -1,4 +1,4 @@
-// API endpoint to manually initialize search data
+// API endpoint to manually initialize search data from real projects
 // GET /api/search/init
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -6,82 +6,109 @@ import { semanticSearchEngine } from '@/utils/semanticSearchEngine';
 
 export async function GET(request: NextRequest) {
   try {
-    // Sample search documents
-    const sampleDocuments = [
-      {
-        id: 'users-table',
-        title: 'Users Table',
-        content: 'Database table containing user information including authentication data, profile details, and account settings. Stores user credentials, email addresses, names, and registration timestamps.',
-        type: 'table' as const,
+    console.log('🔍 Initializing search index from real project data...');
+    
+    // Import database connection manager
+    const { dbConnectionManager } = await import('@/utils/databaseConnection');
+    await dbConnectionManager.initializeAppData();
+    
+    // Get all projects from database
+    const projects = await dbConnectionManager.getAllProjects();
+    console.log(`📊 Found ${projects.length} projects to index`);
+    
+    const documents: any[] = [];
+    
+    // Index each project and its schema
+    for (const project of projects) {
+      // Index project itself
+      documents.push({
+        id: `project-${project.id}`,
+        title: project.name,
+        content: `Project: ${project.name}. ${project.description || 'No description'}. Technology: ${project.technology || 'Unknown'}. Contains ${project.totalTables || 0} tables.`,
+        type: 'project' as const,
         metadata: {
-          tableName: 'users',
-          columnCount: 8,
-          recordCount: 1250,
-          tags: ['authentication', 'user-management', 'database']
+          projectId: project.id,
+          projectName: project.name,
+          technology: project.technology,
+          tableCount: project.totalTables || 0,
+          tags: ['project', project.technology || 'database']
         }
-      },
-      {
-        id: 'products-table',
-        title: 'Products Table',
-        content: 'Product catalog table with item details, pricing information, inventory levels, and product categories. Includes SKU codes, descriptions, and supplier information.',
-        type: 'table' as const,
-        metadata: {
-          tableName: 'products',
-          columnCount: 12,
-          recordCount: 3400,
-          tags: ['inventory', 'catalog', 'e-commerce']
-        }
-      },
-      {
-        id: 'orders-table',
-        title: 'Orders Table',
-        content: 'Order management table tracking customer purchases, order status, payment information, and shipping details. Links to users and products tables.',
-        type: 'table' as const,
-        metadata: {
-          tableName: 'orders',
-          columnCount: 15,
-          recordCount: 8900,
-          tags: ['orders', 'transactions', 'e-commerce']
-        }
-      },
-      {
-        id: 'database-schema',
-        title: 'Database Schema Design',
-        content: 'Complete database schema documentation including table relationships, foreign key constraints, indexes, and data types. Covers normalization principles and performance optimization.',
-        type: 'schema' as const,
-        metadata: {
-          tableCount: 15,
-          relationshipCount: 23,
-          tags: ['schema', 'design', 'documentation']
-        }
-      },
-      {
-        id: 'user-authentication-query',
-        title: 'User Authentication Query',
-        content: 'SQL query for user login validation. Checks username and password against encrypted credentials, updates last login timestamp, and returns user session data.',
-        type: 'query' as const,
-        metadata: {
-          queryType: 'SELECT',
-          complexity: 'medium',
-          executionTime: 45,
-          tags: ['authentication', 'security', 'login']
+      });
+      
+      // Index tables from schema
+      if (project.schema?.tables && Array.isArray(project.schema.tables)) {
+        for (const table of project.schema.tables) {
+          const columnNames = table.columns?.map((c: any) => c.name).join(', ') || '';
+          const columnCount = table.columns?.length || 0;
+          
+          documents.push({
+            id: `${project.id}-${table.name}`,
+            title: `${table.name} - ${project.name}`,
+            content: `Table ${table.name} in project ${project.name}. Columns: ${columnNames}. ${table.description || ''}`,
+            type: 'table' as const,
+            metadata: {
+              tableName: table.name,
+              projectId: project.id,
+              projectName: project.name,
+              columnCount: columnCount,
+              tags: ['table', 'database', project.technology || 'schema']
+            }
+          });
         }
       }
-    ];
-
-    // Add documents to search index
-    await semanticSearchEngine.addDocuments(sampleDocuments);
+      
+      // Index system catalog tables if available
+      if (project.systemCatalog?.tables && Array.isArray(project.systemCatalog.tables)) {
+        for (const table of project.systemCatalog.tables) {
+          const columnNames = table.columns?.map((c: any) => c.name).join(', ') || '';
+          const columnCount = table.columns?.length || 0;
+          
+          // Avoid duplicates by checking if table was already indexed from schema
+          const alreadyIndexed = documents.some(doc => 
+            doc.id === `${project.id}-${table.name}`
+          );
+          
+          if (!alreadyIndexed) {
+            documents.push({
+              id: `${project.id}-catalog-${table.name}`,
+              title: `${table.name} - ${project.name} (Catalog)`,
+              content: `System catalog table ${table.name} in project ${project.name}. Columns: ${columnNames}.`,
+              type: 'table' as const,
+              metadata: {
+                tableName: table.name,
+                projectId: project.id,
+                projectName: project.name,
+                columnCount: columnCount,
+                tags: ['table', 'catalog', 'system']
+              }
+            });
+          }
+        }
+      }
+    }
+    
+    console.log(`📝 Indexing ${documents.length} documents...`);
+    
+    // Add all documents to search index
+    if (documents.length > 0) {
+      await semanticSearchEngine.addDocuments(documents);
+    }
     
     const indexStats = semanticSearchEngine.getIndexStats();
     
+    console.log('✅ Search index initialized successfully');
+    console.log('📊 Index stats:', indexStats);
+    
     return NextResponse.json({
       success: true,
-      message: `Initialized search index with ${sampleDocuments.length} documents`,
+      message: `Initialized search index with ${documents.length} documents from ${projects.length} projects`,
+      indexed: documents.length,
+      projects: projects.length,
       indexStats
     });
 
   } catch (error: any) {
-    console.error('Failed to initialize search data:', error);
+    console.error('❌ Failed to initialize search data:', error);
     return NextResponse.json({
       success: false,
       error: 'Failed to initialize search data',

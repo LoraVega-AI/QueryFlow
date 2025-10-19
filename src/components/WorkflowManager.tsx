@@ -183,70 +183,42 @@ export function WorkflowManager({ schema: propSchema }: WorkflowManagerProps) {
       // Note: AuditLog types are compatible, no adapter needed
       setAuditLogs(auditLogRecords as any);
       
-      // Load compliance reports (mock for now)
-      setComplianceReports([
-        {
-          id: 'comp_1',
-          name: 'GDPR Compliance Report',
-          type: 'gdpr',
-          period: {
-            start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-            end: new Date()
-          },
-          status: 'completed',
-          results: {
-            totalChecks: 20,
-            passedChecks: 19,
-            failedChecks: 1,
-            warnings: 2,
-            score: 95
-          },
-          details: [],
-          generatedAt: new Date(),
-          generatedBy: 'system'
-        }
-      ]);
+      // Load compliance reports from database
+      let storedReports = await monitoringService.getComplianceReports('user_1', 'org_1');
+      
+      // If no reports exist, generate from workflow executions
+      if (storedReports.length === 0 && savedExecutions.length > 0) {
+        console.log('No compliance reports found, generating from executions...');
+        const generatedReport = await monitoringService.generateComplianceReport(savedExecutions, 'user_1', 'org_1');
+        storedReports = [generatedReport];
+      }
+      
+      setComplianceReports(storedReports);
 
-      // Load performance alerts (mock for now)
-      setPerformanceAlerts([
-        {
-          id: 'alert_1',
-          type: 'performance',
-          title: 'High CPU Usage',
-          description: 'CPU usage has exceeded 80% for the last 5 minutes',
-          severity: 'high',
-          timestamp: new Date(Date.now() - 10 * 60 * 1000),
-          resolved: false,
-          workflowId: 'wf_1',
-          executionId: 'exec_wf_1_1',
-          metadata: { cpuUsage: 85, threshold: 80 }
-        },
-        {
-          id: 'alert_2',
-          type: 'error',
-          title: 'Workflow Execution Failed',
-          description: 'Data Backup Workflow failed to execute',
-          severity: 'critical',
-          timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-          resolved: false,
-          workflowId: 'wf_1',
-          executionId: 'exec_wf_1_3',
-          metadata: { errorCode: 'DB_CONNECTION_TIMEOUT', retryCount: 3 }
-        },
-        {
-          id: 'alert_3',
-          type: 'performance',
-          title: 'Memory Usage Warning',
-          description: 'Memory usage is approaching 90%',
-          severity: 'medium',
-          timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
-          resolvedAt: new Date(Date.now() - 20 * 60 * 1000),
-          resolved: true,
-          workflowId: 'wf_2',
-          executionId: 'exec_wf_2_1',
-          metadata: { memoryUsage: 88, threshold: 90 }
+      // Load performance alerts from database
+      let alerts = await monitoringService.getPerformanceAlerts('user_1', 'org_1');
+      
+      // Generate alerts for recent failed executions if needed
+      const recentFailedExecutions = savedExecutions.filter(exec => 
+        exec.status === 'failed' && 
+        exec.start_time && 
+        (Date.now() - new Date(exec.start_time).getTime()) < 7 * 24 * 60 * 60 * 1000
+      );
+      
+      for (const failedExec of recentFailedExecutions) {
+        // Check if alert already exists for this execution
+        const alertExists = alerts.some(alert => alert.executionId === failedExec.id);
+        if (!alertExists) {
+          await monitoringService.generateAlertFromExecution(failedExec, 'user_1', 'org_1');
         }
-      ]);
+      }
+      
+      // Reload alerts after generating new ones
+      if (recentFailedExecutions.length > 0) {
+        alerts = await monitoringService.getPerformanceAlerts('user_1', 'org_1');
+      }
+      
+      setPerformanceAlerts(alerts);
       
     } catch (error) {
       console.error('Error loading data:', error);
