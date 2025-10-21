@@ -246,6 +246,70 @@ class DatabaseIntrospectionService {
   }
 
   /**
+   * Remove SQL comments to prevent false matches
+   */
+  removeSQLComments(content) {
+    // Remove multi-line comments /* ... */
+    content = content.replace(/\/\*[\s\S]*?\*\//g, '');
+    // Remove single-line comments --
+    content = content.replace(/--[^\n]*/g, '');
+    return content;
+  }
+
+  /**
+   * Extract complete CREATE TABLE statements with all options
+   */
+  extractTableDefinitions(content, dialect) {
+    // Use a more robust approach to extract table definitions with proper nested parentheses handling
+    const definitions = [];
+    
+    // Find all CREATE TABLE statements
+    const createTableRegex = /CREATE\s+(?:OR\s+REPLACE\s+)?(?:TEMP|TEMPORARY|UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?/gi;
+    let match;
+    
+    while ((match = createTableRegex.exec(content)) !== null) {
+      const startPos = match.index;
+      const tableStart = match[0];
+      
+      // Find the table name and opening parenthesis
+      const afterCreate = content.substring(startPos + tableStart.length);
+      const tableNameMatch = afterCreate.match(/^(\s*(?:"?(\w+)"?\.)?(?:"?(\w+)"?)\s*\()/);
+      
+      if (!tableNameMatch) continue;
+      
+      const schema = tableNameMatch[2];
+      const tableName = tableNameMatch[3];
+      const openParenPos = startPos + tableStart.length + tableNameMatch[0].length - 1;
+      
+      // Find the matching closing parenthesis
+      let depth = 1;
+      let pos = openParenPos + 1;
+      let bodyEnd = -1;
+      
+      while (pos < content.length && depth > 0) {
+        const char = content[pos];
+        if (char === '(') depth++;
+        else if (char === ')') depth--;
+        pos++;
+      }
+      
+      if (depth === 0) {
+        bodyEnd = pos - 1;
+        const body = content.substring(openParenPos + 1, bodyEnd);
+        
+        definitions.push({
+              schema: schema,
+          tableName: tableName,
+          body: body,
+          fullMatch: content.substring(startPos, bodyEnd + 1)
+            });
+          }
+        }
+    
+    return definitions;
+  }
+
+  /**
    * Parse SQL dump files (PostgreSQL, MySQL, SQL Server, Oracle)
    */
   async parseSQLDump(filePath) {
@@ -255,72 +319,60 @@ class DatabaseIntrospectionService {
       const content = await fs.readFile(filePath, 'utf-8');
       const fileName = path.basename(filePath, path.extname(filePath));
       
-      const tables = [];
+      // Pre-process: Remove SQL comments
+      const cleanContent = this.removeSQLComments(content);
       
-      // Enhanced regex patterns for different SQL dialects
-      const patterns = {
-        // PostgreSQL/MySQL CREATE TABLE
-        createTable: /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:`?(\w+)`?\.)?`?(\w+)`?\s*\(([\s\S]*?)\)(?:\s*ENGINE\s*=\s*\w+)?(?:\s*DEFAULT\s+CHARSET\s*=\s*\w+)?;/gi,
-        
-        // SQL Server CREATE TABLE
-        sqlServerTable: /CREATE\s+TABLE\s+(?:\[?(\w+)\]?\.)?\[?(\w+)\]?\s*\(([\s\S]*?)\)(?:\s+ON\s+\w+)?;/gi,
-        
-        // Oracle CREATE TABLE
-        oracleTable: /CREATE\s+TABLE\s+(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(([\s\S]*?)\)(?:\s+TABLESPACE\s+\w+)?;/gi
-      };
-
-      // Try all patterns
-      for (const [patternName, pattern] of Object.entries(patterns)) {
-        let match;
-        while ((match = pattern.exec(content)) !== null) {
-          const schema = match[1];
-          const tableName = match[2];
-          const columnsStr = match[3];
-          
-          console.log(`📋 Found table: ${tableName} (${patternName})`);
-          
-          const columns = this.parseTableColumns(columnsStr, patternName);
-          
-          if (columns.length > 0) {
-            tables.push({
-              id: tableName.toLowerCase(),
-              name: tableName,
-              schema: schema,
-              columns: columns,
-              dialect: patternName,
-              // ADD SOURCE TAGGING HERE
-              source: 'sql_file',
-              sourceFile: path.basename(filePath),
-              sourceType: 'schema_definition'
-            });
-          }
-        }
+      // Detect SQL dialect
+      const dialect = this.detectSQLDialect(cleanContent);
+      
+      // Phase 1: Extract all CREATE TABLE statements
+      const tableDefinitions = this.extractTableDefinitions(cleanContent, dialect);
+      
+      // Phase 2: Parse each table comprehensively
+      const tables = [];
+      for (const tableDef of tableDefinitions) {
+        const table = this.parseTableDefinition(tableDef, dialect, filePath);
+        if (table) tables.push(table);
       }
 
-      // Parse additional SQL elements
-      const views = this.parseViews(content);
-      const indexes = this.parseIndexes(content);
-      const constraints = this.parseConstraints(content);
-      const relationships = this.extractRelationships(tables);
+      // Phase 3: Extract standalone constraints and indexes
+      const standaloneIndexes = this.parseStandaloneIndexes(cleanContent, dialect);
+      const standaloneConstraints = this.parseStandaloneConstraints(cleanContent, dialect);
+      
+      // Phase 4: Map constraints back to tables
+      this.mapConstraintsToTables(tables, standaloneConstraints);
+      this.mapIndexesToTables(tables, standaloneIndexes);
+      
+      // Phase 5: Extract relationships from all sources
+      const relationships = this.extractComprehensiveRelationships(tables, standaloneConstraints);
+      
+      // Phase 6: Parse views, triggers, sequences
+      const views = this.parseViews(cleanContent, dialect);
+      const triggers = this.parseTriggers(cleanContent, dialect);
+      const sequences = this.parseSequences(cleanContent, dialect);
 
-      console.log(`🎉 Parsed SQL dump: ${tables.length} tables, ${views.length} views, ${indexes.length} indexes, ${relationships.length} relationships`);
+      console.log(`🎉 Parsed SQL dump: ${tables.length} tables, ${views.length} views, ${standaloneIndexes.length} indexes, ${relationships.length} relationships`);
 
       return {
         databaseName: fileName,
-        databaseType: this.detectSQLDialect(content),
+        databaseType: dialect,
         filePath: filePath,
         tables: tables,
         views: views,
-        indexes: indexes,
-        constraints: constraints,
+        indexes: standaloneIndexes,
+        constraints: standaloneConstraints,
         relationships: relationships,
+        triggers: triggers,
+        sequences: sequences,
         metadata: {
           totalTables: tables.length,
           totalColumns: tables.reduce((sum, table) => sum + table.columns.length, 0),
           totalViews: views.length,
-          totalIndexes: indexes.length,
-          totalConstraints: constraints.length,
-          totalRelationships: relationships.length
+          totalIndexes: standaloneIndexes.length,
+          totalConstraints: standaloneConstraints.length,
+          totalRelationships: relationships.length,
+          totalTriggers: triggers.length,
+          totalSequences: sequences.length
         }
       };
 
@@ -328,6 +380,49 @@ class DatabaseIntrospectionService {
       console.error(`❌ SQL dump parsing failed for ${filePath}:`, error.message);
       return null;
     }
+  }
+
+  /**
+   * Parse table definition comprehensively
+   */
+  parseTableDefinition(tableDef, dialect, filePath) {
+    const { schema, tableName, body } = tableDef;
+    
+    // Split body into components (columns and constraints)
+    const components = this.smartSplitSQL(body);
+    
+    const columns = [];
+    const tableConstraints = [];
+    
+    for (const component of components) {
+      const trimmed = component.trim();
+      if (!trimmed) continue;
+      
+      // Check if it's a table-level constraint
+      if (this.isTableConstraint(trimmed)) {
+        const constraint = this.parseTableConstraint(trimmed, tableName, dialect);
+        if (constraint) tableConstraints.push(constraint);
+      } else {
+        // It's a column definition
+        const column = this.parseEnhancedColumnDefinition(trimmed, dialect);
+        if (column) columns.push(column);
+      }
+    }
+    
+    // Apply table-level constraints to columns
+    this.applyTableConstraintsToColumns(columns, tableConstraints);
+    
+    return {
+      id: tableName.toLowerCase(),
+      name: tableName,
+      schema: schema,
+      columns: columns,
+      tableConstraints: tableConstraints,
+      dialect: dialect,
+      source: 'sql_file',
+      sourceFile: path.basename(filePath),
+      sourceType: 'schema_definition'
+    };
   }
 
   /**
@@ -350,6 +445,46 @@ class DatabaseIntrospectionService {
     }
     
     return columns;
+  }
+
+  /**
+   * Parse enhanced column definition with support for complex types
+   */
+  parseEnhancedColumnDefinition(definition, dialect) {
+    // Simplified approach: extract column name, type, and parse constraints separately
+    const trimmed = definition.trim();
+    
+    // Extract column name (first word)
+    const nameMatch = trimmed.match(/^`?"?(\w+)"?`?/);
+    if (!nameMatch) return null;
+    
+    const columnName = nameMatch[1];
+    const remaining = trimmed.substring(nameMatch[0].length).trim();
+    
+    // Extract data type (next word or words with parentheses, including arrays)
+    const typeMatch = remaining.match(/^([A-Za-z_][A-Za-z0-9_]*\s*(?:\([^)]*\))?(?:\[\])?)/);
+    if (!typeMatch) return null;
+    
+    const dataType = typeMatch[1].trim();
+    const constraintsStr = remaining.substring(typeMatch[0].length).trim();
+    
+    return {
+      id: columnName.toLowerCase(),
+      name: columnName,
+      type: this.normalizeDataType(dataType, dialect),
+      originalType: dataType,
+      nullable: !constraintsStr.toLowerCase().includes('not null'),
+      primaryKey: this.extractPrimaryKey(constraintsStr),
+      unique: this.extractUnique(constraintsStr),
+      autoIncrement: this.extractAutoIncrement(constraintsStr, dialect),
+      defaultValue: this.extractDefaultValue(constraintsStr),
+      check: this.extractCheckConstraint(constraintsStr),
+      foreignKey: this.extractForeignKey(constraintsStr),
+      generated: this.extractGeneratedColumn(constraintsStr, dialect),
+      collation: this.extractCollation(constraintsStr),
+      comment: this.extractComment(constraintsStr),
+      constraints: this.parseColumnConstraints(constraintsStr)
+    };
   }
 
   /**
@@ -580,8 +715,21 @@ class DatabaseIntrospectionService {
   }
 
   extractDefaultValue(constraintStr) {
-    const defaultMatch = constraintStr.match(/default\s+([^,\s]+)/i);
-    return defaultMatch ? defaultMatch[1].replace(/['"`]/g, '') : null;
+    // Handle various default value patterns
+    const patterns = [
+      /DEFAULT\s+([^,\s]+)/i,
+      /DEFAULT\s+\(([^)]+)\)/i,
+      /DEFAULT\s+'([^']+)'/i,
+      /DEFAULT\s+"([^"]+)"/i
+    ];
+    
+    for (const pattern of patterns) {
+      const match = constraintStr.match(pattern);
+      if (match) {
+        return match[1].replace(/['"`]/g, '');
+      }
+    }
+    return null;
   }
 
   extractPrismaDefault(attributes) {
@@ -622,7 +770,481 @@ class DatabaseIntrospectionService {
     return null;
   }
 
-  parseViews(content) {
+  // Enhanced helper methods for comprehensive parsing
+
+  /**
+   * Check if line is a table constraint
+   */
+  isTableConstraint(line) {
+    const constraintKeywords = [
+      /^\s*PRIMARY\s+KEY\s*\(/i,
+      /^\s*FOREIGN\s+KEY\s*\(/i,
+      /^\s*UNIQUE\s*\(/i,             // Standalone UNIQUE constraint
+      /^\s*CHECK\s*\(/i,
+      /^\s*CONSTRAINT\s+\w+/i,
+      /^\s*INDEX\s+/i,                // MySQL inline index
+      /^\s*KEY\s+\w+\s*\(/i,          // MySQL inline key (KEY name (...))
+      /^\s*UNIQUE\s+KEY\s+/i,         // MySQL unique key
+      /^\s*UNIQUE\s+INDEX\s+/i,       // MySQL unique index
+      /^\s*FULLTEXT\s+INDEX\s+/i,     // MySQL fulltext index
+      /^\s*SPATIAL\s+INDEX\s+/i       // MySQL spatial index
+    ];
+    return constraintKeywords.some(pattern => pattern.test(line));
+  }
+
+  /**
+   * Parse table-level constraints
+   */
+  parseTableConstraint(definition, tableName, dialect) {
+    const constraintTypes = {
+      primaryKey: /(?:CONSTRAINT\s+(\w+)\s+)?PRIMARY\s+KEY\s*\(([^)]+)\)/i,
+      unique: /(?:CONSTRAINT\s+(\w+)\s+)?UNIQUE\s*\(([^)]+)\)/i,
+      foreignKey: /(?:CONSTRAINT\s+(\w+)\s+)?FOREIGN\s+KEY\s*\(([^)]+)\)\s+REFERENCES\s+(\w+)\s*\(([^)]+)\)(?:\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+ON\s+UPDATE\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION))?(?:\s+(DEFERRABLE|NOT\s+DEFERRABLE))?(?:\s+(INITIALLY\s+DEFERRED|INITIALLY\s+IMMEDIATE))?/i,
+      check: /(?:CONSTRAINT\s+(\w+)\s+)?CHECK\s*\(([^)]+(?:\([^)]*\))*)\)/i,
+      index: /(?:(UNIQUE|FULLTEXT|SPATIAL)\s+)?(?:INDEX|KEY)\s+(\w+)\s*\(([^)]+)\)/i
+    };
+    
+    for (const [type, pattern] of Object.entries(constraintTypes)) {
+      const match = definition.match(pattern);
+      if (match) {
+        if (type === 'index') {
+          // Return index constraint
+          return {
+            type: 'index',
+            name: match[2],
+            table: tableName,
+            definition: definition,
+            columns: match[3]?.split(',').map(c => c.trim()),
+            unique: match[1] === 'UNIQUE',
+            fulltext: match[1] === 'FULLTEXT',
+            spatial: match[1] === 'SPATIAL'
+          };
+        }
+        
+        return {
+          type: type,
+          name: match[1],
+          table: tableName,
+          definition: definition,
+          columns: match[2]?.split(',').map(c => c.trim()),
+          referencedTable: match[3],
+          referencedColumns: match[4]?.split(',').map(c => c.trim()),
+          onDelete: match[5],
+          onUpdate: match[6],
+          deferrable: match[7],
+          initiallyDeferred: match[8],
+          checkCondition: type === 'check' ? match[2] : null
+        };
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extract auto increment based on dialect
+   */
+  extractAutoIncrement(constraintStr, dialect) {
+    const patterns = {
+      mysql: /AUTO_INCREMENT/i,
+      postgres: /SERIAL|BIGSERIAL|SMALLSERIAL|GENERATED\s+(?:ALWAYS|BY\s+DEFAULT)\s+AS\s+IDENTITY/i,
+      sqlserver: /IDENTITY/i,
+      oracle: /GENERATED\s+(?:ALWAYS|BY\s+DEFAULT)\s+AS\s+IDENTITY/i,
+      sqlite: /AUTOINCREMENT/i
+    };
+    const pattern = patterns[dialect] || /AUTO_INCREMENT|AUTOINCREMENT|SERIAL|IDENTITY/i;
+    return pattern.test(constraintStr);
+  }
+
+  /**
+   * Extract generated column expression
+   */
+  extractGeneratedColumn(constraintStr, dialect) {
+    const patterns = {
+      postgres: /GENERATED\s+ALWAYS\s+AS\s*\(([^)]+)\)\s+STORED/i,
+      mysql: /GENERATED\s+ALWAYS\s+AS\s*\(([^)]+)\)\s+(?:STORED|VIRTUAL)/i,
+      sqlite: /GENERATED\s+ALWAYS\s+AS\s*\(([^)]+)\)\s+(?:STORED|VIRTUAL)/i,
+      sqlserver: /AS\s+\(([^)]+)\)\s+PERSISTED/i,
+      oracle: /GENERATED\s+ALWAYS\s+AS\s*\(([^)]+)\)/i
+    };
+    const pattern = patterns[dialect];
+    if (!pattern) return null;
+    
+    const match = constraintStr.match(pattern);
+    return match ? { expression: match[1], stored: true } : null;
+  }
+
+  /**
+   * Extract collation
+   */
+  extractCollation(constraintStr) {
+    const match = constraintStr.match(/COLLATE\s+(\w+)/i);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * Extract comment
+   */
+  extractComment(constraintStr) {
+    const match = constraintStr.match(/COMMENT\s+'([^']*)'/i);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * Extract primary key
+   */
+  extractPrimaryKey(constraintStr) {
+    return /PRIMARY\s+KEY/i.test(constraintStr);
+  }
+
+  /**
+   * Extract unique constraint
+   */
+  extractUnique(constraintStr) {
+    return /UNIQUE/i.test(constraintStr);
+  }
+
+  /**
+   * Normalize data types across dialects
+   */
+  normalizeDataType(dataType, dialect) {
+    const typeMap = {
+      // Integer types
+      'INT': 'INTEGER', 'INTEGER': 'INTEGER', 'BIGINT': 'BIGINT', 'SMALLINT': 'SMALLINT', 'TINYINT': 'TINYINT',
+      // String types
+      'VARCHAR': 'VARCHAR', 'CHAR': 'CHAR', 'TEXT': 'TEXT', 'LONGTEXT': 'TEXT',
+      // Decimal types
+      'DECIMAL': 'DECIMAL', 'NUMERIC': 'NUMERIC', 'FLOAT': 'FLOAT', 'DOUBLE': 'DOUBLE', 'REAL': 'REAL',
+      // Date/Time types
+      'DATE': 'DATE', 'TIME': 'TIME', 'TIMESTAMP': 'TIMESTAMP', 'DATETIME': 'DATETIME',
+      // Boolean types
+      'BOOLEAN': 'BOOLEAN', 'BOOL': 'BOOLEAN',
+      // Binary types
+      'BLOB': 'BLOB', 'BYTEA': 'BLOB', 'VARBINARY': 'BLOB',
+      // JSON types
+      'JSON': 'JSON', 'JSONB': 'JSONB',
+      // Array types (PostgreSQL)
+      'INTEGER[]': 'INTEGER_ARRAY', 'TEXT[]': 'TEXT_ARRAY', 'VARCHAR[]': 'VARCHAR_ARRAY',
+      // UUID
+      'UUID': 'UUID'
+    };
+    
+    // Check for array types first
+    if (dataType.includes('[]')) {
+      const baseType = dataType.replace('[]', '').replace(/\([^)]*\)/g, '').trim().toUpperCase();
+      return typeMap[baseType + '[]'] || baseType + '_ARRAY';
+    }
+    
+    const cleanType = dataType.replace(/\([^)]*\)/g, '').trim().toUpperCase();
+    return typeMap[cleanType] || dataType.toUpperCase();
+  }
+
+  /**
+   * Apply table-level constraints to columns
+   */
+  applyTableConstraintsToColumns(columns, tableConstraints) {
+    for (const constraint of tableConstraints) {
+      if (constraint.type === 'primaryKey' && constraint.columns) {
+        constraint.columns.forEach(colName => {
+          const column = columns.find(c => c.name === colName);
+          if (column) column.primaryKey = true;
+        });
+      }
+      if (constraint.type === 'unique' && constraint.columns) {
+        constraint.columns.forEach(colName => {
+          const column = columns.find(c => c.name === colName);
+          if (column) column.unique = true;
+        });
+      }
+    }
+  }
+
+  /**
+   * Map constraints back to tables
+   */
+  mapConstraintsToTables(tables, constraints) {
+    // Implementation for mapping standalone constraints to tables
+    for (const constraint of constraints) {
+      const table = tables.find(t => t.name === constraint.table);
+      if (table) {
+        if (!table.tableConstraints) table.tableConstraints = [];
+        table.tableConstraints.push(constraint);
+      }
+    }
+  }
+
+  /**
+   * Map indexes back to tables
+   */
+  mapIndexesToTables(tables, indexes) {
+    // Implementation for mapping standalone indexes to tables
+    for (const index of indexes) {
+      const table = tables.find(t => t.name === index.table);
+      if (table) {
+        if (!table.indexes) table.indexes = [];
+        table.indexes.push(index);
+      }
+    }
+    
+    // Also map inline indexes from table constraints
+    for (const table of tables) {
+      if (table.tableConstraints) {
+        for (const constraint of table.tableConstraints) {
+          if (constraint.type === 'index') {
+            if (!table.indexes) table.indexes = [];
+            table.indexes.push({
+              name: constraint.name,
+              table: table.name,
+              columns: constraint.columns,
+              unique: constraint.unique,
+              fulltext: constraint.fulltext,
+              spatial: constraint.spatial,
+              type: constraint.unique ? 'unique' : (constraint.fulltext ? 'fulltext' : (constraint.spatial ? 'spatial' : 'btree')),
+              definition: constraint.definition,
+              source: 'inline'
+            });
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Parse standalone constraints
+   */
+  parseStandaloneConstraints(content, dialect) {
+    const constraints = [];
+    const constraintMatches = content.matchAll(/ALTER\s+TABLE\s+(\w+)\s+ADD\s+CONSTRAINT\s+(\w+)\s+([\s\S]*?)(?=;)/gi);
+    
+    for (const match of constraintMatches) {
+      constraints.push({
+        table: match[1],
+        name: match[2],
+        definition: match[3].trim()
+      });
+    }
+    
+    return constraints;
+  }
+
+  /**
+   * Parse standalone indexes
+   */
+  parseStandaloneIndexes(content, dialect) {
+    const indexes = [];
+    
+    // Simplified patterns for better matching
+    const patterns = [
+      // Basic index: CREATE INDEX name ON table (columns)
+      /CREATE\s+(?:(UNIQUE|FULLTEXT|SPATIAL)\s+)?INDEX\s+(\w+)\s+ON\s+(\w+)\s*\(([^)]+)\)/gi,
+      
+      // Index with WHERE clause: CREATE INDEX name ON table (columns) WHERE condition
+      /CREATE\s+(?:(UNIQUE|FULLTEXT|SPATIAL)\s+)?INDEX\s+(\w+)\s+ON\s+(\w+)\s*\(([^)]+)\)\s+WHERE\s+(.+?)(?=;|$)/gi,
+      
+      // Clustered index (SQL Server)
+      /CREATE\s+(CLUSTERED|NONCLUSTERED)\s+INDEX\s+(\w+)\s+ON\s+(\w+)\s*\(([^)]+)\)/gi
+    ];
+    
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(content)) !== null) {
+        const index = this.parseIndexMatch(match, dialect);
+        if (index) indexes.push(index);
+      }
+    }
+    
+    return indexes;
+  }
+
+  /**
+   * Parse index match
+   */
+  parseIndexMatch(match, dialect) {
+    // Handle different index patterns
+    if (match.length === 5) {
+      // Basic index: CREATE [UNIQUE] INDEX name ON table (columns)
+      return {
+        name: match[2],
+        table: match[3],
+        columns: match[4].split(',').map(col => col.trim().replace(/`|"|\[|\]/g, '')),
+        unique: !!match[1],
+        type: 'btree',
+        definition: match[0]
+      };
+    } else if (match.length === 6) {
+      // Index with WHERE clause: CREATE [UNIQUE] INDEX name ON table (columns) WHERE condition
+      return {
+        name: match[2],
+        table: match[3],
+        columns: match[4].split(',').map(col => col.trim().replace(/`|"|\[|\]/g, '')),
+        unique: !!match[1],
+        where: match[5],
+        type: 'btree',
+        definition: match[0]
+      };
+    } else if (match.length === 5 && match[1] && (match[1] === 'CLUSTERED' || match[1] === 'NONCLUSTERED')) {
+      // Clustered index
+      return {
+        name: match[2],
+        table: match[3],
+        columns: match[4].split(',').map(col => col.trim()),
+        clustered: match[1] === 'CLUSTERED',
+        definition: match[0]
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Extract comprehensive relationships
+   */
+  extractComprehensiveRelationships(tables, constraints) {
+    const relationships = [];
+    
+    // 1. Inline foreign keys from columns
+    for (const table of tables) {
+      for (const column of table.columns) {
+        if (column.foreignKey) {
+          relationships.push({
+            id: `${table.name}_${column.name}_fk`,
+            sourceTable: table.name,
+            sourceColumn: column.name,
+            targetTable: column.foreignKey.table,
+            targetColumn: column.foreignKey.column,
+            type: 'foreign_key',
+            onDelete: column.foreignKey.onDelete || 'NO ACTION',
+            onUpdate: column.foreignKey.onUpdate || 'NO ACTION',
+            source: 'inline'
+          });
+        }
+      }
+    }
+    
+    // 2. Table-level foreign key constraints
+    for (const constraint of constraints) {
+      if (constraint.type === 'foreignKey') {
+        relationships.push({
+          id: constraint.name || `${constraint.table}_${constraint.columns.join('_')}_fk`,
+          sourceTable: constraint.table,
+          sourceColumns: constraint.columns,
+          targetTable: constraint.referencedTable,
+          targetColumns: constraint.referencedColumns,
+          type: constraint.columns.length > 1 ? 'composite_foreign_key' : 'foreign_key',
+          onDelete: constraint.onDelete || 'NO ACTION',
+          onUpdate: constraint.onUpdate || 'NO ACTION',
+          deferrable: constraint.deferrable,
+          source: 'table_constraint'
+        });
+      }
+    }
+    
+    // 2b. Table-level foreign key constraints from table.tableConstraints
+    for (const table of tables) {
+      if (table.tableConstraints) {
+        for (const constraint of table.tableConstraints) {
+          if (constraint.type === 'foreignKey') {
+            relationships.push({
+              id: constraint.name || `${constraint.table}_${constraint.columns.join('_')}_fk`,
+              sourceTable: constraint.table,
+              sourceColumns: constraint.columns,
+              targetTable: constraint.referencedTable,
+              targetColumns: constraint.referencedColumns,
+              type: constraint.columns.length > 1 ? 'composite_foreign_key' : 'foreign_key',
+              onDelete: constraint.onDelete || 'NO ACTION',
+              onUpdate: constraint.onUpdate || 'NO ACTION',
+              deferrable: constraint.deferrable,
+              source: 'table_constraint'
+            });
+          }
+        }
+      }
+    }
+    
+    // 3. Self-referencing relationships
+    const selfRefs = relationships.filter(r => r.sourceTable === r.targetTable);
+    selfRefs.forEach(r => r.selfReferencing = true);
+    
+    // 4. Inferred relationships from naming conventions (user_id -> users)
+    for (const table of tables) {
+      for (const column of table.columns) {
+        if ((column.name.endsWith('_id') || column.name.endsWith('Id')) && 
+            !column.primaryKey && !column.foreignKey) {
+          const potentialTable = column.name.replace(/(_id|Id)$/, '');
+          const targetTable = tables.find(t => 
+            t.name.toLowerCase() === potentialTable.toLowerCase() ||
+            t.name.toLowerCase() === `${potentialTable}s`.toLowerCase() ||
+            t.name.toLowerCase() === potentialTable.toLowerCase() + 's' ||
+            t.name.toLowerCase() + 's' === potentialTable.toLowerCase()
+          );
+          
+          if (targetTable && !relationships.find(r => 
+            r.sourceTable === table.name && r.sourceColumn === column.name
+          )) {
+            relationships.push({
+              id: `${table.name}_${column.name}_inferred`,
+              sourceTable: table.name,
+              sourceColumn: column.name,
+              targetTable: targetTable.name,
+              targetColumn: 'id',
+              type: 'foreign_key_inferred',
+              confidence: 'medium',
+              source: 'inferred'
+            });
+          }
+        }
+      }
+    }
+    
+    // Remove duplicate relationships
+    const uniqueRelationships = [];
+    const seen = new Set();
+    
+    for (const rel of relationships) {
+      const key = `${rel.sourceTable}.${rel.sourceColumn || rel.sourceColumns?.join(',')}->${rel.targetTable}.${rel.targetColumn || rel.targetColumns?.join(',')}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueRelationships.push(rel);
+      }
+    }
+    
+    return uniqueRelationships;
+  }
+
+  /**
+   * Parse triggers
+   */
+  parseTriggers(content, dialect) {
+    const triggers = [];
+    const triggerMatches = content.matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+(\w+)\s+([\s\S]*?)(?=;|\n\n)/gi);
+    
+    for (const match of triggerMatches) {
+      triggers.push({
+        name: match[1],
+        definition: match[2].trim()
+      });
+    }
+    
+    return triggers;
+  }
+
+  /**
+   * Parse sequences
+   */
+  parseSequences(content, dialect) {
+    const sequences = [];
+    const sequenceMatches = content.matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?SEQUENCE\s+(\w+)\s+([\s\S]*?)(?=;|\n\n)/gi);
+    
+    for (const match of sequenceMatches) {
+      sequences.push({
+        name: match[1],
+        definition: match[2].trim()
+      });
+    }
+    
+    return sequences;
+  }
+
+  parseViews(content, dialect) {
     const views = [];
     const viewMatches = content.matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+(\w+)\s+AS\s+([\s\S]*?)(?=;|\n\n)/gi);
     
